@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# ---------------------------------------------------------------- Environments
+.venv/
+venv/
+.env
+.env.*
+
+# ---------------------------------------------------------------- Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------- Model weights (never commit; downloaded at runtime)
+checkpoints/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# ---------------------------------------------------------------- User data (keep datasets out of git)
+data/
+datasets/
+exports/
+
+# ---------------------------------------------------------------- Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------- Claude Code local settings
+.claude/settings.local.json

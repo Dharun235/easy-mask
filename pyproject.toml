@@ -1,0 +1,80 @@
+[project]
+name = "easy-mask"
+version = "0.1.0"
+description = "Local-first image annotation for computer-vision masks: polygons, boxes, circles today; SAM2 next."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "Dharun235" }]
+keywords = ["annotation", "segmentation", "computer-vision", "mask", "labeling", "sam2"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "numpy>=2.0",
+    "pillow>=10.0",
+    "PySide6>=6.7",
+]
+
+[project.urls]
+Repository = "https://github.com/Dharun235/easy-mask"
+Issues = "https://github.com/Dharun235/easy-mask/issues"
+
+[project.scripts]
+easy-mask = "easy_mask.cli:main"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+    "pytest-qt>=4.4",
+    "ruff>=0.17",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/easy_mask"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "N",        # pep8-naming
+    "D",        # pydocstyle (docstrings required)
+    "RUF",      # ruff-specific
+]
+ignore = [
+    "D105",  # magic methods need no docstring
+    "D107",  # __init__ documented on the class
+    "N802",  # Qt overrides use camelCase (paintEvent, mousePressEvent, ...)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
+addopts = "-ra"
