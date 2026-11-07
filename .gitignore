@@ -28,9 +28,9 @@ checkpoints/
 *.safetensors
 
 # ---------------------------------------------------------------- User data (keep datasets out of git)
-data/
-datasets/
-exports/
+/data/
+/datasets/
+/exports/
 
 # ---------------------------------------------------------------- Editors / OS
 .vscode/

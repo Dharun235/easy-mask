@@ -16,6 +16,8 @@ cloud, no account, no telemetry. Annotations are stored as one JSON file per ima
 uv sync                       # create .venv and install deps (incl. dev group)
 uv run easy-mask [PATH]       # launch the app on an image or folder
 uv run pytest                 # run tests (GUI tests run headless via pytest-qt)
+uv run pytest -m unit         # one layer; see docs/testing.md
+uv run pytest --cov           # coverage; CI fails under 90%
 uv run ruff check .           # lint
 uv run ruff format .          # format
 uv run pre-commit install     # one-time: run ruff on every commit
@@ -34,8 +36,8 @@ src/easy_mask/
             NO Qt imports here either.
   gui/      PySide6 widgets. Thin: translate user input into core calls and draw core state.
   cli.py    argument parsing and entry point.
-tests/      mirrors src/; core/io tests are plain pytest, gui tests use the `qtbot` fixture.
-docs/       architecture.md (how pieces fit), roadmap.md (what comes next).
+tests/      by type: unit/ property/ architecture/ integration/ gui/ smoke/ (docs/testing.md).
+docs/       architecture.md, roadmap.md, testing.md, benchmarks.md.
 ```
 
 Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to import from
@@ -57,8 +59,10 @@ Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to im
   not before (e.g. the segmenter backend interface arrives with the SAM2 branch).
 - **Errors:** fail loudly on programmer error; show a dialog for user error (bad file,
   missing image). Don't swallow exceptions silently.
-- **Tests:** every bug fix gets a test that fails before the fix. Every new core/io function
-  gets a unit test.
+- **Tests:** every bug fix gets a regression test that fails before the fix. Every new
+  core/io function gets a unit test; user-visible behaviour gets a GUI test; file-format
+  changes update the golden files (`UPDATE_GOLDEN=1`) and the diff is reviewed. Pick the
+  layer with docs/testing.md. Keep coverage >= 90%.
 
 ## Git workflow
 

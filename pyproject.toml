@@ -30,8 +30,10 @@ easy-mask = "easy_mask.cli:main"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.170.15",
     "pre-commit>=4.0",
     "pytest>=8.0",
+    "pytest-cov>=7.1.0",
     "pytest-qt>=4.4",
     "ruff>=0.17",
 ]
@@ -77,4 +79,30 @@ convention = "google"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 qt_api = "pyside6"
-addopts = "-ra"
+# importlib mode: test files in different folders may share a basename.
+addopts = "-ra --strict-markers --import-mode=importlib"
+# Every test gets the marker of its folder (see tests/conftest.py), so you can run
+# one layer at a time, e.g. `uv run pytest -m unit` or `-m "not gui and not slow"`.
+markers = [
+    "unit: fast, isolated tests of one function or class (tests/unit)",
+    "integration: several modules together, real files on disk (tests/integration)",
+    "gui: drive the Qt window with real mouse/key events, headless (tests/gui)",
+    "property: property-based tests with Hypothesis (tests/property)",
+    "architecture: enforce layering and project rules (tests/architecture)",
+    "smoke: does the installed app start at all, in a subprocess (tests/smoke)",
+    "slow: takes more than a second; skipped with -m 'not slow'",
+    "benchmark: needs downloaded benchmark data in data/benchmarks; skipped otherwise",
+]
+
+# ---------------------------------------------------------------- coverage
+[tool.coverage.run]
+source = ["easy_mask"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 90
+exclude_also = [
+    "if __name__ == .__main__.:",
+]

@@ -64,3 +64,14 @@ def test_export_yolo(annotated, tmp_path):
     assert values[0] == "0" and len(values) == 1 + 2 * 4
     assert float(values[1]) == pytest.approx(0.1) and float(values[2]) == pytest.approx(0.125)
     assert "names:\n  0: cat" in (tmp_path / "out" / "data.yaml").read_text()
+
+
+def test_masks_reject_more_than_255_classes(annotated, tmp_path):
+    with pytest.raises(ValueError, match="255"):
+        export.export_masks(annotated, tmp_path / "out", labels=[f"c{i}" for i in range(256)])
+
+
+def test_coco_skips_labels_outside_class_list(annotated, tmp_path):
+    export.export_coco(annotated, tmp_path / "out", labels=["dog"])
+    coco = json.loads((tmp_path / "out" / "annotations.json").read_text())
+    assert [a["category_id"] for a in coco["annotations"]] == [1]

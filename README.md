@@ -145,14 +145,15 @@ easy-mask is an independent implementation: it shares labelme's file format but 
 
 Contributions of all sizes are welcome: bug reports, docs, tests, features.
 
-1. Read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/architecture.md](docs/architecture.md).
+1. Read [CONTRIBUTING.md](CONTRIBUTING.md), [docs/architecture.md](docs/architecture.md) and
+   [docs/testing.md](docs/testing.md).
 2. Pick an issue (or open one), branch as `feat/<name>` or `fix/<name>`, open a PR.
 3. AI coding assistants: follow [CLAUDE.md](CLAUDE.md).
 
 ```bash
 uv sync                      # installs dev tools too
 uv run pre-commit install    # ruff on every commit
-uv run pytest                # tests (GUI tests run headless)
+uv run pytest --cov          # 140+ tests: unit, property, integration, GUI, smoke (headless)
 uv run ruff check . && uv run ruff format --check .
 ```
 
