@@ -72,6 +72,7 @@ class Canvas(QWidget):
         self.selected: int | None = None
         self.fill = True
         self.mode: ShapeType | None = None  # None means edit (select/move) mode
+        self.labels: list[str] = []  # label order decides colours; set by the main window
 
         self.scale = 1.0
         self.offset = QPointF(0, 0)
@@ -309,8 +310,11 @@ class Canvas(QWidget):
             return
         if self.mode in (ShapeType.POLYGON, ShapeType.LINESTRIP):
             self.finish_draft()
-        elif self.mode is None and self.selected is not None:
-            self.double_clicked_shape.emit(self.selected)
+        elif self.mode is None and not self.pixmap.isNull():
+            self._press_edit(self._clamp(self.to_image(event.position())))
+            self._drag_last = self._drag_vertex = None  # a double-click never drags
+            if self.selected is not None:
+                self.double_clicked_shape.emit(self.selected)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         """Ctrl+wheel zooms at the cursor; plain wheel / trackpad scroll pans."""
@@ -387,7 +391,7 @@ class Canvas(QWidget):
         selected: bool,
         rgb: tuple[int, int, int] | None = None,
     ) -> None:
-        r, g, b = rgb or label_color(shape.label)
+        r, g, b = rgb or label_color(shape.label, self.labels)
         pen = QPen(QColor(r, g, b), 3 if selected else 2)
         pen.setCosmetic(True)  # constant on-screen width at any zoom
         painter.setPen(pen)

@@ -7,19 +7,31 @@ from pathlib import Path
 RGB = tuple[int, int, int]
 
 
-def label_color(label: str) -> RGB:
-    """Return a bright, stable RGB colour for ``label``.
+GOLDEN_RATIO_CONJUGATE = 0.618033988749895
 
-    Hue, saturation and brightness come from different bits of a CRC32 hash of the label,
-    so the same label always gets the same colour across images and sessions without
-    storing a palette, and labels with similar hues still differ in shade.
+
+def palette_color(index: int) -> RGB:
+    """Return the ``index``-th colour of an endless, well-separated palette.
+
+    Stepping the hue by the golden ratio keeps every new colour far from all previous
+    ones, so the first ~10 labels are clearly distinguishable.
     """
-    h = zlib.crc32(label.encode("utf-8"))
-    hue = (h & 0xFFFF) / 0x10000
-    saturation = 0.55 + 0.4 * ((h >> 16) & 0xFF) / 255
-    value = 0.75 + 0.25 * ((h >> 24) & 0xFF) / 255
-    r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
+    hue = (index * GOLDEN_RATIO_CONJUGATE) % 1.0
+    saturation = 0.85 if index % 2 == 0 else 0.6
+    r, g, b = colorsys.hsv_to_rgb(hue, saturation, 0.95)
     return round(r * 255), round(g * 255), round(b * 255)
+
+
+def label_color(label: str, labels: list[str] | tuple[str, ...] = ()) -> RGB:
+    """Return the display colour of ``label``.
+
+    Labels in ``labels`` (the project's label list, in order) get palette colours by
+    position, which keeps them distinct and matches the exported mask palette. Unknown
+    labels fall back to a colour derived from a hash of the name, so they stay stable.
+    """
+    if label in labels:
+        return palette_color(labels.index(label))
+    return palette_color(zlib.crc32(label.encode("utf-8")) % 1000)
 
 
 def parse_name_list(value: str | None) -> list[str]:

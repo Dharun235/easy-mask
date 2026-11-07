@@ -21,6 +21,7 @@ The headline feature. Runs locally on CPU, CUDA or Apple MPS.
 - [ ] Accept as `mask` shape (bitmap) or polygonize to `polygon`
 - [ ] Model manager: download weights on first use into a user cache dir
 - [ ] Background thread so the UI never freezes during encoding
+- [ ] Click benchmark script: NoC@85/90, mIoU@k on GrabCut / Berkeley / DAVIS ([benchmarks.md](benchmarks.md))
 
 ## v0.3 — mask editing
 - [ ] Native `mask` shape type (RLE / PNG in JSON, labelme-compatible)

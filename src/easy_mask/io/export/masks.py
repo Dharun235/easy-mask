@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from easy_mask.core.labels import label_color
+from easy_mask.core.labels import palette_color
 from easy_mask.core.rasterize import instance_mask, semantic_mask
 from easy_mask.io.export.common import AnnotatedImage, copy_images, resolve_labels
 
@@ -22,10 +22,13 @@ BACKGROUND = "_background_"
 
 
 def _palette(class_names: list[str]) -> list[int]:
-    """Flat RGB palette: black background, then each label's display colour."""
+    """Flat RGB palette: black background, then class ``i`` gets ``palette_color(i - 1)``.
+
+    This matches the GUI colours when the same label list (``--labels``) is used.
+    """
     palette = [0, 0, 0]
-    for name in class_names[1:]:
-        palette.extend(label_color(name))
+    for i in range(1, len(class_names)):
+        palette.extend(palette_color(i - 1))
     return palette
 
 

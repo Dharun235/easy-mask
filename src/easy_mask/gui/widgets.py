@@ -14,10 +14,10 @@ from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
 
 
-def color_icon(label: str, size: int = 12) -> QIcon:
-    """A small square icon filled with ``label``'s colour."""
+def color_icon(label: str, labels: list[str], size: int = 12) -> QIcon:
+    """A small square icon filled with ``label``'s colour (see ``label_color``)."""
     pixmap = QPixmap(size, size)
-    pixmap.fill(QColor(*label_color(label)))
+    pixmap.fill(QColor(*label_color(label, labels)))
     return QIcon(pixmap)
 
 
@@ -58,7 +58,9 @@ class LabelList(QListWidget):
         self.clear()
         for label in labels:
             count = sum(1 for s in shapes if s.label == label)
-            item = QListWidgetItem(color_icon(label), f"{label}  ({count})" if count else label)
+            item = QListWidgetItem(
+                color_icon(label, labels), f"{label}  ({count})" if count else label
+            )
             item.setData(Qt.ItemDataRole.UserRole, label)
             self.addItem(item)
 
@@ -76,7 +78,7 @@ class ShapeList(QListWidget):
         super().__init__(parent)
         self.itemChanged.connect(self._on_item_changed)
 
-    def show_shapes(self, shapes: list[Shape], hidden: set[int]) -> None:
+    def show_shapes(self, shapes: list[Shape], hidden: set[int], labels: list[str]) -> None:
         """Replace the list with ``shapes``; ``hidden`` holds ``id()`` of hidden shapes."""
         self.blockSignals(True)
         self.clear()
@@ -84,7 +86,7 @@ class ShapeList(QListWidget):
             text = f"{shape.label}  [{shape.shape_type}]"
             if shape.group_id is not None:
                 text += f"  g{shape.group_id}"
-            item = QListWidgetItem(color_icon(shape.label), text)
+            item = QListWidgetItem(color_icon(shape.label, labels), text)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             visible = id(shape) not in hidden
             item.setCheckState(Qt.CheckState.Checked if visible else Qt.CheckState.Unchecked)

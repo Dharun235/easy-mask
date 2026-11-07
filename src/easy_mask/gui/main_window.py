@@ -73,6 +73,7 @@ class MainWindow(QMainWindow):
         self.ask_label = LabelDialog.ask
 
         self.canvas = Canvas(self)
+        self.canvas.labels = self.known_labels  # same list object: new labels recolour live
         self.setCentralWidget(self.canvas)
         self._build_panels()
         self._build_actions()
@@ -469,8 +470,12 @@ class MainWindow(QMainWindow):
         if not out:
             return
         items = export.collect(self.image_path.parent, self.settings.output_dir)
-        labels = self.settings.labels or None
-        export.EXPORTERS[fmt](items, Path(out), labels)
+        # Predefined labels first, then any seen in the folder, so nothing is dropped and
+        # class ids follow the same order as the on-screen colours.
+        for item in items:
+            for shape in item.annotation.shapes:
+                self._remember_label(shape.label)
+        export.EXPORTERS[fmt](items, Path(out), list(self.known_labels))
         self.statusBar().showMessage(f"Exported {len(items)} images as {fmt} to {out}", 5000)
 
     # ------------------------------------------------------------------ view helpers
@@ -485,7 +490,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_panels(self) -> None:
         self.label_list.show_labels(self.known_labels, self.canvas.shapes)
-        self.shape_list.show_shapes(self.canvas.shapes, self.canvas.hidden)
+        self.shape_list.show_shapes(self.canvas.shapes, self.canvas.hidden, self.known_labels)
         self.shape_list.select_silently(
             -1 if self.canvas.selected is None else self.canvas.selected
         )

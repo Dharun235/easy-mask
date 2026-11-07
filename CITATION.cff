@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use easy-mask in your research, please cite it as below."
+title: "easy-mask: local-first image annotation for computer-vision masks"
+type: software
+authors:
+  - alias: Dharun235
+repository-code: "https://github.com/Dharun235/easy-mask"
+license: Apache-2.0
+version: 0.1.0
+keywords:
+  - annotation
+  - segmentation
+  - computer vision
+  - SAM2

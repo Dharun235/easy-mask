@@ -203,3 +203,28 @@ def test_zoom_keeps_anchor_fixed(window):
     before = c.to_image(anchor.toPointF())
     c.zoom_by(2.0, anchor.toPointF())
     assert c.to_image(anchor.toPointF()) == pytest.approx(before, abs=0.01)
+
+
+def test_double_click_relabels_unselected_shape(qtbot, window):
+    window.set_tool(ShapeType.RECTANGLE)
+    drag(qtbot, window, (10, 10), (30, 30))
+    window.set_tool(None)
+    window.canvas.select(None)
+    window.ask_label = lambda known, initial, parent: LabelInfo("dog", description="note")
+    qtbot.mouseDClick(window.canvas, Qt.MouseButton.LeftButton, pos=screen(window, 20, 20))
+    shape = window.canvas.shapes[0]
+    assert (shape.label, shape.description) == ("dog", "note")
+    assert shape.points[0] == pytest.approx((10, 10), abs=1)  # not dragged
+
+
+def test_gui_export_keeps_labels_added_in_session(qtbot, window, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    window.ask_label = lambda known, initial, parent: LabelInfo("zebra")  # not in --labels
+    window.set_tool(ShapeType.RECTANGLE)
+    drag(qtbot, window, (10, 10), (30, 30))
+    window.save()
+    out = tmp_path / "exp"
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(out))
+    window.export_dataset("masks")
+    assert (out / "class_names.txt").read_text().split() == ["_background_", "cat", "dog", "zebra"]

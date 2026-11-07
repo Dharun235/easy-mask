@@ -50,7 +50,7 @@ class LabelDialog(QDialog):
 
         self.label_list = QListWidget()
         for label in known_labels:
-            self.label_list.addItem(QListWidgetItem(color_icon(label), label))
+            self.label_list.addItem(QListWidgetItem(color_icon(label, known_labels), label))
         self.label_list.itemClicked.connect(lambda item: self.label_edit.setText(item.text()))
         self.label_list.itemDoubleClicked.connect(lambda item: self._accept_label(item.text()))
 
