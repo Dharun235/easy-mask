@@ -11,4 +11,54 @@ easy-mask is split into three layers with a one-way dependency: `gui -> io -> co
 Keeping Qt out of `core` and `io` means the annotation logic (geometry, file format,
 rasterizing, export) is plain Python that runs and tests without a display.
 
-The layer contents are filled in by the `feat/core-annotation` branch.
+## Module map
+
+```
+src/easy_mask/
+  cli.py                 argparse: `easy-mask [PATH]` (GUI) and `easy-mask export` (headless)
+  core/
+    geometry.py          distances, point-in-polygon, area, bbox, circle -> polygon
+    shapes.py            ShapeType enum + Shape dataclass (hit-testing, outline, (de)serialize)
+    annotation.py        Annotation dataclass, labelme-compatible JSON load/save, file paths
+    history.py           snapshot-based undo/redo stack
+    labels.py            stable per-label colours, parsing --labels / --flags
+    rasterize.py         Shape -> boolean mask; semantic and instance masks
+  io/
+    images.py            list images in a folder (natural sort), read size
+    export/
+      common.py          collect (image, annotation) pairs, resolve class list, copy images
+      masks.py           semantic + instance PNG masks
+      coco.py            COCO instance segmentation JSON
+      yolo.py            YOLO-seg label files + data.yaml
+  gui/
+    app.py               QApplication bootstrap
+    main_window.py       menus, docks, open/save/navigate, edit commands, export menu
+    canvas.py            view transform, drawing tools, select/move/vertex drag, painting
+    label_dialog.py      label / group id / description dialog with autocomplete
+    widgets.py           list widgets for files, labels, shapes, flags
+```
+
+## Data flow for one edit
+
+```
+mouse/keys -> Canvas ----shape_drawn----> MainWindow._on_shape_drawn -> LabelDialog
+                    \---shapes_edited---> MainWindow._commit
+                                              |- History.push(shapes)
+                                              |- dirty = True (title shows *)
+                                              '- refresh Labels / Shapes panels
+```
+
+The canvas mutates shapes only while dragging; adding, deleting and relabelling happen
+in `MainWindow`, which always ends with `_commit()`. Undo/redo replaces the whole shape
+list with a snapshot from `History`.
+
+## Coordinates
+
+All stored points are image pixels, origin top-left, `(x, y)` floats. `Canvas` converts
+widget positions with `to_image()`; `scale` and `offset` are its only view state.
+
+## Where SAM2 will plug in
+
+The `feat/sam2` branch adds a `segmenters/` package (behind an interface introduced with its
+first real backend), a click-prompt tool in `Canvas`, and a background worker so image
+encoding never blocks the UI. Masks it produces flow through the same `_commit()` path.

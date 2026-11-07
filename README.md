@@ -7,6 +7,8 @@ then export pixel masks and datasets ready for training. Everything runs on your
 no cloud upload, no account, no telemetry. Click-to-segment with SAM2 is next on the
 [roadmap](docs/roadmap.md).
 
+![easy-mask main window](docs/screenshot.png)
+
 > Status: early alpha. The on-disk format is labelme-compatible, so you can move
 > annotations between the two tools.
 

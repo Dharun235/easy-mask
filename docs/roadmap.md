@@ -4,14 +4,14 @@ Each milestone lands as its own branch and PR into `main`.
 
 ## v0.1 — core annotation (`feat/core-annotation`)
 Manual tools on par with classic annotators.
-- [ ] Polygon, rectangle, circle, line, line strip, point
-- [ ] Select / move / vertex drag / delete / duplicate / copy-paste
-- [ ] Undo / redo
-- [ ] Label dialog, label colours, label list with counts, shape list with visibility
-- [ ] Open image / folder, file list, next / prev, zoom, pan, fit
-- [ ] Image-level flags
-- [ ] labelme-compatible JSON, auto-save, output folder
-- [ ] Export: semantic + instance mask PNG, COCO, YOLO-seg
+- [x] Polygon, rectangle, circle, line, line strip, point
+- [x] Select / move / vertex drag / delete / duplicate / copy-paste
+- [x] Undo / redo
+- [x] Label dialog, label colours, label list with counts, shape list with visibility
+- [x] Open image / folder, file list, next / prev, zoom, pan, fit
+- [x] Image-level flags
+- [x] labelme-compatible JSON, auto-save, output folder
+- [x] Export: semantic + instance mask PNG, COCO, YOLO-seg
 
 ## v0.2 — SAM2 click-to-segment (`feat/sam2`)
 The headline feature. Runs locally on CPU, CUDA or Apple MPS.

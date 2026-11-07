@@ -1,0 +1,100 @@
+"""Dialog asking for a shape's label, group id and description."""
+
+from dataclasses import dataclass
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIntValidator
+from PySide6.QtWidgets import (
+    QCompleter,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from easy_mask.gui.widgets import color_icon
+
+
+@dataclass
+class LabelInfo:
+    """What the user entered in the label dialog."""
+
+    label: str
+    group_id: int | None = None
+    description: str = ""
+
+
+class LabelDialog(QDialog):
+    """Pick or type a label. Known labels autocomplete and are listed for one-click use."""
+
+    def __init__(self, known_labels: list[str], initial: LabelInfo, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Label")
+
+        self.label_edit = QLineEdit(initial.label)
+        self.label_edit.setPlaceholderText("label, e.g. cat")
+        completer = QCompleter(known_labels, self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.label_edit.setCompleter(completer)
+
+        self.group_edit = QLineEdit("" if initial.group_id is None else str(initial.group_id))
+        self.group_edit.setValidator(QIntValidator(0, 1_000_000, self))
+        self.group_edit.setPlaceholderText("optional: same id = same object")
+        self.description_edit = QLineEdit(initial.description)
+        self.description_edit.setPlaceholderText("optional note")
+
+        self.label_list = QListWidget()
+        for label in known_labels:
+            self.label_list.addItem(QListWidgetItem(color_icon(label), label))
+        self.label_list.itemClicked.connect(lambda item: self.label_edit.setText(item.text()))
+        self.label_list.itemDoubleClicked.connect(lambda item: self._accept_label(item.text()))
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._accept_if_valid)
+        buttons.rejected.connect(self.reject)
+
+        form = QFormLayout()
+        form.addRow("Label", self.label_edit)
+        form.addRow("Group id", self.group_edit)
+        form.addRow("Description", self.description_edit)
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(self.label_list)
+        layout.addWidget(buttons)
+
+        self.label_edit.selectAll()
+        self.label_edit.setFocus()
+
+    def result_info(self) -> LabelInfo:
+        """The values currently entered."""
+        group = self.group_edit.text().strip()
+        return LabelInfo(
+            label=self.label_edit.text().strip(),
+            group_id=int(group) if group else None,
+            description=self.description_edit.text().strip(),
+        )
+
+    def _accept_label(self, label: str) -> None:
+        self.label_edit.setText(label)
+        self._accept_if_valid()
+
+    def _accept_if_valid(self) -> None:
+        if self.label_edit.text().strip():
+            self.accept()
+
+    @staticmethod
+    def ask(
+        known_labels: list[str], initial: LabelInfo, parent: QWidget | None = None
+    ) -> LabelInfo | None:
+        """Show the dialog modally. Returns the entered info, or None if cancelled."""
+        dialog = LabelDialog(known_labels, initial, parent)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return dialog.result_info()
+        return None
