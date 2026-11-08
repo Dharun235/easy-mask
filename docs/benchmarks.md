@@ -229,3 +229,18 @@ Check each dataset's licence before use; several are research-only.
 
   Neutral on the numbers (DAVIS NoC@85 9.95 -> 10.35: some objects there are in separate
   parts; click each part), while visibly removing stray regions far from the click.
+
+### Auto clean-up of AI masks (v0.7)
+
+`uv run python -m benchmarks.cleanup`: one standard first click per object (EfficientSAM
+ViT-T, CPU), IoU before / after the GUI's auto clean-up (remove specks and fill pinholes
+below 0.05% of the image, at least 20 px; larger holes are kept):
+
+| dataset | n | IoU raw | IoU cleaned | masks changed | better / worse |
+|---|---|---|---|---|---|
+| GrabCut | 50 | 0.8731 | 0.8740 | 30/50 | 23 / 7 |
+| Berkeley | 100 | 0.7918 | 0.7927 | 62/100 | 36 / 26 |
+| DAVIS | 345 | 0.6809 | 0.6819 | 205/345 | 159 / 46 |
+
+A small but consistent gain that mostly removes visual noise (stray specks, pinholes), so
+it is on by default (Mask > Auto Clean-Up). The brush and eraser are never cleaned.

@@ -283,3 +283,32 @@ def test_encode_job_reports_failure(qtbot):
 
     seen = run_job(EncodeJob(LazySegmenter(load), np.zeros((8, 8, 3), np.uint8), "a", 1))
     assert seen["done"] == [] and "uv sync" in seen["failed"][0]
+
+
+def test_auto_cleanup_tidies_ai_result_and_can_be_turned_off(window, ui, ai, fake_segmenter):
+    import numpy as np
+
+    window.set_active_label("cat")
+    speckled = np.zeros((80, 100), bool)
+    speckled[20:60, 20:60] = True
+    speckled[30, 30] = False  # pinhole
+    speckled[5, 90] = True  # speck
+    window._apply_smart(speckled.copy(), None)
+    from easy_mask.core import masks as m
+
+    stored = m.to_full(window.canvas.shapes[-1], 80, 100)
+    assert stored[30, 30] and not stored[5, 90]
+
+    window.cleanup_action.trigger()  # off
+    assert not window.auto_cleanup
+    window._apply_smart(speckled.copy(), None)
+    raw = m.to_full(window.canvas.shapes[-1], 80, 100)
+    assert not raw[30, 30] and raw[5, 90]
+
+
+def test_brush_is_never_cleaned_up(window, ui):
+    window.set_active_label("cat")
+    window.set_tool("brush")
+    window.pixel_tools["brush"].radius = 1
+    ui.drag((10, 10), (11, 10))  # a tiny stroke, smaller than the clean-up size
+    assert len(window.canvas.shapes) == 1

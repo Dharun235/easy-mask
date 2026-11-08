@@ -112,6 +112,31 @@ def keep_regions_containing(full: np.ndarray, points: list[Point]) -> np.ndarray
     return np.isin(labels, list(hit))
 
 
+def fill_small_holes(full: np.ndarray, max_area: int) -> np.ndarray:
+    """Fill enclosed background holes smaller than ``max_area`` pixels; keep big ones.
+
+    Unlike :func:`fill_holes`, a deliberate hole (a donut, or one cut with Alt) survives.
+    """
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        (~full).astype(np.uint8), connectivity=4
+    )
+    border = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])))
+    small = [
+        i for i in range(1, count) if stats[i, cv2.CC_STAT_AREA] < max_area and i not in border
+    ]
+    return np.asarray(full | np.isin(labels, small), dtype=bool)
+
+
+def clean_up(full: np.ndarray, min_area: int) -> np.ndarray:
+    """Remove specks and fill pinholes smaller than ``min_area`` (model output tidy-up)."""
+    return fill_small_holes(remove_small(full, min_area), min_area)
+
+
+def cleanup_area(height: int, width: int) -> int:
+    """Default speck / pinhole size for an image: 0.05% of its area, at least 20 pixels."""
+    return max(20, round(0.0005 * height * width))
+
+
 def _disc(radius: int) -> np.ndarray:
     return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
 

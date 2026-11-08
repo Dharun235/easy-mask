@@ -117,6 +117,8 @@ class MainWindow(QMainWindow):
         self.dirty = False
         self.clipboard: Shape | None = None
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
+        # Tidy AI / smart-tool masks (specks, pinholes) before storing them; brush is exact.
+        self.auto_cleanup = True
         # With an active label, new shapes take it directly instead of opening the dialog.
         self.active_label: str | None = None
         # Swappable so tests can answer the label dialog without a human.
@@ -133,10 +135,10 @@ class MainWindow(QMainWindow):
         self.pixel_tools: dict[str, CanvasTool] = {
             "brush": BrushTool(self._apply_stroke),
             "eraser": BrushTool(self._apply_stroke, erase=True),
-            "wand": MagicWandTool(self._apply_stroke),
-            "grabcut": GrabCutTool(self._apply_stroke),
-            "superpixel": SuperpixelTool(self._apply_stroke),
-            "watershed": WatershedTool(self._apply_stroke),
+            "wand": MagicWandTool(self._apply_smart),
+            "grabcut": GrabCutTool(self._apply_smart),
+            "superpixel": SuperpixelTool(self._apply_smart),
+            "watershed": WatershedTool(self._apply_smart),
             "ai": self.ai_tool,
         }
         self.threshold_dialog: ThresholdDialog | None = None
@@ -174,7 +176,7 @@ class MainWindow(QMainWindow):
 
     def _make_ai_tool(self) -> AiSegmentTool:
         tool = AiSegmentTool(
-            self._apply_stroke,
+            self._apply_smart,
             lambda progress: self.load_segmenter(progress),  # late-bound: tests swap it
             lambda: str(self.image_path) if self.image_path else None,
         )
@@ -308,6 +310,11 @@ class MainWindow(QMainWindow):
         self._action(m, "Grow 1 px", lambda: self.map_selected(lambda f: masks.grow(f, 1)))
         self._action(m, "Shrink 1 px", lambda: self.map_selected(lambda f: masks.shrink(f, 1)))
         self._action(m, "Smooth Edges", lambda: self.map_selected(masks.smooth))
+        m.addSeparator()
+        self.cleanup_action = self._action(
+            m, "Auto Clean-Up of AI / Smart-Tool Masks", self._toggle_cleanup, checkable=True
+        )
+        self.cleanup_action.setChecked(self.auto_cleanup)
         m.addSeparator()
         self._action(m, "Threshold / Colour Range...", self.open_threshold, "Ctrl+T")
         m.addSeparator()
@@ -634,6 +641,15 @@ class MainWindow(QMainWindow):
         self._commit()
         self.canvas.select(select)
 
+    def _toggle_cleanup(self, checked: bool) -> None:
+        self.auto_cleanup = checked
+
+    def _apply_smart(self, full: np.ndarray, index: int | None) -> None:
+        """Store an AI / smart-tool result, tidied first if auto clean-up is on."""
+        if self.auto_cleanup:
+            full = masks.clean_up(full, masks.cleanup_area(*full.shape))
+        self._apply_stroke(full, index)
+
     def _apply_stroke(self, full: np.ndarray, index: int | None) -> None:
         """Store a finished brush/eraser stroke (called by the brush tool)."""
         shapes = list(self.canvas.shapes)
@@ -711,7 +727,7 @@ class MainWindow(QMainWindow):
         if self.image_path is None:
             return
         if self.threshold_dialog is None:
-            self.threshold_dialog = ThresholdDialog(self.canvas, self._apply_stroke, self)
+            self.threshold_dialog = ThresholdDialog(self.canvas, self._apply_smart, self)
             self.threshold_dialog.finished.connect(self._threshold_closed)
         self.canvas.set_tool(self.threshold_dialog.tool)
         self.threshold_dialog.refresh()

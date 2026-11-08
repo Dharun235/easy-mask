@@ -59,6 +59,10 @@ class Session:
         state = self.store.value("window/state")
         if state is not None:
             w.restoreState(state)
+        cleanup = self.store.value("auto_cleanup")
+        if cleanup is not None:
+            w.auto_cleanup = str(cleanup).lower() == "true"
+            w.cleanup_action.setChecked(w.auto_cleanup)
         for name, tool in w.pixel_tools.items():
             for attr in TOOL_SIZE_ATTRS:
                 value = self.store.value(f"tools/{name}/{attr}")
@@ -70,6 +74,7 @@ class Session:
         w = self.window
         self.store.setValue("window/geometry", w.saveGeometry())
         self.store.setValue("window/state", w.saveState())
+        self.store.setValue("auto_cleanup", w.auto_cleanup)
         for name, tool in w.pixel_tools.items():
             for attr in TOOL_SIZE_ATTRS:
                 if hasattr(tool, attr):

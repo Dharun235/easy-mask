@@ -137,3 +137,23 @@ def test_keep_regions_containing_keeps_mask_when_no_point_hits():
     assert np.array_equal(masks.keep_regions_containing(full, [(0, 39)]), full)
     single = blob(box=(5, 5, 15, 15))
     assert masks.keep_regions_containing(single, [(0, 0)]) is single  # one blob: untouched
+
+
+def test_fill_small_holes_keeps_big_and_border_holes():
+    full = blob(box=(5, 5, 35, 35))
+    full[10:12, 10:12] = False  # pinhole: 4 px
+    full[18:30, 18:30] = False  # deliberate hole: 144 px
+    filled = masks.fill_small_holes(full, max_area=20)
+    assert filled[10, 10] and not filled[20, 20]
+    edge = blob(box=(0, 0, 10, 10))
+    edge[0, 0] = False  # touches the image border: background, not a hole
+    assert not masks.fill_small_holes(edge, max_area=20)[0, 0]
+
+
+def test_clean_up_and_default_area():
+    full = blob(box=(5, 5, 35, 35))
+    full[10, 10] = False
+    full[38, 45] = True
+    cleaned = masks.clean_up(full, min_area=20)
+    assert cleaned[10, 10] and not cleaned[38, 45]
+    assert masks.cleanup_area(480, 640) == 154 and masks.cleanup_area(10, 10) == 20
