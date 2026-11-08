@@ -32,6 +32,12 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(getattr(pytest.mark, folder))
 
 
+@pytest.fixture(autouse=True)
+def isolated_settings(tmp_path_factory, monkeypatch):
+    """Never read or write the developer's real easy-mask settings (subprocesses inherit)."""
+    monkeypatch.setenv("EASY_MASK_CONFIG_DIR", str(tmp_path_factory.mktemp("config")))
+
+
 @pytest.fixture
 def data_dir() -> Path:
     """Folder of small checked-in test files (golden outputs, sample annotations)."""

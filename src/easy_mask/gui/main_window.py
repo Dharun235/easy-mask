@@ -38,6 +38,7 @@ from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.display_dialog import DisplayDialog
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
+from easy_mask.gui.session import Session
 from easy_mask.gui.threshold_dialog import ThresholdDialog
 from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
@@ -134,6 +135,7 @@ class MainWindow(QMainWindow):
         self.threshold_dialog: ThresholdDialog | None = None
         self.display_dialog: DisplayDialog | None = None
         self.canvas.labels = self.known_labels  # same list object: new labels recolour live
+        self.session = Session(self)  # remembered layout, tool sizes, recent folders, projects
         self.setCentralWidget(self.canvas)
         self._build_panels()
         self._build_actions()
@@ -147,6 +149,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.status_label)
         self._show_active_label()
         self.resize(1280, 800)
+        self.session.restore()
         self._update_title()
 
     # ------------------------------------------------------------------ construction
@@ -221,6 +224,7 @@ class MainWindow(QMainWindow):
         m = bar.addMenu("&File")
         self._action(m, "Open Image...", self.open_image_dialog, std.Open)
         self._action(m, "Open Folder...", self.open_folder_dialog, "Ctrl+Shift+O")
+        m.addMenu(self.session.recent_menu)
         self._action(m, "Change Annotation Folder...", self.change_output_dir)
         m.addSeparator()
         self._action(m, "Save", self.save, std.Save)
@@ -345,6 +349,9 @@ class MainWindow(QMainWindow):
             return
         if not self.maybe_save():
             return
+        folder = path if path.is_dir() else path.parent
+        self.session.open_folder(folder)
+        self.session.add_recent(folder)
         self.image_paths = paths
         self.current_index = None
         self._refresh_file_list()
@@ -428,6 +435,7 @@ class MainWindow(QMainWindow):
         name = QFileDialog.getExistingDirectory(self, "Annotation Folder")
         if name and self.maybe_save():
             self.settings.output_dir = Path(name)
+            self.session.save_project()
             self._refresh_file_list()
             if self.current_index is not None:
                 self._load(self.current_index)
@@ -527,6 +535,7 @@ class MainWindow(QMainWindow):
         if label is not None:
             self._remember_label(label)
         self.active_label = label
+        self.session.save_project()
         self._show_active_label()
         self.label_list.show_labels(self.known_labels, self.canvas.shapes, self.active_label)
 
@@ -758,6 +767,7 @@ class MainWindow(QMainWindow):
     def _remember_label(self, label: str) -> None:
         if label and label not in self.known_labels:
             self.known_labels.append(label)
+            self.session.save_project()
 
     def _refresh_panels(self) -> None:
         self.label_list.show_labels(self.known_labels, self.canvas.shapes, self.active_label)
@@ -797,6 +807,7 @@ class MainWindow(QMainWindow):
         """Offer to save before quitting."""
         if self.maybe_save():
             self.video.stop(wait=True)
+            self.session.save()
             event.accept()
         else:
             event.ignore()
