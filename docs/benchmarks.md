@@ -259,7 +259,7 @@ against the ground truth of frames 1-15:
 ### Cutting a part through frames (v0.9)
 
 Through the GUI on DAVIS 2017 `dogs-jump`: object 2 was merged into object 1's mask on
-every frame (a typical propagation mistake); one lasso cut around object 2 on frame 0,
+every frame (a typical propagation mistake); object 2 erased on frame 0 (an Erase polygon; eraser strokes give 0.758),
 then Propagate (which carries the cut) over 15 frames. Object-1 IoU against its ground truth, frames 1-15:
 
 | mode | before | after | frame 15 | time |

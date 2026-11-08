@@ -2,7 +2,8 @@
 
 * Brush with a shape selected paints into it (a polygon/rectangle/circle becomes a mask).
   Brush with nothing selected starts a new mask; its label is asked when the stroke ends.
-* Eraser removes pixels from the selected shape; erasing everything deletes the shape.
+* Eraser paints the area to remove; when the stroke ends it is cut from every mask under
+  it (only from the selected shapes, if any), exactly like a cut, so Propagate carries it.
 
 ``[`` and ``]`` change the brush size.
 """
@@ -25,9 +26,10 @@ if TYPE_CHECKING:
 
 MIN_RADIUS, MAX_RADIUS = 1, 200
 NEW_MASK_RGB = (0, 200, 255)
+ERASE_RGB = (255, 80, 60)
 
 # Called when a stroke ends with the edited full-size mask and the index of the shape it
-# replaces (None for a brand-new mask).
+# replaces (None for a brand-new mask). The eraser passes the painted area and None.
 StrokeCallback = Callable[[np.ndarray, int | None], None]
 
 
@@ -51,15 +53,18 @@ class BrushTool(CanvasTool):
         """Start a stroke on the selected shape, or on a new empty mask."""
         height, width = canvas.pixmap.height(), canvas.pixmap.width()
         index = canvas.selected
-        if index is not None and canvas.shapes[index].shape_type.is_area:
+        if self.erase:  # paint the area to remove; the main window cuts it out
+            self._full = np.zeros((height, width), dtype=bool)
+            self._rgb = ERASE_RGB
+            self._box = [int(p[0]), int(p[1]), int(p[0]) + 1, int(p[1]) + 1]
+            self.hidden_index = None
+        elif index is not None and canvas.shapes[index].shape_type.is_area:
             shape = canvas.shapes[index]
             self._full = shape_to_mask(shape, height, width)
             self._rgb = label_color(shape.label, canvas.labels)
             x0, y0, x1, y1 = shape.bounding_box()
             self._box = [int(x0), int(y0), int(x1) + 2, int(y1) + 2]
             self.hidden_index = index
-        elif self.erase:
-            return  # nothing to erase
         else:
             self._full = np.zeros((height, width), dtype=bool)
             self._rgb = NEW_MASK_RGB
@@ -118,7 +123,7 @@ class BrushTool(CanvasTool):
 
     def _stroke(self, p: Point) -> None:
         assert self._full is not None and self._last is not None
-        masks.paint_stroke(self._full, self._last, p, self.radius, value=not self.erase)
+        masks.paint_stroke(self._full, self._last, p, self.radius, value=True)
         r = self.radius + 1
         box = self._box
         box[0] = min(box[0], int(min(p[0], self._last[0])) - r)

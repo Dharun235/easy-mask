@@ -53,7 +53,6 @@ from easy_mask.gui.threshold_dialog import ThresholdDialog
 from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
-from easy_mask.gui.tools.lasso import LassoCutTool
 from easy_mask.gui.tools.region import MagicWandTool
 from easy_mask.gui.video_import import (
     ImportOptions,
@@ -74,22 +73,28 @@ DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
 # Toolbar entries: (name, short label, tool, shortcut, icon, group). A ShapeType draws that
 # shape, None is edit mode, and a string names a pixel tool from MainWindow.pixel_tools. A
-# new group starts a new section of the toolbar; MENU_ONLY tools (not masks) are kept out of
-# the toolbar to keep it calm and work only with their keys.
-MENU_ONLY = "menu"
+# new group starts a new section of the toolbar; KEYS_ONLY tools are kept out of the
+# toolbar to keep it short and work only with their keys (Help > Keyboard Shortcuts).
+KEYS_ONLY = "keys"
 TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
     ("Select / Edit", "Select", None, "E", "edit", "select"),
+    ("AI Segment: click an object", "AI", "ai", "I", "ai", "smart"),
     ("Polygon", "Polygon", ShapeType.POLYGON, "P", "polygon", "shapes"),
     ("Rectangle", "Box", ShapeType.RECTANGLE, "R", "rectangle", "shapes"),
-    ("Circle", "Circle", ShapeType.CIRCLE, "C", "circle", "shapes"),
-    ("Line", "Line", ShapeType.LINE, "L", "line", MENU_ONLY),
-    ("Line strip", "Path", ShapeType.LINESTRIP, "T", "linestrip", MENU_ONLY),
-    ("Point", "Point", ShapeType.POINT, "O", "point", MENU_ONLY),
     ("Brush", "Brush", "brush", "B", "brush", "paint"),
-    ("Eraser", "Erase", "eraser", "X", "eraser", "paint"),
-    ("Cut", "Cut", "cut", "K", "cut", "paint"),
-    ("AI Segment", "AI", "ai", "I", "ai", "smart"),
-    ("Magic wand", "Wand", "wand", "W", "wand", "smart"),
+    (
+        "Eraser: removes what you paint, from every mask under it",
+        "Eraser",
+        "eraser",
+        "X",
+        "eraser",
+        "paint",
+    ),
+    ("Circle", "Circle", ShapeType.CIRCLE, "C", "circle", KEYS_ONLY),
+    ("Line", "Line", ShapeType.LINE, "L", "line", KEYS_ONLY),
+    ("Line strip", "Path", ShapeType.LINESTRIP, "T", "linestrip", KEYS_ONLY),
+    ("Point", "Point", ShapeType.POINT, "O", "point", KEYS_ONLY),
+    ("Magic wand", "Wand", "wand", "W", "wand", KEYS_ONLY),
 ]
 
 
@@ -154,8 +159,7 @@ class MainWindow(QMainWindow):
         self.ai_tool = self._make_ai_tool()
         self.pixel_tools: dict[str, CanvasTool] = {
             "brush": BrushTool(self._apply_stroke),
-            "eraser": BrushTool(self._apply_stroke, erase=True),
-            "cut": LassoCutTool(self.cut),
+            "eraser": BrushTool(lambda region, _index: self.cut(region), erase=True),
             "wand": MagicWandTool(self._apply_smart),
             "ai": self.ai_tool,
         }
@@ -177,6 +181,7 @@ class MainWindow(QMainWindow):
         self._build_actions()
         self.video = VideoMenu(self)
         self._add_video_buttons()
+        self._show_panels(False)  # the start page stands alone; panels appear with an image
         self._connect_canvas()
         self.workflow = Workflow(self)  # review mode, copy previous, statistics
 
@@ -247,7 +252,6 @@ class MainWindow(QMainWindow):
         self._dock("Labels", self.label_list, right)
         self._dock("Shapes", self.shape_list, right)
         self._dock("Files", self.file_list, right)
-        self._show_panels(False)  # the start page stands alone; panels appear with an image
 
         self.flag_list.flags_changed.connect(self._mark_dirty)
         self.shape_list.itemSelectionChanged.connect(
@@ -295,7 +299,7 @@ class MainWindow(QMainWindow):
         self.toolbar = toolbar
         toolbar.setObjectName("Tools")
         toolbar.setMovable(False)
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         toolbar.setIconSize(QSize(20, 20))
         std = QKeySequence.StandardKey
 
@@ -346,10 +350,10 @@ class MainWindow(QMainWindow):
             action.setCheckable(True)
             action.setIcon(icon(icon_name))
             action.setIconText(short)
-            action.setToolTip(f"{text}  ·  {key}")
+            action.setToolTip(text)
             self.tool_group.addAction(action)
             self.tool_actions[mode] = action
-            if tool_group == MENU_ONLY:
+            if tool_group == KEYS_ONLY:
                 continue
             if group is not None and tool_group != group:
                 toolbar.addSeparator()
@@ -390,24 +394,26 @@ class MainWindow(QMainWindow):
 
         next_image = self._key("Next Image", self.next_image, "D")
         prev_image = self._key("Previous Image", self.prev_image, "A")
+        self.nav_actions = [prev_image, next_image]
         # File and history actions go in front of the tools; export sits alone on the right.
         first_tool = toolbar.actions()[0]
         for section in (
             (
-                (open_folder, "open", "Open folder"),
-                (open_video, "video", "Open video (its frames are imported first)"),
+                (open_folder, "open", "Open", "Open a folder of images"),
+                (open_video, "video", "Video", "Open a video (its frames are imported first)"),
             ),
             (
-                (self.undo_action, "undo", "Undo  ·  right after Propagate: the whole run"),
-                (self.redo_action, "redo", "Redo"),
+                (self.undo_action, "undo", "Undo", "Undo (right after Propagate: the whole run)"),
+                (self.redo_action, "redo", "Redo", "Redo"),
             ),
             (
-                (prev_image, "prev", "Previous image  ·  A"),
-                (next_image, "next", "Next image  ·  D"),
+                (prev_image, "prev", "Back", "Previous image"),
+                (next_image, "next", "Next", "Next image"),
             ),
         ):
-            for action, icon_name, tip in section:
+            for action, icon_name, short, tip in section:
                 action.setIcon(icon(icon_name))
+                action.setIconText(short)
                 action.setToolTip(tip)
                 toolbar.insertAction(first_tool, action)
             toolbar.insertSeparator(first_tool)
@@ -415,6 +421,7 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
         self._export_again_action.setIcon(icon("export"))
+        self._export_again_action.setIconText("Export")
         self._export_again_action.setToolTip(
             "Export (first time: choose format and folder; then repeats it)"
         )
@@ -843,13 +850,13 @@ class MainWindow(QMainWindow):
         before = self.canvas.shapes
         shapes = cut_region(before, region, *self._size, keys)
         if shapes is before:
-            self.statusBar().showMessage("Nothing to cut there", 3000)
+            self.statusBar().showMessage("No mask there to erase", 3000)
             return
         self._replace_shapes(shapes)
         if self.current_index is not None:
             self._remember_cut(region, keys, before)
-        follow = "  ·  Propagate carries the cut through the next frames"
-        self.statusBar().showMessage("Cut" + (follow if len(self.image_paths) > 1 else ""), 8000)
+        follow = "  ·  Propagate carries it through the next frames"
+        self.statusBar().showMessage("Erased" + (follow if len(self.image_paths) > 1 else ""), 8000)
 
     def _remember_cut(
         self, region: np.ndarray, keys: set[ObjectKey] | None, before: list[Shape]
@@ -1070,29 +1077,35 @@ class MainWindow(QMainWindow):
         self.canvas.update()
 
     def _add_video_buttons(self) -> None:
-        """Propagate (with its dropdown) and Track, right after the image arrows."""
+        """The Propagate button (with its options dropdown) right after the image arrows."""
         actions = self.toolbar.actions()
         next_index = next(i for i, a in enumerate(actions) if a.text() == "Next Image")
-        before = actions[next_index + 1]
         propagate = QAction(icon("propagate"), "Propagate", self)
         propagate.setToolTip(
-            "Propagate: carry the selected (or all) objects and your last cut through the "
-            "next frames. Arrow: backward, AI or copy, frames per run, clear, undo, stop"
+            "Propagate: carry the selected (or all) objects and what you erased through the "
+            "next frames. Arrow: more options"
         )
         propagate.triggered.connect(lambda _=False: self.video.propagate(+1))
         propagate.setMenu(self.video.menu)
         self.propagate_button_action = propagate
-        track = self.video.track_action
-        track.setIcon(icon("track"))
-        track.setToolTip("Track: each Next Image carries the objects and your cut along (on / off)")
-        for action in (propagate, track):
-            self.toolbar.insertAction(before, action)
+        self.toolbar.insertAction(actions[next_index + 1], propagate)
         button = self.toolbar.widgetForAction(propagate)
         if isinstance(button, QToolButton):
             button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
 
     def _show_panels(self, visible: bool) -> None:
-        """Show the side panels (the Flags panel only when there are flags)."""
+        """Show the side panels (the Flags panel only when there are flags).
+
+        Drawing tools, navigation, Propagate and Export only work with an image open, so
+        they are disabled on the start page.
+        """
+        for action in [
+            *self.tool_actions.values(),
+            *self.nav_actions,
+            self.propagate_button_action,
+            self._export_again_action,
+        ]:
+            action.setEnabled(visible)
         for dock in self.docks:
             dock.setVisible(visible and (dock is not self.flags_dock or bool(self.settings.flags)))
 

@@ -57,7 +57,7 @@ def test_eraser_removes_pixels_and_whole_shape(window, ui):
     assert window.canvas.shapes == []
 
 
-def test_eraser_without_selection_does_nothing(window, ui):
+def test_eraser_over_no_mask_changes_nothing(window, ui):
     window.set_tool("eraser")
     ui.drag((5, 20), (35, 20))
     assert window.canvas.shapes == [] and not window.dirty
@@ -170,3 +170,22 @@ def test_mask_shapes_save_reload_and_paint(window, ui, image_dir):
     image = window.canvas.grab().toImage()
     assert not image.isNull()
     assert np.array_equal(full(window)[40, 20:61], np.ones(41, bool))
+
+
+def test_eraser_without_selection_erases_every_mask_under_it(window, ui):
+    from easy_mask.core.shapes import Shape
+
+    window.canvas.set_shapes(
+        [
+            Shape("cat", ShapeType.RECTANGLE, [(10, 10), (40, 40)]),
+            Shape("dog", ShapeType.RECTANGLE, [(30, 10), (60, 40)]),
+        ]
+    )
+    window._commit()
+    window.set_tool("eraser")
+    window.pixel_tools["eraser"].radius = 4
+    ui.drag((35, 5), (35, 45))
+    cat, dog = full(window, 0), full(window, 1)
+    assert cat[25, 20] and not cat[25, 35]
+    assert dog[25, 50] and not dog[25, 35]
+    assert window.video.last_cut is not None  # Propagate carries the erased part

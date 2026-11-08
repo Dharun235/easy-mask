@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -85,14 +86,29 @@ class LabelDialog(QDialog):
         form.addRow("Label", self.label_edit)
         form.addRow("Group id", self.group_edit)
         form.addRow("Description", self.description_edit)
+        self.form = form
+        # Group id and description are rarely needed: tucked away until asked for.
+        self.more = QToolButton()
+        self.more.setText("More options")
+        self.more.setCheckable(True)
+        self.more.setAutoRaise(True)
+        self.more.toggled.connect(self._show_more)
+        self._show_more(False)
+        self.more.setChecked(initial.group_id is not None or bool(initial.description))
         layout = QVBoxLayout(self)
         layout.addLayout(form)
+        layout.addWidget(self.more)
         layout.addWidget(self.label_list)
         layout.addWidget(self.error_label)
         layout.addWidget(buttons)
 
         self.label_edit.selectAll()
         self.label_edit.setFocus()
+
+    def _show_more(self, shown: bool) -> None:
+        self.form.setRowVisible(1, shown)
+        self.form.setRowVisible(2, shown)
+        self.more.setText("Fewer options" if shown else "More options")
 
     def result_info(self) -> LabelInfo:
         """The values currently entered."""

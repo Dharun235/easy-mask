@@ -6,8 +6,8 @@ works frame by frame on the same per-image JSON files.
 **Propagate** sends the selected objects (or all of them) *and the last cut made on this
 frame* through the next frames together: the cut part is tracked like one more object and
 cut from the masks on every frame. The button's dropdown holds the rest: backward, AI or
-plain copying, frames per run, interpolate, clear, undo and stop. **Track** does the same
-one frame at a time whenever Next Image is pressed.
+plain copying, auto-propagate on Next, how many frames, interpolate, clear and undo; the
+progress bar's Cancel stops a run.
 
 Shapes made automatically are flagged (see :mod:`easy_mask.core.video`) and replaced on the
 next run; hand-drawn ones are kept and steer the model. Every run is journaled, so one Undo
@@ -52,7 +52,7 @@ MISSING_EXTRA = (
     "(PyTorch, about 1 GB):\n\n    SAM2_BUILD_CUDA=0 uv sync --extra video"
 )
 REGION_LABEL = "__region__"  # the cut part, tracked like an object during a run
-NOTHING_HINT = "Draw an object or cut a part on this frame first, then press Propagate"
+NOTHING_HINT = "Draw an object (or erase a part) on this frame first, then press Propagate"
 FALLBACK_NOTE = "AI tracking needs the video add-on (uv sync --extra video): copying instead"
 
 
@@ -114,18 +114,18 @@ class VideoMenu:
         self.propagate_action = a(menu, "Propagate Forward", lambda: self.propagate(+1))
         a(menu, "Propagate Backward", lambda: self.propagate(-1))
         menu.addSeparator()
-        self.ai_action = a(menu, "Track with AI (EfficientTAM)", self._toggle_ai, checkable=True)
+        self.ai_action = a(menu, "Use AI (EfficientTAM)", self._toggle_ai, checkable=True)
         self.ai_action.setChecked(window.settings.video_model != COPY_MODEL)
-        self.track_action = a(menu, "Track on Next Image", self._toggle_tracking, checkable=True)
-        a(menu, "Frames per Run...", self.ask_frames_per_run)
+        self.track_action = a(
+            menu, "Auto-Propagate on Next Image", self._toggle_tracking, checkable=True
+        )
+        a(menu, "How Many Frames...", self.ask_frames_per_run)
         menu.addSeparator()
         a(menu, "Interpolate From Previous Keyframe", self.interpolate)
         a(menu, "Clear Labels From Here...", self.clear_frames)
         menu.addSeparator()
         self.undo_run_action = a(menu, "Undo Last Run", self.undo_run)
         self.undo_run_action.setEnabled(False)
-        self.stop_action = a(menu, "Stop", self.stop)
-        self.stop_action.setEnabled(False)
 
     # ------------------------------------------------------------------ options
 
@@ -147,16 +147,18 @@ class VideoMenu:
 
     def _toggle_tracking(self, checked: bool) -> None:
         self.window.statusBar().showMessage(
-            "Track on: Next Image carries the selected (or all) objects and your cut forward"
+            "Auto-propagate on: Next carries the objects and what you erased into each frame"
             if checked
-            else "Track off",
+            else "Auto-propagate off",
             5000,
         )
 
     def ask_frames_per_run(self) -> None:
         """Ask how many frames one Propagate goes through."""
         w = self.window
-        count = w.ask_number(w, "Propagate", "Frames per run:", self.frames_per_run, 1, 10_000)
+        count = w.ask_number(
+            w, "Propagate", "Frames to go through:", self.frames_per_run, 1, 10_000
+        )
         if count is not None:
             self.frames_per_run = int(count)
 
@@ -309,7 +311,6 @@ class VideoMenu:
         worker.finished.connect(self._on_finished)
         self.worker = worker
         self._run_frames = len(indices) - 1
-        self.stop_action.setEnabled(True)
         task = "Copying masks" if isinstance(propagator, CopyPropagator) else "AI tracking"
         w.statusBar().showMessage(f"{task}...")
         w.progress.begin("propagate", task, total=len(indices) - 1, cancel=self.stop)
@@ -340,7 +341,6 @@ class VideoMenu:
         if self.worker is not None:
             self.worker.deleteLater()
         self.worker = None
-        self.stop_action.setEnabled(False)
         self._end_run()
         self.window.progress.end("propagate")
         changed, total = len(self.journal), self._run_frames

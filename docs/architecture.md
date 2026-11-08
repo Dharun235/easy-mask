@@ -69,7 +69,6 @@ src/easy_mask/
     video_import.py      video import dialog (format, folder, every n-th frame) + worker
     tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
     tools/brush.py       brush and eraser
-    tools/lasso.py       cut: lasso a region out of the masks under it
     tools/region.py      magic wand (Shift add / Alt subtract)
     threshold_dialog.py  threshold / colour-range panel with live canvas preview
     display_dialog.py    View > Adjust Display panel
@@ -136,9 +135,10 @@ PropagationWorker (QThread) -> track(propagator, frames, shapes)
 again" safe. The model sits behind the small `Propagator` protocol, so GUI tests use a
 deterministic fake and the real backend (PyTorch) is only imported when first used.
 
-A cut made with the Cut tool is remembered per frame (`VideoMenu.last_cut`: the removed
-pixels, not the whole lasso). Propagate and Track send it along as one more object (a
-temporary `__region__` label) and call `cut_region` on each frame with where it moved;
+What is erased on a frame (by the Eraser or an Erase shape, via `MainWindow.cut`) is
+remembered as `VideoMenu.last_cut`: the removed pixels, not the whole stroke or shape.
+Propagate and auto-propagate send it along as one more object (a temporary `__region__`
+label) and call `cut_region` on each frame with where it moved;
 masks the cut is fixing do not prompt the model in that run, or they would pull the part
 back. A shape finished with the reserved label `ERASE_LABEL` goes through the same cut
 path instead of being stored. `VideoMenu.erase_with` turns an object into an eraser on

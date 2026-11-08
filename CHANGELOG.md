@@ -7,16 +7,20 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- Toolbar buttons have a word under each icon, and only the everyday tools are on it (Select, AI, Polygon, Box, Brush, Eraser); circle, line, point and magic wand keep their keys. Tools, navigation, Propagate and Export are disabled until an image is open.
+- Propagate's dropdown in plain words: Use AI, Auto-Propagate on Next Image (was Track, no longer a separate button), How Many Frames; Stop moved to the progress bar's Cancel.
+- Label dialog: group id and description folded under More options.
+- Start page: a one-line Open → AI or draw → Propagate → Export guide instead of key hints.
 - Labels panel: no number prefixes (keys 1-9 still work).
 - Four menus (File, Edit, View, Help). Video commands are one Propagate button with a dropdown (backward, AI or copy, frames per run, interpolate, clear labels from here, undo, stop) plus the Track toggle; mask operations moved to Edit > Mask and the right-click menu; labels are picked in the Labels panel; tools live in the toolbar.
 - AI Segment: a plain click always starts a new object; Shift adds to the selected one (a selected mask used to swallow new objects).
 - The Export button asks the format the first time, then repeats it.
 
 ### Removed
-- Separate Copy / Cut Through Frames buttons, the Video, Draw, Mask, Labels and Workflow menus, and multi-key shortcuts for them.
+- The separate Cut tool (the Eraser does it), Copy / Cut Through Frames buttons, the Video, Draw, Mask, Labels and Workflow menus, and multi-key shortcuts for them.
 - Grow / Shrink / Smooth, the Auto Save and Auto Clean-Up toggles (both always on) and Change Annotation Folder from the menus (`--output` / `--no-autosave` remain).
 - File > Import Video Frames (File > Open Video imports first).
-- Add / Subtract Through Frames (replaced by the Cut tool, which Propagate carries through frames).
+- Add / Subtract Through Frames (replaced by the Eraser and Erase shapes, which Propagate carries through frames).
 - The Save toolbar button (auto-save is on; Ctrl+S and File > Save remain).
 - GrabCut, Watershed and Superpixels tools (AI Segment's box prompt, the wand and the brush cover them; core GrabCut stays as a benchmark baseline).
 - Workflow > Copy Shapes from Previous Image (same as Copy to Next Frames / Track).
@@ -36,7 +40,7 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 - Erase as a label: finish any shape with *Erase With It* (label dialog) or the ✂ Erase row (Labels panel) and it cuts the masks under it instead of being kept; Propagate carries the cut. Or propagate a shape first and right-click > *Erase With This*: it cuts the other masks on this frame and every frame it was propagated to, then goes (one Undo reverts).
-- Cut tool (scissors): drag a loop to cut that part out of every mask under it, no label needed (only the selected objects, if any). Propagate and Track carry the cut part through the next frames like another object (copy without the video add-on).
+- Eraser removes what you paint from every mask under it (only the selected shapes, if any), and Propagate carries the erased part through the next frames like another object (copy without the video add-on).
 - Clear Labels From Here (Propagate's dropdown): delete every shape on this and the next frames.
 - One undo per video run: right after Propagate, Track, Interpolate or Clear Labels, Undo restores every frame the run touched (Undo Last Run in Propagate's dropdown works until the next run). The status bar says how many frames changed, and why when none could.
 - Right-click menu on shapes: edit label, delete, duplicate, propagate, mask operations.

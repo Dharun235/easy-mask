@@ -108,6 +108,9 @@ QToolButton {{
 QToolButton:hover {{ background: {c.raised}; }}
 QToolButton:checked {{ background: {c.accent_soft}; }}
 QToolButton:disabled {{ color: {c.muted}; }}
+QToolButton[popupMode="1"] {{ padding-right: 16px; }}
+QToolButton::menu-button {{ border: none; width: 14px; border-radius: 6px; }}
+QToolButton::menu-button:hover {{ background: {c.raised}; }}
 QDockWidget {{ color: {c.muted}; font-size: 11px; }}
 QDockWidget::title {{
     padding: 10px 12px 4px 12px; background: {c.window}; text-transform: uppercase;

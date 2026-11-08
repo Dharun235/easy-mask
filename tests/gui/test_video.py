@@ -410,16 +410,13 @@ def pixels(shapes, label):
 
 
 def lasso(window, x0, x1, y0=0, y1=79):
-    """Drag the Cut tool's lasso around the box x0..x1, y0..y1."""
-    window.set_tool("cut")
-    tool, canvas = window.pixel_tools["cut"], window.canvas
-    tool.press(canvas, (x0, y0), None)
-    for p in ((x1, y0), (x1, y1), (x0, y1)):
-        tool.move(canvas, p, None)
-    tool.release(canvas, (x0, y1), None)
+    """Erase the box x0..x1, y0..y1 (what an eraser stroke or an Erase shape reports)."""
+    region = np.zeros((80, 100), bool)
+    region[y0 : y1 + 1, x0 : x1 + 1] = True
+    window.cut(region)
 
 
-def test_cut_tool_cuts_every_mask_under_the_lasso_without_asking_a_label(window):
+def test_erasing_cuts_every_mask_under_it_without_asking_a_label(window):
     window.ask_label = lambda *args: pytest.fail("the cut tool must not ask for a label")
     wing_and_leg(window)
     lasso(window, 35, 60)
@@ -442,7 +439,7 @@ def test_cut_outside_every_mask_changes_nothing(window):
     wing_and_leg(window)
     lasso(window, 70, 90)
     assert len(window.canvas.shapes) == 2
-    assert "Nothing to cut" in window.statusBar().currentMessage()
+    assert "No mask there" in window.statusBar().currentMessage()
 
 
 def test_propagate_carries_the_cut_like_an_object(qtbot, window, video, image_dir):
@@ -452,7 +449,7 @@ def test_propagate_carries_the_cut_like_an_object(qtbot, window, video, image_di
     lasso(window, 35, 99)
     assert video.last_cut is not None
     part = video.last_cut.part
-    assert part[20, 40] and not part[5, 40]  # only the removed pixels, not the whole lasso
+    assert part[20, 40] and not part[5, 40]  # only the removed pixels, not the whole area
     propagate(qtbot, video)  # the fake model moves every object 2 px per frame
     frame2 = pixels(saved(image_dir, "img2"), "wing")
     assert frame2[20, 36] and not frame2[20, 38]  # the cut moved from x=35 to x=37

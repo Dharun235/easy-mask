@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-HINT = "1-9 pick a label  ·  I AI Segment  ·  D next image  ·  F1 all shortcuts"
+HINT = "Open  →  click objects with AI or draw them  →  Propagate  →  Export"
 
 
 class WelcomePage(QWidget):
@@ -59,6 +59,7 @@ class WelcomePage(QWidget):
         self.recent_list.itemClicked.connect(self._open_item)
         hint = QLabel(HINT)
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setWordWrap(True)
         hint.setStyleSheet("color: palette(placeholder-text); font-size: 12px;")
         recent_title = QLabel("RECENT")
         recent_title.setStyleSheet("color: palette(placeholder-text); font-size: 11px;")

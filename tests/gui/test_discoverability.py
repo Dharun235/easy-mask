@@ -3,36 +3,46 @@
 from PySide6.QtCore import Qt
 
 from easy_mask.gui.icons import ICON_DIR, icon
-from easy_mask.gui.main_window import MENU_ONLY, TOOLS, Settings
+from easy_mask.gui.main_window import KEYS_ONLY, TOOLS, Settings
 from easy_mask.gui.shortcuts import shortcut_rows
 
 
-def test_every_tool_has_an_icon_and_a_tooltip_with_its_key(make_window):
+def test_every_tool_has_an_icon_a_word_and_a_tooltip(make_window):
     win = make_window(Settings())
-    for text, short, mode, key, icon_name, _group in TOOLS:
+    for text, short, mode, _key, icon_name, _group in TOOLS:
         assert (ICON_DIR / f"{icon_name}.svg").is_file()
         action = win.tool_actions[mode]
         assert not action.icon().isNull()
-        assert action.toolTip() == f"{text}  ·  {key}"
+        assert action.toolTip() == text
         assert action.iconText() == short
     assert icon("does-not-exist").isNull()
 
 
-def test_toolbar_is_one_icon_only_row(make_window):
+def test_toolbar_is_one_row_of_labelled_buttons(make_window):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QToolBar
 
     win = make_window(Settings())
     (toolbar,) = win.findChildren(QToolBar)
-    assert toolbar.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+    assert toolbar.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonTextUnderIcon
+    assert all(a.iconText() for a in toolbar.actions() if not a.isSeparator() and a.text())
     actions = [a for a in toolbar.actions() if not a.isSeparator()]
     texts = [a.text() for a in actions]
     assert texts.index("Open Folder...") < texts.index("Select / Edit")  # file first
     assert texts[-1] == "Export Again"  # export alone on the right
     separators = sum(1 for a in toolbar.actions() if a.isSeparator())
-    groups = {group for *_, group in TOOLS} - {MENU_ONLY}
+    groups = {group for *_, group in TOOLS} - {KEYS_ONLY}
     assert separators == 3 + len(groups) - 1  # file groups + tool groups
-    assert "Line" not in texts and "Point" not in texts  # menu-only: not masks
+    for kept_out in ("Line", "Point", "Circle", "Magic wand"):
+        assert kept_out not in texts  # keys only: the toolbar stays short
+
+
+def test_working_tools_are_disabled_until_an_image_is_open(make_window, image_dir):
+    win = make_window(Settings())
+    assert not win.tool_actions["ai"].isEnabled()
+    assert not win.propagate_button_action.isEnabled()
+    win.open_path(image_dir)
+    assert win.tool_actions["ai"].isEnabled() and win.propagate_button_action.isEnabled()
 
 
 def test_welcome_page_until_an_image_is_open(make_window, image_dir):
@@ -64,7 +74,7 @@ def test_shortcut_list_is_built_from_the_menus(make_window):
     win = make_window(Settings())
     rows = shortcut_rows(win)
     commands = {command for _menu, _keys, command in rows}
-    assert {"Polygon", "AI Segment", "Use Label 1", "Keyboard Shortcuts"} <= commands
+    assert {"Polygon", "Magic wand", "Use Label 1", "Keyboard Shortcuts"} <= commands
     win.show_shortcuts()
     win.show_shortcuts()  # reuses the same window
     assert win.shortcuts_dialog.isVisible()
@@ -100,8 +110,8 @@ def test_propagate_and_track_buttons_follow_the_image_arrows(make_window):
     (toolbar,) = win.findChildren(QToolBar)
     texts = [a.text() for a in toolbar.actions() if not a.isSeparator()]
     i = texts.index("Next Image")
-    assert texts[i + 1 : i + 3] == ["Propagate", "Track on Next Image"]
-    assert win.video.track_action.isCheckable()
+    assert texts[i + 1] == "Propagate"
+    assert win.video.track_action.isCheckable()  # auto-propagate, in the dropdown
     assert win.propagate_button_action.menu() is win.video.menu  # dropdown with the options
 
 
