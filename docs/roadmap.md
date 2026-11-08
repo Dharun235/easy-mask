@@ -55,11 +55,11 @@ Manual tools on par with classic annotators.
 - [x] Remember window layout, tool sizes, recent folders; per-folder project file
 - [x] AI Segment prefetch: next images encoded in the background (862 ms -> 8 ms)
 - [x] Icon toolbar grouped by kind, shortcut tooltips, F1 shortcut list, start page
-- [ ] Track while navigating: auto-propagate selected objects to the next frame
-- [ ] Auto clean-up of AI masks on accept (fill holes, remove specks)
-- [ ] AI out of the box (onnxruntime as a regular dependency)
-- [ ] Remember export format/folder; export on save
-- [ ] Review mode visits automatic "(auto)" shapes first
+- [x] Track while navigating: auto-propagate selected objects to the next frame
+- [x] Auto clean-up of AI masks on accept (fill holes, remove specks)
+- [x] AI out of the box (onnxruntime as a regular dependency)
+- [x] Remember export format/folder; export on save
+- [x] Review mode visits automatic "(auto)" shapes first
 
 ## Later / ideas
 - Text-prompted detection (e.g. Grounding-DINO / SAM3-style) to pre-label

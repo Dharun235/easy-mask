@@ -36,6 +36,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
 | Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
 | Labels | **active label** with keys `1`-`9` (no dialog per shape), label dialog with autocomplete, distinct colours, group id, description |
+| Automation | track objects into the next frame on **D**, auto clean-up of AI masks, Export Again / export on close, review automatic shapes first |
 | Ease of use | start page with recent folders, icon toolbar with shortcut tooltips, `F1` shortcut list, auto-save on, remembers layout / tool sizes / per-folder labels, AI prefetch of upcoming images |
 | Navigation | open image or folder, file list with done-marks, next/prev, zoom at cursor, pan, fit |
 | Image flags | per-image checkboxes for classification or data cleaning (`--flags`) |
@@ -87,7 +88,16 @@ code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/Effic
 3. Press **I** for AI Segment and click an object; **Enter** keeps it. Images ahead are
    prepared in the background, so the next one is instant.
 4. Press **D** for the next image. Work is saved automatically.
-5. **F1** lists every shortcut.
+5. **Video / similar frames:** turn on **Video > Track Objects into Next Frame**
+   (`Ctrl+Shift+T`) and every **D** carries the selected (or all) objects forward: AI
+   tracking with the video extra, a plain copy without it. **N** then reviews the
+   automatic shapes first.
+6. Export once (File > Export Folder As); afterwards **Ctrl+Shift+E** repeats it, or tick
+   *Export Again When Closing* to keep the dataset current automatically.
+7. **F1** lists every shortcut.
+
+AI and smart-tool masks are tidied automatically (specks and pinholes removed; Mask > Auto
+Clean-Up). AI Segment needs no extra install: the model downloads on first use.
 
 easy-mask remembers each folder's labels, flags, active label and annotation folder (in
 `.easy-mask.json` next to the images), plus window layout, brush sizes and recent folders.
@@ -138,7 +148,8 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
 | `1`-`9` | use label 1-9 for new shapes | `0` | ask for the label each time |
-| `F1` / `?` | list all shortcuts | | |
+| `F1` / `?` | list all shortcuts | `Ctrl+Shift+E` | export again (last format and folder) |
+| `Ctrl+Shift+T` | track objects into next frame (toggle) | | |
 | `P` | polygon | `E` | edit (select) mode |
 | `R` | rectangle | `Enter` / double-click | finish polygon / strip |
 | `C` | circle | `Backspace` | remove last point while drawing, else delete shape |
