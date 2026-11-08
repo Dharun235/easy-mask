@@ -4,7 +4,7 @@ The ONNX export by the labelme project takes the image at any size (it resizes t
 and normalizes inside the graph) and returns three candidate masks at full image size
 with a predicted IoU each; :class:`~easy_mask.ai.segmenter.Segmenter` ranks them.
 
-onnxruntime is an optional dependency: ``uv sync --extra ai``.
+onnxruntime is a regular dependency; a clear error explains a broken install.
 """
 
 import importlib
@@ -53,7 +53,7 @@ DEFAULT_MODEL = "efficientsam-vitt"
 
 INSTALL_HINT = (
     "AI Segment needs onnxruntime, which is an optional extra.\n"
-    "Install it with:  uv sync --extra ai   (or: pip install 'easy-mask[ai]')"
+    "Reinstall the dependencies with:  uv sync   (or: pip install easy-mask)"
 )
 
 

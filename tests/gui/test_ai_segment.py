@@ -227,7 +227,7 @@ def test_missing_backend_shows_install_hint_and_leaves_the_tool(
     win.open_path(image_dir)
     win.set_tool("ai")
     qtbot.waitUntil(lambda: bool(dialogs.warnings))
-    assert "uv sync --extra ai" in dialogs.warnings[0]
+    assert "uv sync" in dialogs.warnings[0]
     assert win.canvas.tool is None and win.tool_actions[None].isChecked()
 
 
@@ -282,4 +282,4 @@ def test_encode_job_reports_failure(qtbot):
         raise MissingDependencyError(INSTALL_HINT)
 
     seen = run_job(EncodeJob(LazySegmenter(load), np.zeros((8, 8, 3), np.uint8), "a", 1))
-    assert seen["done"] == [] and "uv sync --extra ai" in seen["failed"][0]
+    assert seen["done"] == [] and "uv sync" in seen["failed"][0]

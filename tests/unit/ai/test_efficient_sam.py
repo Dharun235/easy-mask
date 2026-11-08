@@ -96,7 +96,7 @@ def test_load_downloads_both_files(fake_ort, monkeypatch, tmp_path):
 
 def test_missing_onnxruntime_explains_how_to_install(monkeypatch):
     monkeypatch.setitem(sys.modules, "onnxruntime", None)  # makes `import onnxruntime` fail
-    with pytest.raises(MissingDependencyError, match="uv sync --extra ai"):
+    with pytest.raises(MissingDependencyError, match="uv sync"):
         efficient_sam.load()
 
 

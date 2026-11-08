@@ -1,6 +1,6 @@
 """The real EfficientSAM model on real images.
 
-Runs only when onnxruntime is installed (``uv sync --extra ai``) and the ViT-T weights are
+Runs only when onnxruntime is importable and the ViT-T weights are
 already cached (use AI Segment once, or run ``benchmarks.clicks``); never downloads.
 Run with ``uv run pytest -m benchmark``.
 """
@@ -24,7 +24,7 @@ GRABCUT = DATASETS[0]
 @pytest.fixture(scope="module")
 def model():
     if importlib.util.find_spec("onnxruntime") is None:
-        pytest.skip("onnxruntime not installed (uv sync --extra ai)")
+        pytest.skip("onnxruntime not importable (run uv sync)")
     encoder, decoder = efficient_sam.MODELS[efficient_sam.DEFAULT_MODEL]
     if weights.cached_path(encoder) is None or weights.cached_path(decoder) is None:
         pytest.skip(f"EfficientSAM weights not cached in {weights.cache_dir()}")

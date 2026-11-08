@@ -17,16 +17,16 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=2.0",
+    "onnxruntime>=1.31.1",  # AI Segment (EfficientSAM on CPU), ~75 MB
     "opencv-contrib-python-headless>=5.0.0.93",
     "pillow>=10.0",
     "PySide6>=6.7",
 ]
 
 [project.optional-dependencies]
-# AI Segment: EfficientSAM on CPU via ONNX Runtime (~75 MB installed).
-ai = [
-    "onnxruntime>=1.31.1",
-]
+# Kept so `uv sync --extra ai` / `easy-mask[ai]` from older docs still work: onnxruntime is
+# now a regular dependency, so AI Segment works out of the box.
+ai = []
 # Video mask propagation (EfficientTAM / SAM 2.1). Heavy: pulls in PyTorch.
 video = [
     "torch>=2.5.1",

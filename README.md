@@ -53,7 +53,6 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+ (uv fetches Python fo
 git clone https://github.com/Dharun235/easy-mask.git
 cd easy-mask
 uv sync
-uv sync --extra ai     # optional: AI Segment (adds onnxruntime, ~75 MB)
 ```
 
 The first time you use AI Segment it downloads the EfficientSAM ViT-T model (41 MB) to
