@@ -45,7 +45,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Export | semantic mask PNG, instance mask PNG, COCO instance JSON (polygons or exact RLE), YOLO-seg TXT, DAVIS-style video masks (GUI or CLI) |
 | Per-object export | **binary mask** PNG, **cutout** (the object's original pixels on transparency) and **coordinates** (box, area, outline points in `objects.json` / `objects.csv`) for every object; pick any of the three |
 | Workflow | review mode (step and zoom through every object, `reviewed` flag), folder statistics, strict label list |
-| Video | open mp4/avi/mov (frames extracted, `--frame-step`, `--max-frames`) or a frame folder; keyframe interpolation; mask propagation with memory (EfficientTAM / SAM 2.1, optional extra); cut through frames; clear frames; one undo per run |
+| Video | open mp4/avi/mov (frames extracted, `--frame-step`, `--max-frames`) or a frame folder; keyframe interpolation; mask propagation with memory (EfficientTAM / SAM 2.1, optional extra); erase through frames; clear frames; undo across frames |
 | Privacy | 100% offline; images never leave your disk |
 
 ## Install
@@ -101,7 +101,9 @@ Select, AI, Polygon, Box, Brush, Eraser, Export**.
      ones, if any), and **Propagate** carries the cut through the next frames; or
    - give the shape any label, **Propagate** it, then right-click it > **Erase With This**:
      it cuts the masks under it on every frame it reached, then goes.
-6. **Undo** right after a Propagate reverts the whole run, on every frame.
+6. **Undo / Redo** work across the whole folder: each edit, on any frame, is one step,
+   and a Propagate (or erase, clear) run is one step over all its frames. Undoing an edit
+   made on another frame goes back to that frame.
 7. **Export**: the first click asks the format and folder; later clicks repeat it.
 
 Right-click a shape for its actions (edit label, delete, propagate, erase with it, mask
@@ -166,7 +168,7 @@ Everything is reachable with the mouse; keys are optional (Help > Keyboard Short
 | `E` | select | `P` / `R` / `C` | polygon / rectangle / circle |
 | `B` / `X` | brush / eraser | `I` / `W` / `C` | AI Segment / magic wand / circle |
 | `D` / `A` | next / previous image | `1`-`9`, `0` | use a label, ask each time |
-| `Ctrl+Z` / `Ctrl+Shift+Z` | undo (right after Propagate: the whole run) / redo | `Ctrl+S` | save |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo (across frames) | `Ctrl+S` | save |
 | `Enter` / double-click | finish a polygon, keep an AI mask | `Esc` / `Backspace` | cancel / remove last point |
 | `Ctrl+wheel` | zoom at cursor | wheel / middle-drag | pan |
 | `[` / `]` | smaller / bigger brush or wand tolerance | `F` | fit image to window |

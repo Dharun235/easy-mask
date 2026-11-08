@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- Undo / Redo cover the whole folder, not just the frame on screen: every edit on any frame is a step, a Propagate / erase / clear / interpolate run is one step over all its frames, and undoing an edit made on another frame goes back to it. Undo Last Run is gone (plain Undo does it).
 - Toolbar buttons have a word under each icon, and only the everyday tools are on it (Select, AI, Polygon, Box, Brush, Eraser); circle, line, point and magic wand keep their keys. Tools, navigation, Propagate and Export are disabled until an image is open.
 - Propagate's dropdown in plain words: Use AI, Auto-Propagate on Next Image (was Track, no longer a separate button), How Many Frames; Stop moved to the progress bar's Cancel.
 - Label dialog: group id and description folded under More options.
@@ -33,6 +34,7 @@ All notable changes to this project are documented here. Format follows
   stray blobs elsewhere in the image are dropped; neutral on the click benchmark.
 
 ### Fixed
+- Labels, flags, the active label and the export target of one folder (or video) no longer carry over into the next folder opened, nor get written into its project file.
 - `shape_to_mask` returned a read-only array.
 - Label colours: index-based golden-ratio palette instead of hash, so labels are clearly distinct; mask PNG palette matches.
 - Double-clicking an unselected shape now opens its label dialog.
@@ -42,7 +44,6 @@ All notable changes to this project are documented here. Format follows
 - Erase as a label: finish any shape with *Erase With It* (label dialog) or the ✂ Erase row (Labels panel) and it cuts the masks under it instead of being kept; Propagate carries the cut. Or propagate a shape first and right-click > *Erase With This*: it cuts the other masks on this frame and every frame it was propagated to, then goes (one Undo reverts).
 - Eraser removes what you paint from every mask under it (only the selected shapes, if any), and Propagate carries the erased part through the next frames like another object (copy without the video add-on).
 - Clear Labels From Here (Propagate's dropdown): delete every shape on this and the next frames.
-- One undo per video run: right after Propagate, Track, Interpolate or Clear Labels, Undo restores every frame the run touched (Undo Last Run in Propagate's dropdown works until the next run). The status bar says how many frames changed, and why when none could.
 - Right-click menu on shapes: edit label, delete, duplicate, propagate, mask operations.
 - New objects whose label is already on the frame get the next free group id, so same-label objects stay separate when propagating, cutting and exporting.
 - Objects export (File > Export Folder As > Objects, or `--format objects --parts ...`): per object a binary mask PNG, a cutout of the original pixels (RGBA, cropped) and/or coordinates (`objects.json` / `objects.csv` with box, area and outline points); the choice is remembered per folder.

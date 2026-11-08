@@ -36,7 +36,7 @@ from easy_mask.ai.weights import ProgressFn
 from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks, operations
 from easy_mask.core.annotation import Annotation
-from easy_mask.core.history import History
+from easy_mask.core.history import FrameState, History
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.core.video import ERASE_LABEL, ObjectKey, cut_region, free_group_id, object_key
@@ -65,7 +65,7 @@ from easy_mask.gui.welcome import WelcomePage
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
 from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
-from easy_mask.io.images import is_image, list_images
+from easy_mask.io.images import image_size, is_image, list_images
 from easy_mask.io.video import frames_dir_for, is_video, planned_count, probe
 
 PREFETCH_AHEAD = 3  # images encoded ahead for AI Segment: the current one and the next two
@@ -127,11 +127,18 @@ class MainWindow(QMainWindow):
     def __init__(self, settings: Settings | None = None):
         super().__init__()
         self.settings = settings or Settings()
+        # What the command line asked for: every folder starts from these, nothing else.
+        self._startup = Settings(
+            output_dir=self.settings.output_dir,
+            labels=list(self.settings.labels),
+            flags=list(self.settings.flags),
+        )
         self.known_labels: list[str] = list(self.settings.labels)
         self.image_paths: list[Path] = []
         self.current_index: int | None = None
         self.image_size: tuple[int, int] = (0, 0)
-        self.history = History()
+        self.history = History()  # one undo history for every frame of the folder
+        self._baseline: FrameState = None  # the shown frame as last recorded (None: no file)
         self.dirty = False
         self.clipboard: Shape | None = None
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
@@ -403,7 +410,7 @@ class MainWindow(QMainWindow):
                 (open_video, "video", "Video", "Open a video (its frames are imported first)"),
             ),
             (
-                (self.undo_action, "undo", "Undo", "Undo (right after Propagate: the whole run)"),
+                (self.undo_action, "undo", "Undo", "Undo the last change, on any frame"),
                 (self.redo_action, "redo", "Redo", "Redo"),
             ),
             (
@@ -520,6 +527,8 @@ class MainWindow(QMainWindow):
         folder = path if path.is_dir() else path.parent
         self.session.open_folder(folder)
         self.session.add_recent(folder)
+        if paths != self.image_paths:
+            self.history.clear()  # a different folder: its own history
         self.image_paths = paths
         self.current_index = None
         self._refresh_file_list()
@@ -599,7 +608,7 @@ class MainWindow(QMainWindow):
             self.flags_dock.setVisible(True)
         for shape in shapes:
             self._remember_label(shape.label)
-        self.history.reset(shapes)
+        self._baseline = [s.copy() for s in shapes] if json_path.exists() else None
         self.dirty = False
         self.file_list.set_current_row_silently(index)
         self._refresh_panels()
@@ -706,7 +715,10 @@ class MainWindow(QMainWindow):
 
     def _commit(self) -> None:
         """Record the canvas state after any edit and refresh everything."""
-        self.history.push(self.canvas.shapes)
+        if self.current_index is not None and self.canvas.shapes != (self._baseline or []):
+            after = [s.copy() for s in self.canvas.shapes]
+            self.history.record(self.current_index, self._baseline, after)
+            self._baseline = after
         self._mark_dirty()
         self._refresh_panels()
         self.canvas.update()
@@ -986,22 +998,69 @@ class MainWindow(QMainWindow):
         self.canvas.select(len(self.canvas.shapes) - 1)
 
     def undo(self) -> None:
-        """Revert the last edit; right after a video run, revert the whole run."""
-        if self.video.run_is_last_edit:
-            self.video.undo_run()
-            return
-        self._restore(self.history.undo())
+        """Revert the last change, on whichever frame(s) it was made."""
+        self._restore(self.history.undo(), "Undid")
 
     def redo(self) -> None:
-        """Re-apply the last undone edit."""
-        self._restore(self.history.redo())
+        """Re-apply the last undone change, on whichever frame(s) it was made."""
+        self._restore(self.history.redo(), "Redid")
 
-    def _restore(self, shapes: list[Shape] | None) -> None:
-        if shapes is None:
+    def _restore(self, states: dict[int, FrameState] | None, verb: str) -> None:
+        """Put frames back to ``states``; an edit made on another frame is shown by going there.
+
+        A run over many frames is reverted in place (its frames are written to disk).
+        """
+        if states is None or self.current_index is None:
             return
-        self.canvas.set_shapes(shapes)
-        self._mark_dirty()
+        frames = sorted(states)
+        if len(frames) == 1 and frames[0] != self.current_index and self.maybe_save():
+            self._load(frames[0])  # show the frame being changed
+        for index, shapes in states.items():
+            if index == self.current_index:
+                self.canvas.set_shapes(shapes or [])
+                self._baseline = None if shapes is None else [s.copy() for s in shapes]
+                self._mark_dirty()
+            else:
+                self.write_frame(index, shapes)
         self._refresh_panels()
+        where = self.image_paths[frames[0]].name if len(frames) == 1 else f"{len(frames)} frames"
+        self.statusBar().showMessage(f"{verb} a change on {where}", 4000)
+
+    def reset_folder_state(self) -> None:
+        """Forget the previous folder's labels, flags, active label and export target."""
+        start = self._startup
+        self.known_labels[:] = start.labels  # same list object as the canvas uses
+        self.settings.flags[:] = start.flags
+        self.settings.output_dir = start.output_dir
+        self.active_label = None
+        self._show_active_label()
+        self.last_export = None
+        self.export_on_close_action.setChecked(False)
+        self.object_parts = list(export.PARTS)
+
+    def frame_state(self, index: int) -> FrameState:
+        """Frame ``index``'s shapes as stored: on screen if shown, else from disk."""
+        if index == self.current_index:
+            return [s.copy() for s in self.canvas.shapes]
+        json_path = ann_io.annotation_path_for(self.image_paths[index], self.settings.output_dir)
+        return ann_io.load(json_path).shapes if json_path.exists() else None
+
+    def write_frame(self, index: int, shapes: FrameState) -> None:
+        """Store frame ``index``'s shapes on disk; None removes its annotation file."""
+        path = self.image_paths[index]
+        json_path = ann_io.annotation_path_for(path, self.settings.output_dir)
+        if shapes is None:
+            json_path.unlink(missing_ok=True)
+            self.file_list.mark_annotated(index, False)
+            return
+        if json_path.exists():
+            annotation = ann_io.load(json_path)
+        else:
+            width, height = image_size(path)
+            annotation = Annotation(ann_io.relative_image_path(path, json_path), width, height)
+        annotation.shapes = shapes
+        ann_io.save(annotation, json_path)
+        self.file_list.mark_annotated(index)
 
     # ------------------------------------------------------------------ export
 

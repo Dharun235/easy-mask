@@ -22,7 +22,7 @@ src/easy_mask/
     geometry.py          distances, point-in-polygon, area, bbox, circle -> polygon
     shapes.py            ShapeType enum + Shape dataclass (hit-testing, outline, (de)serialize)
     annotation.py        Annotation dataclass, labelme-compatible JSON load/save, file paths
-    history.py           snapshot-based undo/redo stack
+    history.py           undo/redo across every frame of a folder (snapshots per step)
     labels.py            stable per-label colours, parsing --labels / --flags
     rasterize.py         Shape -> boolean mask; semantic and instance masks
     masks.py             mask shapes <-> full masks, brush strokes, clean-up, mask -> polygons
@@ -92,8 +92,11 @@ mouse/keys -> Canvas ----shape_drawn----> MainWindow._on_shape_drawn -> LabelDia
 ```
 
 The canvas mutates shapes only while dragging; adding, deleting and relabelling happen
-in `MainWindow`, which always ends with `_commit()`. Undo/redo replaces the whole shape
-list with a snapshot from `History`.
+in `MainWindow`, which always ends with `_commit()`. One `History` covers the whole folder:
+`_commit()` records the shown frame's shapes before and after the edit, and a video run
+records every frame it writes inside one group, so it is one step. Undo/redo returns each
+touched frame's state: the shown frame is replaced on screen, others are written to disk
+(None removes the file), and a one-frame step on another frame first goes to that frame.
 
 ## Coordinates
 
@@ -142,11 +145,11 @@ label) and call `cut_region` on each frame with where it moved;
 masks the cut is fixing do not prompt the model in that run, or they would pull the part
 back. A shape finished with the reserved label `ERASE_LABEL` goes through the same cut
 path instead of being stored. `VideoMenu.erase_with` turns an object into an eraser on
-its frame and the contiguous frames holding automatic copies of it (one journaled run). Every run (propagate, copy, track,
-cut through, interpolate, clear) records each frame's shapes before its first change in
-`VideoMenu.journal`; `undo_run` writes them back (deleting files the run created).
-`MainWindow.undo` does that instead of a canvas undo while `History.version` still equals
-the version at the end of the run, i.e. nothing was edited on screen since.
+its frame and the contiguous frames holding automatic copies of it (one undo step).
+
+Per-folder settings (labels, flags, active label, annotation and export folders) come only
+from the command line and that folder's `.easy-mask.json`: `MainWindow.reset_folder_state`
+clears the previous folder's before a new one is applied.
 
 ## Where SAM2 will plug in
 

@@ -160,3 +160,22 @@ def test_unknown_export_format_in_project_is_ignored(make_window, image_dir):
     win = make_window(Settings())
     win.open_path(image_dir)
     assert win.last_export is None
+
+
+def test_labels_do_not_carry_over_to_another_folder(make_window, image_dir, tmp_path):
+    """Regression: a label used in one video showed up in the next one."""
+    import shutil
+
+    other = tmp_path / "other"
+    other.mkdir()
+    shutil.copy(image_dir / "img1.png", other / "frame.png")
+    win = make_window(Settings(labels=["given"]))
+    win.open_path(image_dir)
+    win.set_active_label("swan")
+    assert "swan" in win.known_labels
+    win.open_path(other)
+    assert win.known_labels == ["given"] and win.active_label is None
+    win.session.save_project()
+    assert "swan" not in json.loads((other / PROJECT_FILE).read_text()).get("labels", [])
+    win.open_path(image_dir)  # coming back restores that folder's labels
+    assert "swan" in win.known_labels

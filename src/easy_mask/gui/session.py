@@ -116,6 +116,8 @@ class Session:
     def open_folder(self, folder: Path) -> None:
         """Apply ``folder``'s project file (if any) before its first image loads."""
         self.save_project()  # the folder we are leaving
+        if folder != self.folder:
+            self.window.reset_folder_state()  # nothing carries over from the last folder
         self.folder = folder
         project = project_io.load(folder)
         if project is None:

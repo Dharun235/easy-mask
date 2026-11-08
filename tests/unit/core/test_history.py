@@ -1,56 +1,71 @@
 from easy_mask.core.history import History
 
 
-def test_undo_redo_cycle(square):
+def test_undo_redo_cycle_on_one_frame(square):
     history = History()
-    history.reset([])
-    history.push([square])
+    history.record(0, [], [square])
     moved = square.copy()
     moved.translate(1, 1)
-    history.push([moved])
+    history.record(0, [square], [moved])
 
-    assert history.undo() == [square]
-    assert history.undo() == []
+    assert history.undo() == {0: [square]}
+    assert history.undo() == {0: []}
     assert history.undo() is None
-    assert history.redo() == [square]
+    assert history.redo() == {0: [square]}
 
 
-def test_push_discards_redo(square):
+def test_steps_on_different_frames_undo_in_order(square):
     history = History()
-    history.push([square])
+    history.record(0, None, [square])  # frame 0 had no annotation file
+    history.record(3, [square], [])
+    assert history.undo() == {3: [square]}
+    assert history.undo() == {0: None}
+    assert history.redo() == {0: [square]}
+
+
+def test_group_is_one_step_and_keeps_the_first_before(square):
+    history = History()
+    history.begin_group()
+    history.record(1, None, [square])
+    moved = square.copy()
+    moved.translate(5, 5)
+    history.record(1, [square], [moved])
+    history.record(2, [], [square])
+    assert history.end_group() == 2
+    assert history.undo() == {1: None, 2: []}
+    assert not history.can_undo
+    assert history.redo() == {1: [moved], 2: [square]}
+
+
+def test_empty_group_adds_no_step():
+    history = History()
+    history.begin_group()
+    assert history.end_group() == 0 and not history.can_undo
+
+
+def test_record_discards_redo_and_clear_forgets(square):
+    history = History()
+    history.record(0, [], [square])
     history.undo()
-    history.push([])
+    history.record(0, [], [])
     assert not history.can_redo
+    history.clear()
+    assert not history.can_undo
 
 
 def test_snapshots_are_copies(square):
     history = History()
-    shapes = [square]
-    history.push(shapes)
-    square.translate(100, 100)  # mutate after pushing
-    history.push([])
-    assert history.undo()[0].points[0] == (10, 10)
+    after = [square]
+    history.record(0, [], after)
+    square.translate(100, 100)  # mutate after recording
+    history.undo()
+    (kept,) = history.redo()[0]
+    assert kept.points != square.points
 
 
 def test_limit_drops_oldest(square):
-    history = History(limit=3)
-    for _ in range(10):
-        history.push([square])
-    undos = 0
-    while history.undo() is not None:
-        undos += 1
-    assert undos == 2
-
-
-def test_version_changes_on_every_state_change():
-    history = History()
-    seen = {history.version}
-    history.push([])
-    seen.add(history.version)
-    history.undo()
-    seen.add(history.version)
-    history.redo()
-    seen.add(history.version)
-    history.reset([])
-    seen.add(history.version)
-    assert len(seen) == 5
+    history = History(limit=2)
+    for frame in range(3):
+        history.record(frame, [], [square])
+    assert history.undo() == {2: []} and history.undo() == {1: []}
+    assert history.undo() is None

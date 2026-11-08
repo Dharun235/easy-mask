@@ -82,9 +82,11 @@ def test_hand_drawn_frames_are_reported_not_silently_skipped(qtbot, window, vide
     for stem in FRAMES[1:]:
         save_frame(image_dir, stem, [rect(40)])  # hand-drawn car everywhere
     window.canvas.set_shapes([rect(10)])
+    window._commit()
     propagate(qtbot, video)
     assert "Nothing changed" in window.statusBar().currentMessage()
-    assert not video.undo_run_action.isEnabled()
+    window.undo()  # the run added no step: undo reverts the drawing before it
+    assert window.canvas.shapes == []
 
 
 def test_nothing_to_propagate_explains(window, video):
@@ -495,20 +497,42 @@ def test_undo_after_propagating_reverts_every_frame(qtbot, window, video, image_
     assert saved(image_dir, "img2") is None and saved(image_dir, "img10") is None
     assert window.file_list.item(1).checkState() == Qt.CheckState.Unchecked
     assert len(window.canvas.shapes) == 1  # this frame keeps its own shape
-    assert "Undid Propagate" in window.statusBar().currentMessage()
+    assert "Undid a change on 2 frames" in window.statusBar().currentMessage()
+    window.redo()
+    assert saved(image_dir, "img2") is not None and saved(image_dir, "img10") is not None
 
 
-def test_editing_after_a_run_makes_undo_local_again(qtbot, window, video, image_dir):
+def test_undo_walks_back_through_edits_and_runs_in_order(qtbot, window, video, image_dir):
     window.canvas.set_shapes([rect(10)])
     window._commit()
     propagate(qtbot, video)
     window.canvas.set_shapes([rect(10), rect(40)])
     window._commit()
-    window.undo()  # undoes the edit, not the run
+    window.undo()  # first the later edit
     assert len(window.canvas.shapes) == 1 and saved(image_dir, "img2") is not None
-    assert video.undo_run_action.isEnabled()
-    video.undo_run_action.trigger()  # the run can still be undone explicitly
+    window.undo()  # then the whole run
     assert saved(image_dir, "img2") is None
+    window.undo()  # then the first drawing
+    assert window.canvas.shapes == []
+
+
+def test_undo_works_across_frames_and_shows_the_frame(window, image_dir):
+    window.settings.autosave = True
+    window.canvas.set_shapes([rect(10)])
+    window._commit()  # an edit on img1
+    window.next_image()
+    window.canvas.set_shapes([rect(30)])
+    window._commit()  # an edit on img2
+    window.next_image()  # now on img10, which has no edits
+    window.undo()
+    assert window.image_path.name == "img2.png" and window.canvas.shapes == []
+    window.undo()
+    assert window.image_path.name == "img1.png" and window.canvas.shapes == []
+    window.redo()
+    assert window.image_path.name == "img1.png" and window.canvas.shapes == [rect(10)]
+    window.redo()  # the img2 edit: goes there again
+    assert window.image_path.name == "img2.png" and window.canvas.shapes == [rect(30)]
+    assert "Redid a change on img2.png" in window.statusBar().currentMessage()
 
 
 def test_masks_a_cut_fixes_do_not_steer_the_run(qtbot, window, video, image_dir, fake_propagator):

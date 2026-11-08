@@ -10,13 +10,12 @@ plain copying, auto-propagate on Next, how many frames, interpolate, clear and u
 progress bar's Cancel stops a run.
 
 Shapes made automatically are flagged (see :mod:`easy_mask.core.video`) and replaced on the
-next run; hand-drawn ones are kept and steer the model. Every run is journaled, so one Undo
-right after it restores every frame it changed.
+next run; hand-drawn ones are kept and steer the model. Every run is one step in the
+window's undo history, so one Undo restores every frame it changed.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,7 +24,6 @@ from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox
 
 from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks
-from easy_mask.core.annotation import Annotation
 from easy_mask.core.interpolate import interpolate_frames
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape
@@ -39,7 +37,6 @@ from easy_mask.core.video import (
 )
 from easy_mask.gui.propagate import PropagationWorker
 from easy_mask.gui.video_import import VIDEO_FILTER
-from easy_mask.io.images import image_size
 from easy_mask.propagation.tracker import CopyPropagator, Propagator
 
 if TYPE_CHECKING:  # the main window imports this module
@@ -84,10 +81,6 @@ def default_propagator(model: str) -> Propagator:
     return Sam2Propagator(model)
 
 
-def _replace_with(kept: list[Shape], _old: list[Shape]) -> list[Shape]:
-    return kept
-
-
 class VideoMenu:
     """The Propagate button, its dropdown and the Track toggle for ``window``."""
 
@@ -102,10 +95,7 @@ class VideoMenu:
         self.worker: PropagationWorker | None = None
         self.frames_per_run = DEFAULT_RUN
         self.last_cut: Cut | None = None  # carried along by the next run from its frame
-        # Frames as they were before the last run: index -> (shapes, file existed).
-        self.journal: dict[int, tuple[list[Shape], bool]] = {}
-        self.journal_name = ""
-        self.journal_version: int | None = None  # history version when the run ended
+        self.changed: set[int] = set()  # frames the current / last run changed
         self._run_frames = 0
 
         menu = QMenu("Propagate", window)  # the Propagate button's dropdown
@@ -123,9 +113,6 @@ class VideoMenu:
         menu.addSeparator()
         a(menu, "Interpolate From Previous Keyframe", self.interpolate)
         a(menu, "Clear Labels From Here...", self.clear_frames)
-        menu.addSeparator()
-        self.undo_run_action = a(menu, "Undo Last Run", self.undo_run)
-        self.undo_run_action.setEnabled(False)
 
     # ------------------------------------------------------------------ options
 
@@ -285,7 +272,7 @@ class VideoMenu:
 
             self._update_frame(index, transform)
 
-        self._begin_run("Propagate")
+        self._begin_run()
         self._start(indices, frame_shapes, propagator, on_frame)
 
     def _start(
@@ -343,7 +330,7 @@ class VideoMenu:
         self.worker = None
         self._end_run()
         self.window.progress.end("propagate")
-        changed, total = len(self.journal), self._run_frames
+        changed, total = len(self.changed), self._run_frames
         if changed == 0:
             text = (
                 "Nothing changed: those frames already have hand-drawn masks of these objects "
@@ -372,29 +359,21 @@ class VideoMenu:
     def _update_frame(self, index: int, transform: Callable[[list[Shape]], list[Shape]]) -> None:
         """Apply ``transform`` to frame ``index``'s shapes: on screen or on disk.
 
-        Frames that would not change are left alone; for the others the previous state goes
-        into the run journal, so the run can be undone.
+        Frames that would not change are left alone; the others are recorded in the undo
+        history (one step per run, see :meth:`_begin_run`).
         """
         w = self.window
-        path = w.image_paths[index]
-        json_path = ann_io.annotation_path_for(path, w.settings.output_dir)
         old = self._frame_shapes(index)
         new = transform(list(old))
         if new == old:
             return
-        if index not in self.journal:
-            self.journal[index] = (old, json_path.exists())
+        self.changed.add(index)
         if index == w.current_index:
             w._replace_shapes(new)
             return
-        if json_path.exists():
-            annotation = ann_io.load(json_path)
-        else:
-            width, height = image_size(path)
-            annotation = Annotation(ann_io.relative_image_path(path, json_path), width, height)
-        annotation.shapes = new
-        ann_io.save(annotation, json_path)
-        w.file_list.mark_annotated(index)
+        before = w.frame_state(index)
+        w.write_frame(index, new)
+        w.history.record(index, before, new)
 
     # ------------------------------------------------------------------ erase with a shape
 
@@ -430,11 +409,11 @@ class VideoMenu:
             rest = [s for s in shapes if object_key(s) != key]
             return cut_region(rest, eraser, height, width)
 
-        self._begin_run("Erase")
+        self._begin_run()
         for i in sorted(frames):
             self._update_frame(i, erase)
         self._end_run()
-        w.statusBar().showMessage(f"Erased on {len(self.journal)} frame(s)  ·  Undo reverts", 6000)
+        w.statusBar().showMessage(f"Erased on {len(self.changed)} frame(s)  ·  Undo reverts", 6000)
 
     # ------------------------------------------------------------------ interpolate, clear
 
@@ -462,7 +441,7 @@ class VideoMenu:
         start = [s for s in self._frame_shapes(previous) if not is_auto(s)]
         height, width = w.image_size[1], w.image_size[0]
         frames = interpolate_frames(start, end, current - previous, height, width)
-        self._begin_run("Interpolate")
+        self._begin_run()
         for offset, shapes in enumerate(frames, start=1):
             self._store(previous + offset, {object_key(s) for s in shapes}, shapes)
         self._end_run()
@@ -482,49 +461,19 @@ class VideoMenu:
         )
         if count is None:
             return
-        self._begin_run("Clear Labels")
+        self._begin_run()
         for index in range(current, current + int(count)):
             self._update_frame(index, lambda shapes: [])
         self._end_run()
-        w.statusBar().showMessage(f"Cleared {len(self.journal)} frame(s)  ·  Undo puts them back")
+        w.statusBar().showMessage(f"Cleared {len(self.changed)} frame(s)  ·  Undo puts them back")
 
-    # ------------------------------------------------------------------ undo a run
+    # ------------------------------------------------------------------ one undo step per run
 
-    def _begin_run(self, name: str) -> None:
-        """Start a new journal: frames changed from now on are undone together."""
-        self.journal = {}
-        self.journal_name = name
-        self.journal_version = None
-        self.undo_run_action.setEnabled(False)
+    def _begin_run(self) -> None:
+        """Changes from now until :meth:`_end_run` become one undo step."""
+        self.changed = set()
+        self.window.history.begin_group()
 
     def _end_run(self) -> None:
-        self.journal_version = self.window.history.version
-        self.undo_run_action.setEnabled(bool(self.journal))
-
-    @property
-    def run_is_last_edit(self) -> bool:
-        """True if the last run can be undone and nothing was edited on screen since."""
-        return (
-            bool(self.journal)
-            and not self.running
-            and self.journal_version == self.window.history.version
-        )
-
-    def undo_run(self) -> None:
-        """Put back every frame the last run changed, as it was before the run."""
-        w = self.window
-        if not self.journal or self.running:
-            return
-        journal, self.journal = self.journal, {}
-        for index, (shapes, existed) in sorted(journal.items()):
-            if index == w.current_index:
-                w._replace_shapes(shapes)
-            elif existed:
-                self._update_frame(index, partial(_replace_with, shapes))
-            else:
-                path = ann_io.annotation_path_for(w.image_paths[index], w.settings.output_dir)
-                path.unlink(missing_ok=True)
-                w.file_list.mark_annotated(index, False)
-        self.journal = {}
-        self.undo_run_action.setEnabled(False)
-        w.statusBar().showMessage(f"Undid {self.journal_name} on {len(journal)} frame(s)", 5000)
+        self.window.history.end_group()
+        self.window._update_undo_actions()

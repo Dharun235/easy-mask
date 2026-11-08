@@ -99,26 +99,25 @@ def test_every_shape_rasterizes_without_error(shape):
     assert mask.shape == (64, 64)
 
 
-@given(st.lists(st.sampled_from(["push", "undo", "redo"]), max_size=40))
+@given(st.lists(st.sampled_from(["edit", "undo", "redo"]), max_size=40))
 def test_history_matches_simple_model(ops):
-    """Compare History against an obviously-correct list-and-index model."""
+    """One frame edited repeatedly: History behaves like a list of states and an index."""
     history, states, index = History(), [[]], 0
-    history.reset([])
     for step, op in enumerate(ops):
-        if op == "push":
+        if op == "edit":
             new = [Shape(str(step), ShapeType.POINT, [(step, step)])]
-            history.push(new)
+            history.record(0, states[index], new)
             states, index = [*states[: index + 1], new], index + 1
         elif op == "undo":
             result = history.undo()
             assert (result is None) == (index == 0)
             index = max(index - 1, 0)
-            assert result is None or result == states[index]
+            assert result is None or result == {0: states[index]}
         else:
             result = history.redo()
             assert (result is None) == (index == len(states) - 1)
             index = min(index + 1, len(states) - 1)
-            assert result is None or result == states[index]
+            assert result is None or result == {0: states[index]}
 
 
 @given(label, st.lists(label, max_size=5))
