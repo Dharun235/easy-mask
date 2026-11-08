@@ -98,6 +98,28 @@ TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
 ]
 
 
+# Shown at the bottom left while a tool is active: how to use it, in plain words.
+TOOL_HINTS: dict[ShapeType | str | None, str] = {
+    None: "Select: click a shape (Shift+click for more)  ·  drag to move it, drag a corner "
+    "to reshape it  ·  right-click for its options",
+    "ai": "AI: click an object to outline it  ·  right-click a spot that is not part of it  ·  "
+    "drag a box around it  ·  double-click (or Enter) keeps it, Esc starts over",
+    ShapeType.POLYGON: "Polygon: click to place corners  ·  click the first corner (or "
+    "double-click) to finish  ·  Backspace removes the last corner, Esc cancels",
+    ShapeType.RECTANGLE: "Box: drag from one corner to the opposite corner",
+    ShapeType.CIRCLE: "Circle: drag from the centre outwards",
+    ShapeType.LINE: "Line: drag from one end to the other",
+    ShapeType.LINESTRIP: "Line strip: click to place points  ·  double-click (or Enter) to finish",
+    ShapeType.POINT: "Point: click to place it",
+    "brush": "Brush: paint a new mask, or select a mask first to paint onto it  ·  [ and ] "
+    "change the size",
+    "eraser": "Eraser: paint over what to remove from the masks underneath (select a mask "
+    "first to erase only from it)  ·  [ and ] change the size  ·  Propagate carries it",
+    "wand": "Magic wand: click a region of similar colour  ·  Shift adds it to the selected "
+    "mask, Alt removes it  ·  [ and ] change the tolerance",
+}
+
+
 def ask_number(
     parent: QWidget, title: str, label: str, value: float, minimum: float, maximum: float
 ) -> float | None:
@@ -202,6 +224,9 @@ class MainWindow(QMainWindow):
 
         self.progress = ProgressPanel()
         self.statusBar().addPermanentWidget(self.progress)
+        self.tool_hint = QLabel()  # how to use the active tool; messages cover it briefly
+        self.tool_hint.setMinimumWidth(1)  # long hints are clipped, never widen the window
+        self.statusBar().addWidget(self.tool_hint, 1)
         self.active_label_status = QLabel()
         self.statusBar().addPermanentWidget(self.active_label_status)
         self.status_label = QLabel()
@@ -444,6 +469,8 @@ class MainWindow(QMainWindow):
             "Export (first time: choose format and folder; then repeats it)"
         )
         toolbar.addAction(self._export_again_action)
+        for action in toolbar.actions():  # hovering a button explains it at the bottom
+            action.setStatusTip(action.toolTip())
 
         m = bar.addMenu("&Help")
         self._action(
@@ -621,6 +648,9 @@ class MainWindow(QMainWindow):
         if self.pages.currentWidget() is not self.canvas:
             self.pages.setCurrentWidget(self.canvas)
             self._show_panels(True)
+            checked = self.tool_group.checkedAction()
+            tool = next((t for t, a in self.tool_actions.items() if a is checked), None)
+            self.tool_hint.setText(TOOL_HINTS.get(tool, ""))  # the first image: say how
         self.canvas.set_image(pixmap)
         self.canvas.set_shapes(shapes)
         self.flag_list.show_flags(flags)
@@ -750,6 +780,8 @@ class MainWindow(QMainWindow):
         else:
             self.canvas.set_mode(tool)
         self.tool_actions[tool].setChecked(True)
+        self.tool_hint.setText(TOOL_HINTS.get(tool, ""))
+        self.statusBar().clearMessage()  # let the hint show
 
     def _allowed_labels(self) -> list[str] | None:
         """The only labels accepted with ``--strict-labels``, else None (anything goes)."""
@@ -1246,6 +1278,7 @@ class MainWindow(QMainWindow):
             "Propagate: carry the selected (or all) objects and what you erased through the "
             "next frames. Arrow: more options"
         )
+        propagate.setStatusTip(propagate.toolTip())
         propagate.triggered.connect(lambda _=False: self.video.propagate(+1))
         propagate.setMenu(self.video.menu)
         self.propagate_button_action = propagate

@@ -107,6 +107,7 @@ Select, AI, Polygon, Box, Brush, Eraser, Export**.
    made on another frame goes back to that frame.
 7. **Export**: the first click asks the format and folder; later clicks repeat it.
 
+The bottom bar says how to use the tool you picked; hover any button to see what it does.
 Right-click a shape for its actions (edit label, delete, propagate, erase with it, mask
 operations). Right-click a label for: use for new shapes, apply to the selected shapes,
 rename (on every frame), delete from this frame, delete from all frames. Keys are optional: Help > Keyboard Shortcuts.

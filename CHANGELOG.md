@@ -41,6 +41,7 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- The status bar explains the active tool (how to place, finish, resize or cancel) while it is in use, and hovering any toolbar button or Propagate option explains what it does.
 - Label management in the Labels panel: an *Add a label* box; right-click a label to use it, apply it to the selected shapes, rename it on every frame, or delete it from this frame or from all frames (each one undo step). Right-click a mask > Label to change its label. New masks announce their label in the status bar.
 - Erase as a label: finish any shape with *Erase With It* (label dialog) and it cuts the masks under it instead of being kept; Propagate carries the cut. Or propagate a shape first and right-click > *Erase With This*: it cuts the other masks on this frame and every frame it was propagated to, then goes (one Undo reverts).
 - Eraser removes what you paint from every mask under it (only the selected shapes, if any), and Propagate carries the erased part through the next frames like another object (copy without the video add-on).

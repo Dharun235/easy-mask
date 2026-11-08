@@ -102,17 +102,27 @@ class VideoMenu:
         self.menu = menu
         a = window._action
         self.propagate_action = a(menu, "Propagate Forward", lambda: self.propagate(+1))
-        a(menu, "Propagate Backward", lambda: self.propagate(-1))
+        backward = a(menu, "Propagate Backward", lambda: self.propagate(-1))
         menu.addSeparator()
         self.ai_action = a(menu, "Use AI (EfficientTAM)", self._toggle_ai, checkable=True)
         self.ai_action.setChecked(window.settings.video_model != COPY_MODEL)
         self.track_action = a(
             menu, "Auto-Propagate on Next Image", self._toggle_tracking, checkable=True
         )
-        a(menu, "How Many Frames...", self.ask_frames_per_run)
+        frames = a(menu, "How Many Frames...", self.ask_frames_per_run)
         menu.addSeparator()
-        a(menu, "Interpolate From Previous Keyframe", self.interpolate)
-        a(menu, "Clear Labels From Here...", self.clear_frames)
+        interpolate = a(menu, "Interpolate From Previous Keyframe", self.interpolate)
+        clear = a(menu, "Clear Labels From Here...", self.clear_frames)
+        for action, tip in (
+            (self.propagate_action, "Send this frame's objects (and what you erased) forward"),
+            (backward, "Send this frame's objects (and what you erased) to earlier frames"),
+            (self.ai_action, "On: EfficientTAM follows each object. Off: masks are copied as is"),
+            (self.track_action, "Each Next carries the objects into the next frame by itself"),
+            (frames, "How many frames one Propagate goes through"),
+            (interpolate, "Fill the frames between the last hand-made frame and this one"),
+            (clear, "Delete every label on this frame and the next ones"),
+        ):
+            action.setStatusTip(tip)
 
     # ------------------------------------------------------------------ options
 

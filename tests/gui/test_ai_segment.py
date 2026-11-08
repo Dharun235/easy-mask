@@ -169,7 +169,7 @@ def test_ui_stays_responsive_while_encoding(make_window, image_dir, driver, qtbo
     fake_segmenter.gate.set()
     qtbot.waitUntil(lambda: tool.ready)
     assert tool.mask is not None and tool.mask[40, 50]  # the waiting click is applied
-    assert any("encoding" in m for m in messages) and "click the object" in messages[-1]
+    assert any("encoding" in m for m in messages) and "click an object" in messages[-1]
 
 
 def test_images_are_encoded_once_and_reused(window, ui, ai, fake_segmenter, qtbot):

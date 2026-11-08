@@ -143,3 +143,24 @@ def test_default_show_menu_pops_the_menu_up(make_window):
     menu.exec = lambda pos: shown.append(pos)  # the instance's own exec: no modal loop
     win.show_menu(menu, QPoint(5, 6))
     assert shown == [QPoint(5, 6)]
+
+
+def test_each_tool_explains_itself_at_the_bottom(window):
+    from easy_mask.gui.main_window import TOOL_HINTS
+
+    assert window.tool_hint.text() == TOOL_HINTS[None]  # Select, once an image is open
+    for _text, _short, mode, *_ in TOOLS:
+        window.set_tool(mode)
+        hint = window.tool_hint.text()
+        assert hint == TOOL_HINTS[mode] and hint  # every tool has one
+    window.set_tool(None)
+
+
+def test_hovering_a_button_or_option_explains_it(make_window):
+    from PySide6.QtWidgets import QToolBar
+
+    win = make_window(Settings())
+    (toolbar,) = win.findChildren(QToolBar)
+    buttons = [a for a in toolbar.actions() if not a.isSeparator() and a.text()]
+    assert all(a.statusTip() for a in buttons)
+    assert all(a.statusTip() for a in win.video.menu.actions() if not a.isSeparator())

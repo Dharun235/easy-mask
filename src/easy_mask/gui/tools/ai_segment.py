@@ -40,8 +40,8 @@ PREVIEW_RGB = (30, 144, 255)
 DRAG_THRESHOLD_PX = 4  # screen pixels a press must move to become a box
 DOT_RADIUS_PX = 5
 READY_HINT = (
-    "AI Segment: click the object (right/Alt-click = background, drag = box), "
-    "Enter = accept, Esc = clear"
+    "AI: click an object to outline it  ·  right-click a spot that is not part of it  ·  "
+    "drag a box around it  ·  double-click (or Enter) keeps it, Esc starts over"
 )
 
 
