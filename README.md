@@ -36,8 +36,9 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
 | Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
 | Labels | **active label** with keys `1`-`9` (no dialog per shape), label dialog with autocomplete, distinct colours, group id, description |
+| Video import | turn mp4 / mov / avi / mkv / webm into PNG, JPEG or WebP frames in any folder, every n-th frame, with a preview of how many images it will write |
 | Automation | track objects into the next frame on **D**, auto clean-up of AI masks, Export Again / export on close, review automatic shapes first |
-| Ease of use | start page with recent folders, icon toolbar with shortcut tooltips, `F1` shortcut list, auto-save on, remembers layout / tool sizes / per-folder labels, AI prefetch of upcoming images |
+| Ease of use | calm light / dark theme, progress bar with Cancel for every slow task (AI, propagation, export, video import), start page with recent folders, icon toolbar with shortcut tooltips, `F1` shortcut list, auto-save on, remembers layout / tool sizes / per-folder labels, AI prefetch of upcoming images |
 | Navigation | open image or folder, file list with done-marks, next/prev, zoom at cursor, pan, fit |
 | Image flags | per-image checkboxes for classification or data cleaning (`--flags`) |
 | Saving | one JSON per image next to the image or in `--output`, optional auto-save, crash-safe writes |
@@ -122,8 +123,8 @@ uv run easy-mask export images/ --format coco --rle --out dataset/  # masks as e
 uv run easy-mask stats images/                     # plain table (or --json)
 uv run easy-mask stats images/ --labels cat,dog    # exit 1 if other labels are used
 
-# video: frames are extracted next to the video (clip_frames/), one JSON per frame
-uv run easy-mask clip.mp4 --frame-step 2 --max-frames 300
+# video: import frames (choose folder and format), then one JSON per frame
+uv run easy-mask clip.mp4                       # asks: folder, PNG/JPEG/WebP, every n-th frame
 uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG per frame
 ```
 
@@ -233,6 +234,7 @@ doesn't do yet, one of them probably does.
 | [SAM 3](https://github.com/facebookresearch/sam3) | Text/concept-prompted segmentation | Candidate for text pre-labelling |
 | [SimpleClick](https://github.com/uncbiag/SimpleClick) | Interactive segmentation research code (MIT) | Benchmark datasets and evaluation protocol |
 | [FiftyOne](https://github.com/voxel51/fiftyone) | Dataset curation and visualisation (Apache-2.0) | Good companion for inspecting exported datasets |
+| [Lucide](https://lucide.dev) | Open-source icon set (ISC) | Toolbar icons (`src/easy_mask/gui/icons/`, licence included) |
 
 easy-mask is an independent implementation: it shares labelme's file format but no code.
 

@@ -19,6 +19,9 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Progress feedback: a status-bar progress panel with Cancel for AI model download / image preparation, propagation, export and video import; exports and video imports run in the background.
+- File > Import Video Frames: choose output folder, PNG / JPEG / WebP and quality, every n-th frame and a frame limit; opening a not-yet-imported video shows this dialog.
+- Calm minimal theme (light / dark, follows the system), Lucide icons, one icon-only toolbar, quieter start page; side panels hidden until an image is open; View > Panels.
 - Automation: track objects into the next frame on Next Image (Video > Track Objects into Next Frame, Ctrl+Shift+T); auto clean-up of AI / smart-tool masks (Mask > Auto Clean-Up); File > Export Again (Ctrl+Shift+E) and Export Again When Closing, with the last export remembered per folder; review mode visits automatic shapes first.
 - Ease of use: active label with keys 1-9, start page with recent folders, icon toolbar with shortcut tooltips, Help > Keyboard Shortcuts (F1), remembered window layout / tool sizes / recent folders, per-folder `.easy-mask.json` (labels, flags, active label, annotation folder), AI Segment prefetch of upcoming images.
 - Workflow: COCO RLE export (`--rle`), `easy-mask stats` and a statistics dialog, review mode (`N` / `Shift+N`, `reviewed` flag), copy shapes from previous image, `--strict-labels`; RLE vs polygon benchmark.

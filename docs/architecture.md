@@ -61,7 +61,11 @@ src/easy_mask/
     session.py           remembered state: window layout, tool sizes, recent folders, projects
     welcome.py           start page (open buttons, recent folders)
     shortcuts.py         Help > Keyboard Shortcuts, built from the menus
-    icons.py, icons/     toolbar SVG icons
+    icons.py, icons/     Lucide toolbar icons (ISC), tinted to the palette
+    theme.py             calm light / dark theme: palette, stylesheet, Fusion style
+    progress.py          status-bar progress panel (several tasks, Cancel)
+    export_worker.py     dataset export on a background thread
+    video_import.py      Import Video Frames dialog + background extraction worker
     tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
     tools/brush.py       brush and eraser
     tools/region.py      magic wand, GrabCut box, superpixel picker (Shift add / Alt subtract)
