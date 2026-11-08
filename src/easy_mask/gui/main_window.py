@@ -35,9 +35,11 @@ from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
+from easy_mask.gui.video_menu import VideoMenu
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
 from easy_mask.io import export
 from easy_mask.io.images import is_image, list_images
+from easy_mask.io.video import extract_frames, is_video
 
 DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
@@ -72,6 +74,9 @@ class Settings:
     labels: list[str] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
     autosave: bool = False
+    frame_step: int = 1  # when opening a video: keep every n-th frame
+    max_frames: int | None = None  # when opening a video: stop after this many frames
+    video_model: str = "efficienttam_ti_512"  # propagation model, see propagation/backend.py
 
 
 class MainWindow(QMainWindow):
@@ -101,6 +106,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.canvas)
         self._build_panels()
         self._build_actions()
+        self.video = VideoMenu(self)
         self._connect_canvas()
 
         self.status_label = QLabel()
@@ -253,7 +259,15 @@ class MainWindow(QMainWindow):
         return self.image_paths[self.current_index]
 
     def open_path(self, path: Path) -> None:
-        """Open an image file, or every image in a folder."""
+        """Open an image file, every image in a folder, or the frames of a video."""
+        if is_video(path):
+            try:
+                path = extract_frames(
+                    path, step=self.settings.frame_step, max_frames=self.settings.max_frames
+                )
+            except ValueError as exc:
+                self._error(str(exc))
+                return
         if path.is_dir():
             paths = list_images(path)
             if not paths:
@@ -655,6 +669,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """Offer to save before quitting."""
         if self.maybe_save():
+            self.video.stop(wait=True)
             event.accept()
         else:
             event.ignore()

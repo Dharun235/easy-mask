@@ -16,6 +16,7 @@ PACKAGE = Path(__file__).parents[2] / "src" / "easy_mask"
 FORBIDDEN = {
     "core": ("PySide6", "easy_mask.gui", "easy_mask.io"),
     "io": ("PySide6", "easy_mask.gui"),
+    "propagation": ("PySide6", "easy_mask.gui"),
 }
 
 
