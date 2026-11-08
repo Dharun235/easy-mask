@@ -49,8 +49,7 @@ from easy_mask.gui.threshold_dialog import ThresholdDialog
 from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
-from easy_mask.gui.tools.region import GrabCutTool, MagicWandTool, SuperpixelTool
-from easy_mask.gui.tools.watershed import WatershedTool
+from easy_mask.gui.tools.region import MagicWandTool
 from easy_mask.gui.video_import import (
     VIDEO_FILTER,
     ImportOptions,
@@ -71,22 +70,21 @@ DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
 # Toolbar entries: (name, short label, tool, shortcut, icon, group). A ShapeType draws that
 # shape, None is edit mode, and a string names a pixel tool from MainWindow.pixel_tools. A
-# new group starts a new section of the toolbar; the short label is shown under the icon.
+# new group starts a new section of the toolbar; MENU_ONLY tools (not masks) are kept out of
+# the toolbar to keep it calm but stay in the Draw menu with their keys.
+MENU_ONLY = "menu"
 TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
     ("Select / Edit", "Select", None, "E", "edit", "select"),
     ("Polygon", "Polygon", ShapeType.POLYGON, "P", "polygon", "shapes"),
     ("Rectangle", "Box", ShapeType.RECTANGLE, "R", "rectangle", "shapes"),
     ("Circle", "Circle", ShapeType.CIRCLE, "C", "circle", "shapes"),
-    ("Line", "Line", ShapeType.LINE, "L", "line", "shapes"),
-    ("Line strip", "Path", ShapeType.LINESTRIP, "T", "linestrip", "shapes"),
-    ("Point", "Point", ShapeType.POINT, "O", "point", "shapes"),
+    ("Line", "Line", ShapeType.LINE, "L", "line", MENU_ONLY),
+    ("Line strip", "Path", ShapeType.LINESTRIP, "T", "linestrip", MENU_ONLY),
+    ("Point", "Point", ShapeType.POINT, "O", "point", MENU_ONLY),
     ("Brush", "Brush", "brush", "B", "brush", "paint"),
     ("Eraser", "Erase", "eraser", "X", "eraser", "paint"),
     ("AI Segment", "AI", "ai", "I", "ai", "smart"),
     ("Magic wand", "Wand", "wand", "W", "wand", "smart"),
-    ("GrabCut", "GrabCut", "grabcut", "G", "grabcut", "smart"),
-    ("Superpixels", "Regions", "superpixel", "S", "superpixel", "smart"),
-    ("Watershed", "Watershed", "watershed", "M", "watershed", "smart"),
 ]
 
 
@@ -150,9 +148,6 @@ class MainWindow(QMainWindow):
             "brush": BrushTool(self._apply_stroke),
             "eraser": BrushTool(self._apply_stroke, erase=True),
             "wand": MagicWandTool(self._apply_smart),
-            "grabcut": GrabCutTool(self._apply_smart),
-            "superpixel": SuperpixelTool(self._apply_smart),
-            "watershed": WatershedTool(self._apply_smart),
             "ai": self.ai_tool,
         }
         self.threshold_dialog: ThresholdDialog | None = None
@@ -335,11 +330,13 @@ class MainWindow(QMainWindow):
             action.setIconText(short)
             action.setToolTip(f"{text}  ·  {key}")
             self.tool_group.addAction(action)
+            self.tool_actions[mode] = action
+            if tool_group == MENU_ONLY:
+                continue
             if group is not None and tool_group != group:
                 toolbar.addSeparator()
             group = tool_group
             toolbar.addAction(action)
-            self.tool_actions[mode] = action
         self.tool_actions[None].setChecked(True)
 
         m = bar.addMenu("&Mask")

@@ -1,4 +1,4 @@
-"""Workflow helpers for getting through a dataset quickly: review, copy previous, statistics.
+"""Workflow helpers for getting through a dataset quickly: review mode and statistics.
 
 They live in a ``Workflow`` menu attached to the :class:`MainWindow` and use only its
 editing primitives, so every change they make is undoable like any other edit.
@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QPlainTextEdit, QVBoxLayout, QWidget
 
-from easy_mask.core import annotation as ann_io
 from easy_mask.core.annotation import REVIEWED_FLAG
 from easy_mask.core.video import is_auto
 from easy_mask.io import stats
@@ -41,7 +40,7 @@ def show_report(parent: QWidget, title: str, text: str) -> None:
 
 
 class Workflow:
-    """Review mode, copy-from-previous-image and folder statistics for one window."""
+    """Review mode and folder statistics for one window."""
 
     def __init__(self, window: "MainWindow"):
         self.window = window
@@ -52,7 +51,6 @@ class Workflow:
         window._action(menu, "Review Next Object", self.next_object, "N")
         window._action(menu, "Review Previous Object", self.prev_object, "Shift+N")
         menu.addSeparator()
-        window._action(menu, "Copy Shapes from Previous Image", self.copy_previous, "Ctrl+Shift+V")
         menu.addSeparator()
         window._action(menu, "Statistics...", self.show_statistics, "Ctrl+I")
 
@@ -133,36 +131,6 @@ class Workflow:
         win.flag_list.show_flags(flags)
         win.flags_dock.setVisible(True)
         win._mark_dirty()
-
-    # ------------------------------------------------------------------ copy previous
-
-    def copy_previous(self) -> None:
-        """Append the previous image's saved shapes to this image (one undo step).
-
-        "Previous" is the image before this one in the folder, as with ``A``; handy for
-        video frames and near-duplicate images. The copies are selected so they can be
-        moved together.
-        """
-        win = self.window
-        if not win.current_index:
-            return
-        previous = win.image_paths[win.current_index - 1]
-        json_path = ann_io.annotation_path_for(previous, win.settings.output_dir)
-        if not json_path.exists():
-            win.statusBar().showMessage(f"{previous.name} has no annotations", 4000)
-            return
-        try:
-            copied = ann_io.load(json_path).shapes
-        except (ValueError, KeyError) as exc:
-            win._error(f"Could not read annotation {json_path}:\n{exc}")
-            return
-        if not copied:
-            return
-        for shape in copied:
-            win._remember_label(shape.label)
-        first = len(win.canvas.shapes)
-        win._replace_shapes([*win.canvas.shapes, *copied])
-        win.canvas.set_selection(list(range(first, first + len(copied))))
 
     # ------------------------------------------------------------------ statistics
 

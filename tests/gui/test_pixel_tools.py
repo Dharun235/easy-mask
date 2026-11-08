@@ -131,145 +131,10 @@ def test_wand_tolerance_keys(window, ui):
 # ---------------------------------------------------------------------- GrabCut
 
 
-def test_grabcut_box_selects_object(window, ui):
-    window.set_tool("grabcut")
-    ui.drag((22, 12), (68, 58))
-    assert len(window.canvas.shapes) == 1
-    assert masks.iou(full(window), RED) > 0.95
-
-
-def test_grabcut_shift_box_adds_to_selection(window, ui):
-    window.set_tool("grabcut")
-    ui.drag((22, 12), (68, 58))
-    c = window.canvas
-    ui.qtbot.mousePress(c, Qt.MouseButton.LeftButton, SHIFT, ui.screen(64, 1))
-    ui.qtbot.mouseMove(c, ui.screen(80, 12))
-    ui.qtbot.mouseMove(c, ui.screen(96, 24))
-    ui.qtbot.mouseRelease(c, Qt.MouseButton.LeftButton, SHIFT, ui.screen(96, 24))
-    assert len(c.shapes) == 1 and masks.iou(full(window), RED | BLUE) > 0.9
-
-
-def test_grabcut_click_without_box_does_nothing(window, ui):
-    window.set_tool("grabcut")
-    click(ui, 40, 30)
-    assert window.canvas.shapes == []
-
-
-def test_grabcut_draws_box_while_dragging(window, ui):
-    window.set_tool("grabcut")
-    tool = window.pixel_tools["grabcut"]
-    ui.qtbot.mousePress(window.canvas, Qt.MouseButton.LeftButton, pos=ui.screen(10, 10))
-    ui.qtbot.mouseMove(window.canvas, ui.screen(50, 50))
-    assert tool._end == pytest.approx((50, 50), abs=1)
-    assert not window.canvas.grab().isNull()
-    window.set_tool(None)  # switching tools drops the box
-    assert tool._start is None
-
-
 # ---------------------------------------------------------------------- superpixels
 
 
-def test_superpixel_click_picks_region_inside_object(window, ui):
-    window.set_tool("superpixel")
-    click(ui, 45, 35)
-    picked = full(window)
-    assert picked[35, 45] and not (picked & ~RED).any()
-
-
-def test_superpixel_drag_picks_several(window, ui):
-    window.set_tool("superpixel")
-    window.pixel_tools["superpixel"].size = 10
-    ui.drag((32, 22), (57, 47))
-    labels = window.pixel_tools["superpixel"].labels(window.canvas)
-    diagonal = {labels[i + 22, i + 32] for i in range(26)}  # every label along the drag
-    assert np.array_equal(full(window), np.isin(labels, list(diagonal)))
-
-
-def test_superpixel_size_keys_recompute_labels(window, ui):
-    window.set_tool("superpixel")
-    tool = window.pixel_tools["superpixel"]
-    before = len(np.unique(tool.labels(window.canvas)))
-    ui.qtbot.keyClicks(window.canvas, "[")
-    assert tool.size == 15 and "15px" in window.status_label.text()
-    assert len(np.unique(tool.labels(window.canvas))) > before
-    ui.qtbot.keyClicks(window.canvas, "]" * 60)
-    assert tool.size == 200
-    ui.key(Qt.Key.Key_Escape)
-
-
-def test_superpixel_paint_and_cancel(window, ui):
-    window.set_tool("superpixel")
-    tool = window.pixel_tools["superpixel"]
-    ui.qtbot.mousePress(window.canvas, Qt.MouseButton.LeftButton, pos=ui.screen(40, 30))
-    assert not window.canvas.grab().isNull()  # outlines + pick preview
-    window.set_tool(None)
-    assert tool._points == []
-
-
-def test_superpixels_recomputed_for_next_image(window, ui):
-    window.set_tool("superpixel")
-    tool = window.pixel_tools["superpixel"]
-    first = tool.labels(window.canvas)
-    window.next_image()
-    assert tool.labels(window.canvas) is not first
-
-
-def test_tool_release_without_press_is_ignored(window, ui):
-    for name in ("superpixel", "grabcut", "watershed"):
-        window.set_tool(name)
-        ui.qtbot.mouseRelease(window.canvas, Qt.MouseButton.LeftButton, pos=ui.screen(5, 5))
-        ui.qtbot.mouseMove(window.canvas, ui.screen(6, 6))
-    assert window.canvas.shapes == []
-
-
 # ---------------------------------------------------------------------- watershed
-
-
-def test_watershed_markers_then_enter(window, ui):
-    window.set_tool("watershed")
-    ui.drag((40, 30), (50, 40))
-    assert window.canvas.shapes == []  # nothing until Enter
-    ui.key(Qt.Key.Key_Return)
-    assert masks.iou(full(window), RED) > 0.85  # flat synthetic background leaks a little
-
-
-def test_watershed_alt_paints_background_markers(window, ui):
-    window.set_tool("watershed")
-    tool = window.pixel_tools["watershed"]
-    ui.drag((40, 30), (50, 40))
-    c = window.canvas
-    ui.qtbot.mousePress(c, Qt.MouseButton.LeftButton, ALT, ui.screen(5, 70))
-    ui.qtbot.mouseMove(c, ui.screen(95, 70))
-    ui.qtbot.mouseRelease(c, Qt.MouseButton.LeftButton, ALT, ui.screen(95, 70))
-    assert tool.background[70, 50] and not tool.foreground[70, 50]
-    assert not window.canvas.grab().isNull()
-    ui.key(Qt.Key.Key_Enter)
-    assert full(window)[35, 45] and not full(window)[70, 50]
-
-
-def test_watershed_enter_without_markers_only_warns(window, ui):
-    window.set_tool("watershed")
-    ui.key(Qt.Key.Key_Return)
-    assert window.canvas.shapes == [] and "markers" in window.status_label.text()
-
-
-def test_watershed_escape_clears_markers_then_deselects(window, ui):
-    window.set_tool("watershed")
-    tool = window.pixel_tools["watershed"]
-    ui.drag((40, 30), (50, 40))
-    ui.key(Qt.Key.Key_Escape)
-    assert tool.foreground is None
-    ui.key(Qt.Key.Key_Escape)  # no markers: falls through to the canvas
-
-
-def test_watershed_marker_size_keys(window, ui):
-    window.set_tool("watershed")
-    tool = window.pixel_tools["watershed"]
-    ui.qtbot.keyClicks(window.canvas, "]]")
-    assert tool.radius == 5
-    ui.qtbot.keyClicks(window.canvas, "[" * 10)
-    assert tool.radius == 1
-    ui.key(Qt.Key.Key_A)  # unrelated key goes to the canvas / window
 
 
 # ---------------------------------------------------------------------- threshold panel
@@ -414,9 +279,7 @@ def test_menu_actions_open_panels(window):
     assert window.threshold_dialog.isVisible() and window.display_dialog.isVisible()
 
 
-@pytest.mark.parametrize(
-    ("key", "name"), [("W", "wand"), ("G", "grabcut"), ("S", "superpixel"), ("M", "watershed")]
-)
+@pytest.mark.parametrize(("key", "name"), [("W", "wand")])
 def test_tool_shortcuts(window, ui, key, name):
     ui.key(getattr(Qt.Key, f"Key_{key}"))
     assert window.canvas.tool is window.pixel_tools[name]

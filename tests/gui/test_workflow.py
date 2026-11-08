@@ -110,7 +110,6 @@ def test_review_without_image_does_nothing(make_window):
     window = make_window()
     window.workflow.next_object()
     window.workflow.prev_object()
-    window.workflow.copy_previous()
     assert window.image_path is None
 
 
@@ -123,44 +122,6 @@ def test_reviewed_flag_is_not_set_twice(win):
 
 
 # ---------------------------------------------------------------------- copy previous
-
-
-def test_copy_previous_appends_shapes_and_is_undoable(win):
-    win.next_image()
-    menu_action(win, "Copy Shapes from Previous Image").trigger()
-    assert [s.label for s in win.canvas.shapes] == ["cat", "cat", "dog"]
-    assert win.canvas.selection == [1, 2]
-    assert win.dirty
-    win.undo()
-    assert [s.label for s in win.canvas.shapes] == ["cat"]
-
-
-def test_copy_previous_on_first_image_does_nothing(win):
-    win.workflow.copy_previous()
-    assert len(win.canvas.shapes) == 2 and not win.dirty
-
-
-def test_copy_previous_without_annotation_says_so(win, folder):
-    (folder / "img1.json").unlink()
-    win.next_image()
-    win.workflow.copy_previous()
-    assert "img1.png has no annotations" in win.statusBar().currentMessage()
-    assert len(win.canvas.shapes) == 1
-
-
-def test_copy_previous_empty_annotation_is_a_no_op(win, folder):
-    ann_io.save(Annotation("img1.png", 100, 80), folder / "img1.json")
-    win.next_image()
-    win.workflow.copy_previous()
-    assert len(win.canvas.shapes) == 1 and not win.dirty
-
-
-def test_copy_previous_corrupt_annotation_warns(win, folder, dialogs):
-    dialogs.allow_warnings = True
-    win.next_image()
-    (folder / "img1.json").write_text("{ broken")
-    win.workflow.copy_previous()
-    assert "Could not read annotation" in dialogs.warnings[0]
 
 
 # ---------------------------------------------------------------------- statistics

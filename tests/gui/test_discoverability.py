@@ -1,7 +1,7 @@
 """Welcome page, toolbar icons and tooltips, and the keyboard shortcut list."""
 
 from easy_mask.gui.icons import ICON_DIR, icon
-from easy_mask.gui.main_window import TOOLS, Settings
+from easy_mask.gui.main_window import MENU_ONLY, TOOLS, Settings
 from easy_mask.gui.shortcuts import shortcut_rows
 
 
@@ -28,7 +28,9 @@ def test_toolbar_is_one_icon_only_row(make_window):
     assert texts.index("Open Folder...") < texts.index("Select / Edit")  # file first
     assert texts[-1] == "Export Again"  # export alone on the right
     separators = sum(1 for a in toolbar.actions() if a.isSeparator())
-    assert separators == 3 + len({group for *_, group in TOOLS}) - 1  # file groups + tools
+    groups = {group for *_, group in TOOLS} - {MENU_ONLY}
+    assert separators == 3 + len(groups) - 1  # file groups + tool groups
+    assert "Line" not in texts and "Point" not in texts  # menu-only: not masks
 
 
 def test_welcome_page_until_an_image_is_open(make_window, image_dir):

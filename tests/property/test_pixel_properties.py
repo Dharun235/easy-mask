@@ -55,14 +55,6 @@ def test_color_range_contains_picked_pixel_and_grows(rgb, point, hue_tol, sv_tol
 
 
 @FAST
-@given(arrays(np.int32, (6, 7), elements=st.integers(0, 5)), st.lists(seeds, max_size=5))
-def test_pick_superpixels_is_union_of_picked_labels(labels, points):
-    picked = pixel_ops.pick_superpixels(labels, points)
-    chosen = {labels[min(int(y), 5), min(int(x), 6)] for x, y in points}
-    assert np.array_equal(picked, np.isin(labels, list(chosen)))
-
-
-@FAST
 @given(images, st.integers(-255, 255), st.floats(0.1, 4), st.floats(0.1, 4))
 def test_display_adjustment_keeps_shape_and_order(rgb, brightness, contrast, gamma):
     out = adjust(rgb, DisplaySettings(brightness=brightness, contrast=contrast, gamma=gamma))
