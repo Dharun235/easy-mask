@@ -7,6 +7,7 @@ Data flow for one edit::
                                                           -> mark dirty / auto-save
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QWidget,
 )
@@ -113,7 +115,14 @@ class MainWindow(QMainWindow):
         self.shape_list.itemDoubleClicked.connect(lambda _item: self.edit_label())
         self.file_list.currentRowChanged.connect(self._on_file_row_changed)
 
-    def _action(self, menu, text: str, slot, shortcut=None, checkable=False) -> QAction:
+    def _action(
+        self,
+        menu: QMenu,
+        text: str,
+        slot: Callable[..., object],
+        shortcut: str | QKeySequence.StandardKey | list[QKeySequence] | None = None,
+        checkable: bool = False,
+    ) -> QAction:
         action = QAction(text, self)
         if shortcut is not None:
             action.setShortcuts(

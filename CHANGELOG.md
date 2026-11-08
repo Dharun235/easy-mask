@@ -12,6 +12,8 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Auto-formatting and checks: mypy (strict-ish), pre-commit hooks via uv, `.editorconfig`, VS Code format-on-save, Claude Code PostToolUse ruff hook; mypy in CI.
+- CLAUDE.md sections on formatting/linting/type checking and on housekeeping and regular cleanups.
 - Layered test suite (unit, property-based, architecture, integration, golden-file, GUI, smoke, benchmark-data), coverage gate at 90%, docs/testing.md.
 - Annotation GUI (PySide6): polygon, rectangle, circle, line, line strip and point tools.
 - Edit mode: select, move shapes, drag vertices, delete, duplicate, copy/paste, relabel.

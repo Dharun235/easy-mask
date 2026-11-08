@@ -17,6 +17,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.hypothesis/
 .coverage
 htmlcov/
 
@@ -33,7 +34,9 @@ checkpoints/
 /exports/
 
 # ---------------------------------------------------------------- Editors / OS
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 *.swp
 .DS_Store

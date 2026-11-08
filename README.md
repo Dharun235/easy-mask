@@ -152,9 +152,9 @@ Contributions of all sizes are welcome: bug reports, docs, tests, features.
 
 ```bash
 uv sync                      # installs dev tools too
-uv run pre-commit install    # ruff on every commit
+uv run pre-commit install    # ruff + mypy + whitespace checks on every commit
 uv run pytest --cov          # 140+ tests: unit, property, integration, GUI, smoke (headless)
-uv run ruff check . && uv run ruff format --check .
+uv run pre-commit run --all-files   # lint, format, type check
 ```
 
 Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).

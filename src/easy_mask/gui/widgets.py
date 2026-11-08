@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
-from PySide6.QtWidgets import QListWidget, QListWidgetItem
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QWidget
 
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
@@ -74,7 +74,7 @@ class ShapeList(QListWidget):
 
     visibility_changed = Signal(int, bool)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.itemChanged.connect(self._on_item_changed)
 
@@ -114,7 +114,7 @@ class FlagList(QListWidget):
 
     flags_changed = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.itemChanged.connect(lambda _item: self.flags_changed.emit())
 
