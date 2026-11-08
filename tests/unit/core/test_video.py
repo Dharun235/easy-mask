@@ -74,3 +74,56 @@ def test_merge_auto_leaves_other_auto_objects():
     full[2:5, 2:5] = True
     new = masks.to_shape("car", full, flags={INTERPOLATED_FLAG: True})
     assert merge_auto([other], {("car", None)}, [new]) == [other, new]
+
+
+def test_subtract_from_object_cuts_only_that_object():
+    import numpy as np
+
+    from easy_mask.core import masks
+    from easy_mask.core.shapes import Shape, ShapeType
+    from easy_mask.core.video import edit_object
+
+    wing = Shape("wing", ShapeType.RECTANGLE, [(0, 0), (19, 9)], flags={"propagated": True})
+    leg = Shape("leg", ShapeType.RECTANGLE, [(10, 0), (19, 9)])
+    cut = np.zeros((20, 30), bool)
+    cut[:, 10:20] = True
+    result = edit_object([wing, leg], ("wing", None), cut, 20, 30, "subtract")
+    new_wing, same_leg = result
+    assert same_leg is leg  # other objects untouched
+    full = masks.to_full(new_wing, 20, 30)
+    assert full[5, 5] and not full[5, 15]
+    assert new_wing.flags == {"propagated": True}  # metadata kept
+
+
+def test_subtract_from_object_noop_and_removal():
+    import numpy as np
+
+    from easy_mask.core.shapes import Shape, ShapeType
+    from easy_mask.core.video import edit_object
+
+    wing = Shape("wing", ShapeType.RECTANGLE, [(0, 0), (9, 9)])
+    shapes = [wing]
+    miss = np.zeros((20, 30), bool)
+    miss[15:, 25:] = True
+    assert edit_object(shapes, ("wing", None), miss, 20, 30, "subtract") is shapes
+    assert edit_object(shapes, ("absent", None), miss, 20, 30, "subtract") is shapes
+    everything = np.ones((20, 30), bool)
+    assert edit_object(shapes, ("wing", None), everything, 20, 30, "subtract") == []
+
+
+def test_edit_object_add_merges_and_creates_from_template():
+    import numpy as np
+
+    from easy_mask.core import masks
+    from easy_mask.core.shapes import Shape, ShapeType
+    from easy_mask.core.video import edit_object
+
+    wing = Shape("wing", ShapeType.RECTANGLE, [(0, 0), (9, 9)], group_id=3)
+    region = np.zeros((20, 30), bool)
+    region[0:10, 20:25] = True
+    (merged,) = edit_object([wing], ("wing", 3), region, 20, 30, "add")
+    full = masks.to_full(merged, 20, 30)
+    assert full[5, 5] and full[5, 22] and merged.group_id == 3
+    assert edit_object([], ("wing", 3), region, 20, 30, "add") == []  # no template: nothing
+    (created,) = edit_object([], ("wing", 3), region, 20, 30, "add", template=wing)
+    assert created.label == "wing" and masks.to_full(created, 20, 30)[5, 22]

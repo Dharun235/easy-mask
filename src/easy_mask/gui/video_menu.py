@@ -8,15 +8,26 @@ are kept and steer the model.
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox
 
 from easy_mask.core import annotation as ann_io
+from easy_mask.core import masks
 from easy_mask.core.annotation import Annotation
 from easy_mask.core.interpolate import interpolate_frames
+from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape
-from easy_mask.core.video import ObjectKey, confirm, is_auto, merge_auto, object_key
+from easy_mask.core.video import (
+    PROPAGATED_FLAG,
+    ObjectKey,
+    confirm,
+    edit_object,
+    is_auto,
+    merge_auto,
+    object_key,
+)
 from easy_mask.gui.propagate import PropagationWorker
 from easy_mask.gui.video_import import VIDEO_FILTER
 from easy_mask.io.images import image_size
@@ -30,6 +41,11 @@ COPY_MODEL = "copy"  # --video-model value for model-free propagation
 MISSING_EXTRA = (
     "AI Propagate uses EfficientTAM (or SAM 2.1), which needs the optional video add-on "
     "(PyTorch, about 1 GB):\n\n    SAM2_BUILD_CUDA=0 uv sync --extra video"
+)
+REGION_LABEL = "__region__"  # temporary object the model tracks for Add / Subtract Through
+EDIT_HINT = (
+    "{op} Through Frames: select the mask to fix, then Shift+click the shape covering the "
+    "part to {op_lower}"
 )
 FALLBACK_NOTE = "AI tracking needs the video add-on (uv sync --extra video): copying instead"
 
@@ -78,6 +94,25 @@ class VideoMenu:
             lambda: self.propagate(-1, ai=False),
             "Ctrl+Alt+Left",
         )
+        menu.addSeparator()
+        self.add_action = window._action(
+            menu, "AI Add Through Frames...", lambda: self.edit_through("add"), "Ctrl+Shift+A"
+        )
+        self.cut_action = window._action(
+            menu,
+            "AI Subtract Through Frames...",
+            lambda: self.edit_through("subtract"),
+            "Ctrl+Shift+X",
+        )
+        window._action(
+            menu, "Copy Add Through Frames...", lambda: self.edit_through("add", ai=False)
+        )
+        window._action(
+            menu,
+            "Copy Subtract Through Frames...",
+            lambda: self.edit_through("subtract", ai=False),
+        )
+        menu.addSeparator()
         self.track_action = window._action(
             menu, "Track Objects into Next Frame", self._toggle_tracking, "Ctrl+Shift+T", True
         )
@@ -142,9 +177,13 @@ class VideoMenu:
 
     def _store(self, index: int, objects: set[ObjectKey], new: list[Shape]) -> None:
         """Merge automatic shapes into frame ``index`` (on screen, or straight to disk)."""
+        self._update_frame(index, lambda shapes: merge_auto(shapes, objects, new))
+
+    def _update_frame(self, index: int, transform: Callable[[list[Shape]], list[Shape]]) -> None:
+        """Apply ``transform`` to frame ``index``'s shapes: on screen (undoable) or on disk."""
         w = self.window
         if index == w.current_index:
-            w._replace_shapes(merge_auto(list(w.canvas.shapes), objects, new))
+            w._replace_shapes(transform(list(w.canvas.shapes)))
             return
         path = w.image_paths[index]
         json_path = ann_io.annotation_path_for(path, w.settings.output_dir)
@@ -154,7 +193,7 @@ class VideoMenu:
             width, height = image_size(path)
             relative = ann_io.relative_image_path(path, json_path)
             annotation = Annotation(relative, width, height)
-        annotation.shapes = merge_auto(annotation.shapes, objects, new)
+        annotation.shapes = transform(annotation.shapes)
         ann_io.save(annotation, json_path)
         w.file_list.mark_annotated(index)
 
@@ -226,6 +265,79 @@ class VideoMenu:
             w._replace_shapes(shapes)
         self._run(current, direction, int(count), objects, shapes, propagator)
 
+    def edit_through(
+        self, op: Literal["add", "subtract"], ai: bool = True, direction: int = +1
+    ) -> None:
+        """Add a region to an object, or cut it out, on this frame and the next ones.
+
+        Select the mask to fix first, then Shift+click the shape(s) covering the part to add
+        (a missed paw) or remove (a leg wrongly merged into a wing). The edit applies here
+        at once; with ``ai`` the video model then tracks that region through the next frames
+        so the edit follows it, otherwise the same pixels are used on every frame.
+        """
+        w = self.window
+        current = w.current_index
+        if current is None or self.running:
+            return
+        selection = w.canvas.selection
+        shapes = list(w.canvas.shapes)
+        regions = [shapes[i] for i in selection[1:] if shapes[i].shape_type.is_area]
+        if len(selection) < 2 or not shapes[selection[0]].shape_type.is_area or not regions:
+            w.statusBar().showMessage(EDIT_HINT.format(op=op.capitalize(), op_lower=op), 8000)
+            return
+        target = shapes[selection[0]]
+        key = object_key(target)
+        height, width = w.image_size[1], w.image_size[0]
+        region = np.zeros((height, width), dtype=bool)
+        for shape in regions:
+            region |= shape_to_mask(shape, height, width)
+
+        remaining = len(w.image_paths) - 1 - current if direction > 0 else current
+        count = 0
+        if remaining:
+            title = f"{'AI' if ai else 'Copy'} {op.capitalize()} Through Frames"
+            asked = w.ask_number(
+                w, title, "Also on the next frames:", min(DEFAULT_RUN, remaining), 0, remaining
+            )
+            if asked is None:
+                return
+            count = int(asked)
+        propagator = self._propagator_for(ai, ask=True) if count else self.copier
+        if propagator is None:
+            return
+
+        # This frame: drop the region shapes and add / remove their pixels.
+        kept = [s for i, s in enumerate(shapes) if i not in selection[1:]]
+        w._replace_shapes(edit_object(kept, key, region, height, width, op))
+        region_shape = masks.to_shape(REGION_LABEL, region)
+        verb = "Added to" if op == "add" else "Removed from"
+        if not count or region_shape is None:
+            w.statusBar().showMessage(f"{verb} the object on this frame", 4000)
+            return
+        template = target.copy()
+        template.flags = {**template.flags, PROPAGATED_FLAG: True}
+
+        def apply(index: int, new: list[Shape]) -> None:
+            moved = np.zeros((height, width), dtype=bool)
+            for shape in new:
+                moved |= shape_to_mask(shape, height, width)
+            self._update_frame(
+                index,
+                lambda frame: edit_object(frame, key, moved, height, width, op, template),
+            )
+
+        indices = [current + direction * step for step in range(count + 1)]
+        frame_shapes: list[list[Shape]] = [[region_shape]] + [[] for _ in indices[1:]]
+        copying = isinstance(propagator, CopyPropagator)
+        action = "Adding" if op == "add" else "Subtracting"
+        self._start(
+            indices,
+            frame_shapes,
+            propagator,
+            apply,
+            f"{action} through frames" if copying else f"AI {action.lower()} through frames",
+        )
+
     def _propagator_for(self, ai: bool, ask: bool) -> Propagator | None:
         """The copy propagator, or the AI model (loaded once).
 
@@ -260,36 +372,57 @@ class VideoMenu:
         propagator: Propagator,
     ) -> None:
         """Propagate ``objects`` from frame ``current`` over ``count`` frames in the background."""
-        w = self.window
         indices = [current + direction * step for step in range(count + 1)]
-        frames = [w.image_paths[i] for i in indices]
         frame_shapes = [self._frame_shapes(i) for i in indices]
         frame_shapes[0] = [s for s in shapes if object_key(s) in objects]  # only chosen objects
+        copying = isinstance(propagator, CopyPropagator)
+        self._start(
+            indices,
+            frame_shapes,
+            propagator,
+            lambda index, new: self._store(index, objects, new),
+            "Copying to frames" if copying else "AI propagating",
+        )
+
+    def _start(
+        self,
+        indices: list[int],
+        frame_shapes: list[list[Shape]],
+        propagator: Propagator,
+        on_frame: Callable[[int, list[Shape]], None],
+        task: str,
+    ) -> None:
+        """Run ``propagator`` over frames ``indices`` in the background with progress.
+
+        ``on_frame(frame index, propagated shapes)`` is called for each frame after the
+        first, on the GUI thread.
+        """
+        w = self.window
+        frames = [w.image_paths[i] for i in indices]
         size = (w.image_size[1], w.image_size[0])
         worker = PropagationWorker(propagator, frames, frame_shapes, size)
         worker.frame_done.connect(
-            lambda position, new: self._on_frame_done(indices, position, objects, new)
+            lambda position, new: self._on_frame_done(indices, position, new, on_frame)
         )
         worker.failed.connect(w._error)
         worker.finished.connect(self._on_finished)
         self.worker = worker
         self.stop_action.setEnabled(True)
         copying = isinstance(propagator, CopyPropagator)
-        task = "Copying to frames" if copying else "AI propagating"
         w.statusBar().showMessage(
             f"{task}..." if copying else f"{task}... (the first run loads the model)"
         )
-        w.progress.begin("propagate", task, total=count, cancel=self.stop)
+        w.progress.begin("propagate", task, total=len(indices) - 1, cancel=self.stop)
         worker.start()
 
     def _on_frame_done(
         self,
         indices: list[int],
         position: int,
-        objects: set[ObjectKey],
         new: list[Shape],
+        on_frame: Callable[[int, list[Shape]], None],
     ) -> None:
-        self._store(indices[position], objects, new)
+        on_frame(indices[position], new)
         self.window.progress.report("propagate", position)
         self.window.statusBar().showMessage(
             f"Propagated {position}/{len(indices) - 1} frames (Video > Stop to cancel)"

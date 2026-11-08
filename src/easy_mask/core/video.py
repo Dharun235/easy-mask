@@ -7,8 +7,11 @@ ids. Shapes created by interpolation or propagation carry a flag (``interpolated
 are replaced when an object is re-propagated, manual ones are never overwritten.
 """
 
+from typing import Literal
+
 import numpy as np
 
+from easy_mask.core.operations import with_pixels
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape
 
@@ -67,3 +70,42 @@ def merge_auto(shapes: list[Shape], objects: set[ObjectKey], new: list[Shape]) -
     replaced = objects - manual
     kept = [s for s in shapes if not (is_auto(s) and object_key(s) in replaced)]
     return kept + [s for s in new if object_key(s) in replaced]
+
+
+def edit_object(
+    shapes: list[Shape],
+    key: ObjectKey,
+    region: np.ndarray,
+    height: int,
+    width: int,
+    op: Literal["add", "subtract"],
+    template: Shape | None = None,
+) -> list[Shape]:
+    """Add ``region``'s pixels to object ``key``, or remove them from it.
+
+    The object's area shapes become one mask shape (keeping the first one's label, group,
+    note and flags) at the first one's position; if nothing is left, the object is
+    removed. If the object is absent, ``add`` creates it from ``template`` (when given).
+    Returns ``shapes`` unchanged when nothing would change.
+    """
+    targets = [i for i, s in enumerate(shapes) if s.shape_type.is_area and object_key(s) == key]
+    if not targets:
+        if op == "add" and template is not None and region.any():
+            created = with_pixels(template, region)
+            return [*shapes, created] if created is not None else shapes
+        return shapes
+    full = np.zeros((height, width), dtype=bool)
+    for i in targets:
+        full |= shape_to_mask(shapes[i], height, width)
+    edited = full | region if op == "add" else full & ~region
+    if np.array_equal(edited, full):
+        return shapes
+    replacement = with_pixels(shapes[targets[0]], edited)
+    result: list[Shape] = []
+    for i, shape in enumerate(shapes):
+        if i == targets[0]:
+            if replacement is not None:
+                result.append(replacement)
+        elif i not in targets:
+            result.append(shape)
+    return result

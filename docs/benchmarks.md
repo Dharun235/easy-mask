@@ -255,3 +255,14 @@ against the ground truth of frames 1-15:
 |---|---|---|---|---|
 | AI Propagate | 0.965 | 0.970 | 0.963 | 9.4 s (incl. model load) |
 | Copy | 0.635 | 0.914 | 0.503 | 0.1 s |
+
+### Subtract Through Frames (v0.9)
+
+Through the GUI on DAVIS 2017 `dogs-jump`: object 2 was merged into object 1's mask on
+every frame (a typical propagation mistake); one polygon over object 2 on frame 0, then
+Subtract Through Frames over 15 frames. Object-1 IoU against its ground truth, frames 1-15:
+
+| mode | before | after | frame 15 | time |
+|---|---|---|---|---|
+| AI Subtract (EfficientTAM tracks the removed part) | 0.174 | 0.755 | 0.857 | 9.9 s |
+| Copy Subtract (same pixels every frame) | 0.174 | 0.299 | 0.127 | 0.1 s |

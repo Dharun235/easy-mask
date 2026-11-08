@@ -1019,6 +1019,20 @@ class MainWindow(QMainWindow):
                 "Track objects into each next frame when pressing D: AI if installed, else copy "
                 "(on / off)  ·  Ctrl+Shift+T",
             ),
+            (
+                self.video.add_action,
+                "add_through",
+                "Add through frames: select the mask to fix, Shift+click a shape over the part "
+                "it is missing, then click; the AI follows that part through the next frames  "
+                "·  Ctrl+Shift+A",
+            ),
+            (
+                self.video.cut_action,
+                "subtract_through",
+                "Subtract through frames: select the mask to fix, Shift+click a shape over the "
+                "part to remove, then click; the AI follows that part through the next frames  "
+                "·  Ctrl+Shift+X",
+            ),
         ):
             action.setIcon(icon(icon_name))
             action.setToolTip(tip)

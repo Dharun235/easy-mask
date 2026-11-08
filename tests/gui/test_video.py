@@ -383,3 +383,98 @@ def test_tracking_toggle_is_remembered(make_window):
     first.video.track_action.setChecked(True)
     first.session.save()
     assert make_window(Settings()).video.tracking
+
+
+# ---------------------------------------------------------------------- subtract through frames
+
+
+def wing_and_cutter(window):
+    """A wide 'wing' rectangle and a polygon over its right part, selected wing-first."""
+    wing = Shape("wing", ShapeType.RECTANGLE, [(10, 10), (49, 29)])
+    cutter = Shape("wing", ShapeType.POLYGON, [(35, 5), (55, 5), (55, 35), (35, 35)])
+    window.canvas.set_shapes([wing, cutter])
+    window._commit()  # an undo step, as if the user had drawn them
+    window.canvas.set_selection([0, 1])
+
+
+def wing_pixels(shapes):
+    from easy_mask.core import masks as m
+
+    (wing,) = [s for s in shapes if s.label == "wing"]
+    return m.to_full(wing, 80, 100)
+
+
+def test_subtract_copy_cuts_this_and_next_frames(qtbot, window, video, image_dir):
+    for stem in FRAMES[1:]:
+        save_frame(image_dir, stem, [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (49, 29)])])
+    wing_and_cutter(window)
+    video.edit_through("subtract", ai=False)
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    here = wing_pixels(window.canvas.shapes)
+    assert len(window.canvas.shapes) == 1  # the cutting polygon is gone
+    assert here[20, 20] and not here[20, 40]
+    for stem in FRAMES[1:]:
+        later = wing_pixels(saved(image_dir, stem))
+        assert later[20, 20] and not later[20, 40]
+
+
+def test_subtract_ai_follows_the_moving_region(qtbot, window, video, image_dir):
+    for stem in FRAMES[1:]:
+        save_frame(image_dir, stem, [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (59, 29)])])
+    wing_and_cutter(window)
+    video.edit_through("subtract")  # the fake model moves the region 2 px per frame
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    frame2 = wing_pixels(saved(image_dir, "img2"))
+    assert frame2[20, 36] and not frame2[20, 38]  # cut moved from x=35 to x=37
+
+
+def test_subtract_needs_target_then_cutter(window, video):
+    window.canvas.set_shapes([Shape("wing", ShapeType.RECTANGLE, [(10, 10), (49, 29)])])
+    window.canvas.select(0)
+    video.edit_through("subtract")
+    assert "select the mask to fix" in window.statusBar().currentMessage()
+
+
+def test_subtract_this_frame_only_with_zero_frames(window, video):
+    window.ask_number = lambda *args: 0
+    wing_and_cutter(window)
+    video.edit_through("subtract")
+    assert not video.running
+    assert not wing_pixels(window.canvas.shapes)[20, 40]
+    window.undo()
+    assert len(window.canvas.shapes) == 2  # one undo brings back the wing and the cutter
+
+
+def test_subtract_cancelled_dialog_changes_nothing(window, video):
+    window.ask_number = lambda *args: None
+    wing_and_cutter(window)
+    video.edit_through("subtract")
+    assert len(window.canvas.shapes) == 2
+
+
+def test_add_through_frames_grows_the_object_and_creates_it_where_missing(
+    qtbot, window, video, image_dir
+):
+    save_frame(image_dir, "img2", [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (29, 29)])])
+    # img10 has no wing at all: Add creates it there from the region
+    wing = Shape("wing", ShapeType.RECTANGLE, [(10, 10), (29, 29)])
+    paw = Shape("wing", ShapeType.RECTANGLE, [(40, 10), (49, 29)])
+    window.canvas.set_shapes([wing, paw])
+    window._commit()
+    window.canvas.set_selection([0, 1])
+    video.edit_through("add", ai=False)
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    here = wing_pixels(window.canvas.shapes)
+    assert here[20, 20] and here[20, 45] and len(window.canvas.shapes) == 1
+    frame2 = wing_pixels(saved(image_dir, "img2"))
+    assert frame2[20, 20] and frame2[20, 45]
+    (created,) = saved(image_dir, "img10")
+    assert created.flags.get(PROPAGATED_FLAG) and wing_pixels([created])[20, 45]
+    assert not wing_pixels([created])[20, 20]  # only the added region exists there
+
+
+def test_add_hint_names_the_operation(window, video):
+    window.canvas.set_shapes([Shape("wing", ShapeType.RECTANGLE, [(10, 10), (49, 29)])])
+    window.canvas.select(0)
+    video.edit_through("add")
+    assert window.statusBar().currentMessage().startswith("Add Through Frames")

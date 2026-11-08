@@ -98,10 +98,12 @@ def test_propagate_and_track_buttons_follow_the_image_arrows(make_window):
     (toolbar,) = win.findChildren(QToolBar)
     texts = [a.text() for a in toolbar.actions() if not a.isSeparator()]
     i = texts.index("Next Image")
-    assert texts[i + 1 : i + 4] == [
+    assert texts[i + 1 : i + 6] == [
         "AI Propagate Forward...",
         "Copy to Next Frames...",
         "Track Objects into Next Frame",
+        "AI Add Through Frames...",
+        "AI Subtract Through Frames...",
     ]
     assert win.video.track_action.isCheckable()
     assert not win.video.propagate_action.icon().isNull()
