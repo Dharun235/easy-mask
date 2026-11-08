@@ -32,14 +32,12 @@ def test_command_line_labels_come_first(make_window, image_dir):
 
 
 def test_output_dir_is_remembered_relative(make_window, image_dir, tmp_path, monkeypatch):
-    from PySide6.QtWidgets import QFileDialog
 
     labels = image_dir / "labels"
     labels.mkdir()
-    win = make_window(Settings())
+    win = make_window(Settings(output_dir=labels))
     win.open_path(image_dir)
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(labels))
-    win.change_output_dir()
+    win.session.save_project()
     assert json.loads((image_dir / PROJECT_FILE).read_text())["output_dir"] == "labels"
     again = make_window(Settings())
     again.open_path(image_dir)
@@ -148,11 +146,13 @@ def test_export_on_close(make_window, image_dir, tmp_path, monkeypatch, driver):
     assert (out / "class_names.txt").exists()
 
 
-def test_export_again_before_any_export_explains(make_window, image_dir):
+def test_export_before_any_export_offers_the_formats(make_window, image_dir, monkeypatch):
     win = make_window(Settings())
     win.open_path(image_dir)
+    shown = []
+    monkeypatch.setattr(win.export_menu, "popup", lambda pos: shown.append(pos))
     win.export_again()
-    assert "Export Folder As" in win.statusBar().currentMessage()
+    assert shown and win.export_worker is None
 
 
 def test_unknown_export_format_in_project_is_ignored(make_window, image_dir):

@@ -17,7 +17,7 @@ Manual tools on par with classic annotators.
 - [x] Native `mask` shape type (PNG crop in JSON, labelme-compatible), pixel-exact export
 - [x] Brush and eraser (`B` / `X`, `[` `]` for size); brushing a polygon turns it into a mask
 - [x] Multi-select (Shift/Ctrl+click, shape list) and union / subtract / intersect
-- [x] Clean-up: fill holes, remove small specks, grow / shrink, smooth edges
+- [x] Clean-up: fill holes, remove small specks
 - [x] Polygon <-> mask conversion with a simplification tolerance
 - [x] Mask-fidelity benchmark on GrabCut / Berkeley / DAVIS
 
@@ -43,7 +43,7 @@ Manual tools on par with classic annotators.
 
 ## v0.6 — workflow (`feat/workflow`)
 - [x] COCO RLE export (`--rle`, pure numpy, byte-identical to pycocotools)
-- [x] Folder statistics (`easy-mask stats`, Workflow > Statistics): per-label objects, shapes, area
+- [x] Folder statistics (`easy-mask stats`, File > Statistics): per-label objects, shapes, area
 - [x] Review mode: step through every object (`N` / `Shift+N`), zoom and select, `reviewed` flag
 - [x] Copy shapes from the previous image (undoable)
 - [x] Label validation: `--strict-labels`, unknown-label report in stats

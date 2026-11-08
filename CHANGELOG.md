@@ -6,8 +6,16 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Changed
+- Four menus (File, Edit, View, Help). Video commands are one Propagate button with a dropdown (backward, AI or copy, frames per run, interpolate, clear labels from here, undo, stop) plus the Track toggle; mask operations moved to Edit > Mask and the right-click menu; labels are picked in the Labels panel; tools live in the toolbar.
+- AI Segment: a plain click always starts a new object; Shift adds to the selected one (a selected mask used to swallow new objects).
+- The Export button asks the format the first time, then repeats it.
+
 ### Removed
-- Add / Subtract Through Frames (replaced by the Cut tool and Cut Through Frames).
+- Separate Copy / Cut Through Frames buttons, the Video, Draw, Mask, Labels and Workflow menus, and multi-key shortcuts for them.
+- Grow / Shrink / Smooth, the Auto Save and Auto Clean-Up toggles (both always on) and Change Annotation Folder from the menus (`--output` / `--no-autosave` remain).
+- File > Import Video Frames (File > Open Video imports first).
+- Add / Subtract Through Frames (replaced by the Cut tool, which Propagate carries through frames).
 - The Save toolbar button (auto-save is on; Ctrl+S and File > Save remain).
 - GrabCut, Watershed and Superpixels tools (AI Segment's box prompt, the wand and the brush cover them; core GrabCut stays as a benchmark baseline).
 - Workflow > Copy Shapes from Previous Image (same as Copy to Next Frames / Track).
@@ -26,9 +34,10 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
-- Cut tool (`K`): drag a lasso to cut that part out of every mask under it, no label needed (only the selected objects, if any). Video > Cut Through Frames (`Ctrl+Shift+X`) repeats the last cut on the next frames, the video model following the part (copy without the video add-on).
-- Video > Clear Labels on Frames: delete every shape on this and the next frames.
-- One undo per video run: right after AI Propagate, Copy, Track, Cut Through, Interpolate or Clear, `Ctrl+Z` restores every frame the run touched (Video > Undo Last Video Run, `Ctrl+Alt+Z`, works until the next run).
+- Cut tool (scissors): drag a loop to cut that part out of every mask under it, no label needed (only the selected objects, if any). Propagate and Track carry the cut part through the next frames like another object (copy without the video add-on).
+- Clear Labels From Here (Propagate's dropdown): delete every shape on this and the next frames.
+- One undo per video run: right after Propagate, Track, Interpolate or Clear Labels, Undo restores every frame the run touched (Undo Last Run in Propagate's dropdown works until the next run). The status bar says how many frames changed, and why when none could.
+- Right-click menu on shapes: edit label, delete, duplicate, propagate, mask operations.
 - New objects whose label is already on the frame get the next free group id, so same-label objects stay separate when propagating, cutting and exporting.
 - Objects export (File > Export Folder As > Objects, or `--format objects --parts ...`): per object a binary mask PNG, a cutout of the original pixels (RGBA, cropped) and/or coordinates (`objects.json` / `objects.csv` with box, area and outline points); the choice is remembered per folder.
 - AI Propagate vs Copy: separate actions and toolbar buttons. AI Propagate gives the frame's masks (from any area shape) to EfficientTAM / SAM 2.1; Copy repeats them unchanged. Without the video add-on, AI Propagate explains how to install it and offers copying instead.

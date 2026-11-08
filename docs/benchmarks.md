@@ -243,7 +243,7 @@ below 0.05% of the image, at least 20 px; larger holes are kept):
 | DAVIS | 345 | 0.6809 | 0.6819 | 205/345 | 159 / 46 |
 
 A small but consistent gain that mostly removes visual noise (stray specks, pinholes), so
-it is on by default (Mask > Auto Clean-Up). The brush and eraser are never cleaned.
+it is always on. The brush and eraser are never cleaned.
 
 ### AI Propagate vs Copy from one polygon (v0.8)
 
@@ -256,15 +256,15 @@ against the ground truth of frames 1-15:
 | AI Propagate | 0.965 | 0.970 | 0.963 | 9.4 s (incl. model load) |
 | Copy | 0.635 | 0.914 | 0.503 | 0.1 s |
 
-### Cut Through Frames (v0.9)
+### Cutting a part through frames (v0.9)
 
 Through the GUI on DAVIS 2017 `dogs-jump`: object 2 was merged into object 1's mask on
 every frame (a typical propagation mistake); one lasso cut around object 2 on frame 0,
-then Cut Through Frames over 15 frames. Object-1 IoU against its ground truth, frames 1-15:
+then Propagate (which carries the cut) over 15 frames. Object-1 IoU against its ground truth, frames 1-15:
 
 | mode | before | after | frame 15 | time |
 |---|---|---|---|---|
-| AI (EfficientTAM tracks the cut part) | 0.174 | 0.755 | 0.857 | 7.2 s |
+| AI (EfficientTAM tracks the cut part) | 0.174 | 0.760 | 0.857 | 7.2 s |
 | Copy (same pixels every frame) | 0.174 | 0.299 | 0.127 | 0.1 s |
 
 One `Ctrl+Z` afterwards restored all 15 frames exactly (IoU 1.000 with the merged masks).

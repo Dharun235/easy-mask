@@ -137,27 +137,6 @@ def cleanup_area(height: int, width: int) -> int:
     return max(20, round(0.0005 * height * width))
 
 
-def _disc(radius: int) -> np.ndarray:
-    return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
-
-
-def grow(full: np.ndarray, pixels: int) -> np.ndarray:
-    """Dilate the mask outward by ``pixels``."""
-    return cv2.dilate(full.astype(np.uint8), _disc(pixels)).astype(bool)
-
-
-def shrink(full: np.ndarray, pixels: int) -> np.ndarray:
-    """Erode the mask inward by ``pixels``."""
-    return cv2.erode(full.astype(np.uint8), _disc(pixels)).astype(bool)
-
-
-def smooth(full: np.ndarray, radius: int = 2) -> np.ndarray:
-    """Smooth jagged edges: morphological opening then closing with a disc."""
-    kernel = _disc(radius)
-    opened = cv2.morphologyEx(full.astype(np.uint8), cv2.MORPH_OPEN, kernel)
-    return cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel).astype(bool)
-
-
 # ---------------------------------------------------------------------- conversion
 
 

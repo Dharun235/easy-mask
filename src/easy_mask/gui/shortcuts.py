@@ -21,24 +21,34 @@ EXTRA = [  # canvas keys that are not menu commands
 
 
 def shortcut_rows(window: QMainWindow) -> list[tuple[str, str, str]]:
-    """``(menu, keys, command)`` for every menu command that has a shortcut."""
-    rows = []
+    """``(group, keys, command)`` for every command with a shortcut.
+
+    The group is the menu a command sits in, or "Tools & labels" for keyboard-only ones
+    (tool letters, label numbers, next / previous image).
+    """
+    titles: dict[QAction, str] = {}
     for menu_action in window.menuBar().actions():
         menu = menu_action.menu()
         if isinstance(menu, QMenu):
-            rows += _rows(menu, menu_action.text().replace("&", ""))
+            _collect(menu, menu_action.text().replace("&", ""), titles)
+    rows = []
+    for action in window.actions():
+        keys = " / ".join(
+            k.toString(k.SequenceFormat.NativeText) for k in action.shortcuts() if not k.isEmpty()
+        )
+        if keys.strip(" /"):
+            group = titles.get(action, "Tools & labels")
+            rows.append((group, keys, action.text().replace("&", "").rstrip(".")))
     return rows + EXTRA
 
 
-def _rows(menu: QMenu, title: str) -> list[tuple[str, str, str]]:
-    rows = []
+def _collect(menu: QMenu, title: str, titles: dict[QAction, str]) -> None:
     for action in menu.actions():
-        if action.menu() is not None:
-            rows += _rows(action.menu(), title)  # type: ignore[arg-type]
-        elif isinstance(action, QAction) and action.shortcuts():
-            keys = " / ".join(k.toString(k.SequenceFormat.NativeText) for k in action.shortcuts())
-            rows.append((title, keys, action.text().replace("&", "").rstrip(".")))
-    return rows
+        sub = action.menu()
+        if isinstance(sub, QMenu):
+            _collect(sub, title, titles)
+        else:
+            titles[action] = title
 
 
 class ShortcutsDialog(QDialog):

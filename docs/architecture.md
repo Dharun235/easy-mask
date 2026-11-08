@@ -66,7 +66,7 @@ src/easy_mask/
     progress.py          status-bar progress panel (several tasks, Cancel)
     export_worker.py     dataset export on a background thread
     object_export_dialog.py  Objects export: choose binary masks / cutouts / coordinates
-    video_import.py      Import Video Frames dialog + background extraction worker
+    video_import.py      video import dialog (format, folder, every n-th frame) + worker
     tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
     tools/brush.py       brush and eraser
     tools/lasso.py       cut: lasso a region out of the masks under it
@@ -120,7 +120,7 @@ across frames is `(label, group_id)`; `free_group_id` gives a new object with a 
 already on the frame its own group id.
 
 ```
-Video > Propagate -> VideoMenu.propagate: confirm this frame's shapes (drop auto flags),
+Propagate button -> VideoMenu.propagate: confirm this frame's shapes (drop auto flags),
                      read the range's annotations, start PropagationWorker
 PropagationWorker (QThread) -> track(propagator, frames, shapes)
                                  |- prompts: this frame's area shapes (rasterized)
@@ -136,8 +136,11 @@ PropagationWorker (QThread) -> track(propagator, frames, shapes)
 again" safe. The model sits behind the small `Propagator` protocol, so GUI tests use a
 deterministic fake and the real backend (PyTorch) is only imported when first used.
 
-Cut Through Frames propagates the cut region itself (a temporary `__region__` object) and
-calls `cut_region` on each frame with where it moved. Every run (propagate, copy, track,
+A cut made with the Cut tool is remembered per frame (`VideoMenu.last_cut`: the removed
+pixels, not the whole lasso). Propagate and Track send it along as one more object (a
+temporary `__region__` label) and call `cut_region` on each frame with where it moved;
+masks the cut is fixing do not prompt the model in that run, or they would pull the part
+back. Every run (propagate, copy, track,
 cut through, interpolate, clear) records each frame's shapes before its first change in
 `VideoMenu.journal`; `undo_run` writes them back (deleting files the run created).
 `MainWindow.undo` does that instead of a canvas undo while `History.version` still equals

@@ -13,8 +13,8 @@ from functools import partial
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QPixmap
+from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QCursor, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSizePolicy,
     QStackedWidget,
+    QToolButton,
     QWidget,
 )
 
@@ -36,8 +37,9 @@ from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks, operations
 from easy_mask.core.annotation import Annotation
 from easy_mask.core.history import History
+from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape, ShapeType
-from easy_mask.core.video import cut_region, free_group_id, object_key
+from easy_mask.core.video import ObjectKey, cut_region, free_group_id, object_key
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.display_dialog import DisplayDialog
 from easy_mask.gui.export_worker import ExportWorker
@@ -54,13 +56,12 @@ from easy_mask.gui.tools.brush import BrushTool
 from easy_mask.gui.tools.lasso import LassoCutTool
 from easy_mask.gui.tools.region import MagicWandTool
 from easy_mask.gui.video_import import (
-    VIDEO_FILTER,
     ImportOptions,
     VideoImportDialog,
     VideoImportWorker,
     default_options,
 )
-from easy_mask.gui.video_menu import VideoMenu
+from easy_mask.gui.video_menu import Cut, VideoMenu
 from easy_mask.gui.welcome import WelcomePage
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
 from easy_mask.gui.workflow import Workflow
@@ -74,7 +75,7 @@ DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 # Toolbar entries: (name, short label, tool, shortcut, icon, group). A ShapeType draws that
 # shape, None is edit mode, and a string names a pixel tool from MainWindow.pixel_tools. A
 # new group starts a new section of the toolbar; MENU_ONLY tools (not masks) are kept out of
-# the toolbar to keep it calm but stay in the Draw menu with their keys.
+# the toolbar to keep it calm and work only with their keys.
 MENU_ONLY = "menu"
 TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
     ("Select / Edit", "Select", None, "E", "edit", "select"),
@@ -144,6 +145,7 @@ class MainWindow(QMainWindow):
             partial(LabelDialog.ask, allowed=self._allowed_labels())
         )
         self.ask_number = ask_number
+        self.show_menu: Callable[[QMenu, QPoint], object] = QMenu.exec  # swappable in tests
         self.load_segmenter: Callable[[ProgressFn], Segmenter] = lambda progress: (
             efficient_sam.load(self.settings.ai_model, progress)
         )
@@ -269,14 +271,27 @@ class MainWindow(QMainWindow):
                 shortcut if isinstance(shortcut, list) else [QKeySequence(shortcut)]
             )
         action.setCheckable(checkable)
-        action.triggered.connect(slot)
+        # Only checkable actions pass their state: Qt would otherwise feed ``checked=False``
+        # into the slot's first optional parameter (e.g. a direction).
+        action.triggered.connect(slot if checkable else lambda _checked=False: slot())
         menu.addAction(action)
         self.addAction(action)  # keep shortcuts active even when the menu bar is hidden
         return action
 
+    def _key(
+        self, text: str, slot: Callable[..., object], shortcut: str, checkable: bool = False
+    ) -> QAction:
+        """A keyboard-only command (tool letters, label numbers): no menu entry."""
+        action = QAction(text, self)
+        action.setShortcut(QKeySequence(shortcut))
+        action.setCheckable(checkable)
+        action.triggered.connect(slot if checkable else lambda _checked=False: slot())
+        self.addAction(action)
+        return action
+
     def _build_actions(self) -> None:
         bar = self.menuBar()
-        toolbar = self.addToolBar("Tools")  # one quiet row: file | tools | export
+        toolbar = self.addToolBar("Tools")  # one quiet row: file | frames | tools | export
         self.toolbar = toolbar
         toolbar.setObjectName("Tools")
         toolbar.setMovable(False)
@@ -285,31 +300,25 @@ class MainWindow(QMainWindow):
         std = QKeySequence.StandardKey
 
         m = bar.addMenu("&File")
-        self._action(m, "Open Image...", self.open_image_dialog, std.Open)
-        open_folder = self._action(m, "Open Folder...", self.open_folder_dialog, "Ctrl+Shift+O")
+        self.file_menu = m
+        open_folder = self._action(m, "Open Folder...", self.open_folder_dialog, std.Open)
+        self._action(m, "Open Image...", self.open_image_dialog)
+        open_video = self._action(m, "Open Video...", lambda: self.video.open_video_dialog())
         m.addMenu(self.session.recent_menu)
-        import_video = self._action(m, "Import Video Frames...", self.import_video_dialog)
-        self._action(m, "Change Annotation Folder...", self.change_output_dir)
         m.addSeparator()
         self._action(m, "Save", self.save, std.Save)
-        self.autosave_action = self._action(m, "Auto Save", self._toggle_autosave, checkable=True)
-        self.autosave_action.setChecked(self.settings.autosave)
-        m.addSeparator()
-        next_image = self._action(m, "Next Image", self.next_image, "D")
-        prev_image = self._action(m, "Previous Image", self.prev_image, "A")
-        m.addSeparator()
-        export_menu = m.addMenu("Export Folder As")
+        export_menu = m.addMenu("Export As")
+        self.export_menu = export_menu
         for fmt, name in export.EXPORT_NAMES.items():
-            self._action(export_menu, name, lambda _=False, f=fmt: self.export_dataset(f))
-        self._export_again_action = self._action(
-            m, "Export Again", self.export_again, "Ctrl+Shift+E"
-        )
+            self._action(export_menu, name, lambda f=fmt: self.export_dataset(f))
+        export_menu.addSeparator()
         self.export_on_close_action = self._action(
-            m,
+            export_menu,
             "Export Again When Closing",
             lambda _=False: self.session.save_project(),
             checkable=True,
         )
+        self._export_again_action = self._action(m, "Export Again", self.export_again)
         m.addSeparator()
         self._action(m, "Quit", self.close, std.Quit)
 
@@ -319,20 +328,22 @@ class MainWindow(QMainWindow):
             m, "Redo", self.redo, [QKeySequence("Ctrl+Shift+Z"), QKeySequence("Ctrl+Y")]
         )
         m.addSeparator()
-        self._action(m, "Edit Label", self.edit_label, "Ctrl+E")
-        self._action(m, "Delete Shape", self.delete_selected, std.Delete)
-        self._action(m, "Duplicate Shape", self.duplicate_selected, "Ctrl+D")
-        self._action(m, "Copy Shape", self.copy_selected, std.Copy)
-        self._action(m, "Paste Shape", self.paste, std.Paste)
+        self._action(m, "Edit Label", self.edit_label)
+        self._action(m, "Delete", self.delete_selected, std.Delete)
+        self._action(m, "Duplicate", self.duplicate_selected, "Ctrl+D")
+        self._action(m, "Copy", self.copy_selected, std.Copy)
+        self._action(m, "Paste", self.paste, std.Paste)
+        m.addSeparator()
+        self.mask_menu = m.addMenu("Mask")
+        self._build_mask_menu(self.mask_menu)
 
-        m = bar.addMenu("&Draw")
+        # Tools live in the toolbar; their letters work as shortcuts.
         self.tool_group = QActionGroup(self)
         self.tool_actions: dict[ShapeType | str | None, QAction] = {}
         group = None
         for text, short, mode, key, icon_name, tool_group in TOOLS:
-            action = self._action(
-                m, text, lambda _=False, md=mode: self.set_tool(md), key, checkable=True
-            )
+            action = self._key(text, lambda md=mode: self.set_tool(md), key)
+            action.setCheckable(True)
             action.setIcon(icon(icon_name))
             action.setIconText(short)
             action.setToolTip(f"{text}  ·  {key}")
@@ -345,39 +356,17 @@ class MainWindow(QMainWindow):
             group = tool_group
             toolbar.addAction(action)
         self.tool_actions[None].setChecked(True)
-
-        m = bar.addMenu("&Mask")
-        self._action(m, "Union", lambda: self.combine("union"))
-        self._action(m, "Subtract", lambda: self.combine("subtract"))
-        self._action(m, "Intersect", lambda: self.combine("intersect"))
-        m.addSeparator()
-        self._action(m, "Fill Holes", lambda: self.map_selected(masks.fill_holes))
-        self._action(m, "Remove Small Specks...", self.remove_specks)
-        self._action(m, "Grow 1 px", lambda: self.map_selected(lambda f: masks.grow(f, 1)))
-        self._action(m, "Shrink 1 px", lambda: self.map_selected(lambda f: masks.shrink(f, 1)))
-        self._action(m, "Smooth Edges", lambda: self.map_selected(masks.smooth))
-        m.addSeparator()
-        self.cleanup_action = self._action(
-            m, "Auto Clean-Up of AI / Smart-Tool Masks", self._toggle_cleanup, checkable=True
-        )
-        self.cleanup_action.setChecked(self.auto_cleanup)
-        m.addSeparator()
-        self._action(m, "Threshold / Colour Range...", self.open_threshold, "Ctrl+T")
-        m.addSeparator()
-        self._action(m, "Convert to Mask", self.convert_to_masks)
-        self._action(m, "Convert to Polygons...", self.convert_to_polygons)
-
-        m = bar.addMenu("&Labels")
+        # Labels: click one in the Labels panel, or press its number; 0 asks each time.
         for number in range(1, 10):
-            self._action(
-                m,
+            self._key(
                 f"Use Label {number}",
-                lambda _=False, n=number: self.set_active_label_number(n),
+                lambda n=number: self.set_active_label_number(n),
                 str(number),
             )
-        self._action(m, "Ask for Label Every Time", lambda: self.set_active_label(None), "0")
+        self._key("Ask for Label Every Time", lambda: self.set_active_label(None), "0")
 
         m = bar.addMenu("&View")
+        self.view_menu = m
         panels = m.addMenu("Panels")
         for dock in self.docks:
             # Qt disables a dock's own toggle action without a close button, so use ours.
@@ -394,21 +383,23 @@ class MainWindow(QMainWindow):
         )
         self._action(m, "Zoom Out", lambda: self.canvas.zoom_by(0.8), "Ctrl+-")
         self._action(m, "Fit Window", self.canvas.fit_to_window, "F")
-        self._action(m, "Actual Size", self.canvas.zoom_to_actual_size, "Ctrl+0")
         fill = self._action(m, "Fill Shapes", self._toggle_fill, checkable=True)
         fill.setChecked(True)
         self._action(m, "Adjust Display...", self.open_display)
+        m.addSeparator()
 
+        next_image = self._key("Next Image", self.next_image, "D")
+        prev_image = self._key("Previous Image", self.prev_image, "A")
         # File and history actions go in front of the tools; export sits alone on the right.
         first_tool = toolbar.actions()[0]
         for section in (
             (
-                (open_folder, "open", "Open folder  ·  Ctrl+Shift+O"),
-                (import_video, "video", "Import video frames"),
+                (open_folder, "open", "Open folder"),
+                (open_video, "video", "Open video (its frames are imported first)"),
             ),
             (
-                (self.undo_action, "undo", "Undo  ·  Ctrl+Z"),
-                (self.redo_action, "redo", "Redo  ·  Ctrl+Shift+Z"),
+                (self.undo_action, "undo", "Undo  ·  right after Propagate: the whole run"),
+                (self.redo_action, "redo", "Redo"),
             ),
             (
                 (prev_image, "prev", "Previous image  ·  A"),
@@ -425,7 +416,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(spacer)
         self._export_again_action.setIcon(icon("export"))
         self._export_again_action.setToolTip(
-            "Export again (last format and folder)  ·  Ctrl+Shift+E"
+            "Export (first time: choose format and folder; then repeats it)"
         )
         toolbar.addAction(self._export_again_action)
 
@@ -436,11 +427,45 @@ class MainWindow(QMainWindow):
         self._action(m, "About", self._about)
         self._update_undo_actions()
 
+    def _build_mask_menu(self, m: QMenu) -> None:
+        """Mask operations on the selected shapes (Edit > Mask and the right-click menu)."""
+        self._action(m, "Union", lambda: self.combine("union"))
+        self._action(m, "Subtract", lambda: self.combine("subtract"))
+        self._action(m, "Intersect", lambda: self.combine("intersect"))
+        m.addSeparator()
+        self._action(m, "Fill Holes", lambda: self.map_selected(masks.fill_holes))
+        self._action(m, "Remove Small Specks...", self.remove_specks)
+        self._action(m, "Threshold / Colour Range...", self.open_threshold)
+        m.addSeparator()
+        self._action(m, "Convert to Mask", self.convert_to_masks)
+        self._action(m, "Convert to Polygons...", self.convert_to_polygons)
+
+    def _show_context_menu(self, position: QPoint) -> None:
+        """Right-click in Select mode: what can be done with the shape(s) under the cursor."""
+        menu = QMenu(self)
+        has_selection = bool(self.canvas.selection)
+        for text, slot in (
+            ("Edit Label", self.edit_label),
+            ("Delete", self.delete_selected),
+            ("Duplicate", self.duplicate_selected),
+        ):
+            menu.addAction(text, slot).setEnabled(has_selection)
+        menu.addSeparator()
+        menu.addAction(
+            icon("propagate"),
+            "Propagate Selected" if has_selection else "Propagate All",
+            lambda: self.video.propagate(+1),
+        )
+        menu.addSeparator()
+        menu.addMenu(self.mask_menu).setEnabled(has_selection)
+        self.show_menu(menu, position)
+
     def _connect_canvas(self) -> None:
         self.canvas.shape_drawn.connect(self._on_shape_drawn)
         self.canvas.shapes_edited.connect(self._commit)
         self.canvas.selection_changed.connect(self.shape_list.select_rows)
         self.canvas.double_clicked_shape.connect(lambda _i: self.edit_label())
+        self.canvas.context_menu_requested.connect(self._show_context_menu)
         self.canvas.delete_requested.connect(self.delete_selected)
         self.canvas.status_changed.connect(lambda text: self.status_label.setText(text))
 
@@ -489,12 +514,6 @@ class MainWindow(QMainWindow):
         self._load(start)
 
     # ------------------------------------------------------------------ video import
-
-    def import_video_dialog(self) -> None:
-        """File > Import Video Frames: pick a video, then choose how to import it."""
-        name, _ = QFileDialog.getOpenFileName(self, "Import Video Frames", "", VIDEO_FILTER)
-        if name:
-            self.import_video(Path(name))
 
     def import_video(self, video: Path) -> None:
         """Ask how to turn ``video`` into images, then extract them in the background."""
@@ -616,16 +635,6 @@ class MainWindow(QMainWindow):
         if name:
             self.open_path(Path(name))
 
-    def change_output_dir(self) -> None:
-        """Choose where annotation JSON files are read from and written to."""
-        name = QFileDialog.getExistingDirectory(self, "Annotation Folder")
-        if name and self.maybe_save():
-            self.settings.output_dir = Path(name)
-            self.session.save_project()
-            self._refresh_file_list()
-            if self.current_index is not None:
-                self._load(self.current_index)
-
     # ------------------------------------------------------------------ saving
 
     def current_annotation(self) -> Annotation | None:
@@ -681,9 +690,6 @@ class MainWindow(QMainWindow):
         self.dirty = True
         self._update_title()
 
-    def _toggle_autosave(self, checked: bool) -> None:
-        self.settings.autosave = checked
-
     # ------------------------------------------------------------------ editing
 
     def _commit(self) -> None:
@@ -736,9 +742,9 @@ class MainWindow(QMainWindow):
 
     def _show_active_label(self) -> None:
         if self.active_label is None:
-            text = "Label: ask each time (1-9 to pick)"
+            text = "Label: ask each time (click a label to use it)"
         else:
-            text = f"Label: {self.active_label}  (0 = ask)"
+            text = f"Label: {self.active_label}  (click it again to ask)"
         self.active_label_status.setText(text)
 
     def _label_for_new_shape(self) -> LabelInfo | None:
@@ -782,9 +788,6 @@ class MainWindow(QMainWindow):
         self._commit()
         self.canvas.select(select)
 
-    def _toggle_cleanup(self, checked: bool) -> None:
-        self.auto_cleanup = checked
-
     def _apply_smart(self, full: np.ndarray, index: int | None) -> None:
         """Store an AI / smart-tool result, tidied first if auto clean-up is on."""
         if self.auto_cleanup:
@@ -820,17 +823,32 @@ class MainWindow(QMainWindow):
         """Cut ``region`` out of every mask under it (only the selected objects, if any)."""
         selected = [self.canvas.shapes[i] for i in self.canvas.selection]
         keys = {object_key(s) for s in selected} or None
-        shapes = cut_region(self.canvas.shapes, region, *self._size, keys)
-        if shapes is self.canvas.shapes:
+        before = self.canvas.shapes
+        shapes = cut_region(before, region, *self._size, keys)
+        if shapes is before:
             self.statusBar().showMessage("Nothing to cut there", 3000)
             return
         self._replace_shapes(shapes)
         if self.current_index is not None:
-            self.video.last_cut = (self.current_index, region, keys)
-        follow = (
-            "  ·  Ctrl+Shift+X repeats it on the next frames" if len(self.image_paths) > 1 else ""
-        )
-        self.statusBar().showMessage(f"Cut{follow}", 6000)
+            self._remember_cut(region, keys, before)
+        follow = "  ·  Propagate carries the cut through the next frames"
+        self.statusBar().showMessage("Cut" + (follow if len(self.image_paths) > 1 else ""), 8000)
+
+    def _remember_cut(
+        self, region: np.ndarray, keys: set[ObjectKey] | None, before: list[Shape]
+    ) -> None:
+        """Keep what was cut on this frame (added to earlier cuts here) for Propagate."""
+        assert self.current_index is not None
+        covered = np.zeros(self._size, dtype=bool)
+        for shape in before:
+            if shape.shape_type.is_area and (keys is None or object_key(shape) in keys):
+                covered |= shape_to_mask(shape, *self._size)
+        part = region & covered  # the removed pixels: the part the model will follow
+        last = self.video.last_cut
+        if last is not None and last.frame == self.current_index:
+            part = part | last.part
+            keys = None if keys is None or last.keys is None else keys | last.keys
+        self.video.last_cut = Cut(self.current_index, part, keys)
 
     def combine(self, op: operations.CombineOp) -> None:
         """Union / subtract / intersect the selected shapes; the first picked is the target."""
@@ -981,8 +999,8 @@ class MainWindow(QMainWindow):
 
     def export_again(self) -> None:
         """Repeat the last export (format and folder) without asking."""
-        if self.last_export is None:
-            self.statusBar().showMessage("Export once with File > Export Folder As first", 5000)
+        if self.last_export is None:  # first time: pick the format (then the folder)
+            self.export_menu.popup(QCursor.pos())
             return
         if self.image_path is not None and self.maybe_save():
             self._export(*self.last_export)
@@ -1032,38 +1050,26 @@ class MainWindow(QMainWindow):
         self.canvas.update()
 
     def _add_video_buttons(self) -> None:
-        """Propagate and Track buttons right after the image arrows (the menu is easy to miss)."""
+        """Propagate (with its dropdown) and Track, right after the image arrows."""
         actions = self.toolbar.actions()
         next_index = next(i for i, a in enumerate(actions) if a.text() == "Next Image")
         before = actions[next_index + 1]
-        for action, icon_name, tip in (
-            (
-                self.video.propagate_action,
-                "propagate",
-                "AI Propagate: track the selected (or all) objects through the next frames "
-                "with EfficientTAM  ·  Ctrl+Shift+Right",
-            ),
-            (
-                self.video.copy_action,
-                "copy",
-                "Copy the selected (or all) masks unchanged to the next frames  ·  Ctrl+Alt+Right",
-            ),
-            (
-                self.video.track_action,
-                "track",
-                "Track objects into each next frame when pressing D: AI if installed, else copy "
-                "(on / off)  ·  Ctrl+Shift+T",
-            ),
-            (
-                self.video.cut_through_action,
-                "cut_through",
-                "Cut through frames: repeat the last Cut (K) on the next frames; the AI follows "
-                "the cut part as it moves  ·  Ctrl+Shift+X",
-            ),
-        ):
-            action.setIcon(icon(icon_name))
-            action.setToolTip(tip)
+        propagate = QAction(icon("propagate"), "Propagate", self)
+        propagate.setToolTip(
+            "Propagate: carry the selected (or all) objects and your last cut through the "
+            "next frames. Arrow: backward, AI or copy, frames per run, clear, undo, stop"
+        )
+        propagate.triggered.connect(lambda _=False: self.video.propagate(+1))
+        propagate.setMenu(self.video.menu)
+        self.propagate_button_action = propagate
+        track = self.video.track_action
+        track.setIcon(icon("track"))
+        track.setToolTip("Track: each Next Image carries the objects and your cut along (on / off)")
+        for action in (propagate, track):
             self.toolbar.insertAction(before, action)
+        button = self.toolbar.widgetForAction(propagate)
+        if isinstance(button, QToolButton):
+            button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
 
     def _show_panels(self, visible: bool) -> None:
         """Show the side panels (the Flags panel only when there are flags)."""

@@ -2,8 +2,8 @@
 
 * Left-click: a point on the object. Right-click or Alt+click: a point on the background.
 * Drag: a box around the object (replaces the previous box).
-* The mask preview updates after every prompt. Enter or double-click accepts it: a new
-  mask (its label is asked), or, if a mask/area shape is selected, added to that shape.
+* The mask preview updates after every prompt. Enter or double-click accepts it as a new
+  object; prompts made with Shift held add it to the selected shape instead.
 * Esc clears the prompts, Backspace removes the last one.
 
 The image is encoded in the background (see :mod:`~easy_mask.gui.tools.ai_worker`);
@@ -100,6 +100,7 @@ class AiSegmentTool(QObject, CanvasTool):
         self.mask: np.ndarray | None = None  # current preview, full image size
         self.ready = False  # the current image is encoded
         self._order: list[str] = []  # "point" / "box", so Backspace undoes the latest
+        self.add_to_selection = False  # a Shift+prompt: Enter adds to the selected shape
         self._canvas: Canvas | None = None
         self._generation = 0  # bumped per encode request; only the newest result counts
         self._jobs: dict[int, EncodeJob] = {}  # keeps running jobs (and signals) alive
@@ -175,6 +176,8 @@ class AiSegmentTool(QObject, CanvasTool):
         alt = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
         right = isinstance(event, QMouseEvent) and event.button() == Qt.MouseButton.RightButton
         self._press, self._press_negative, self._drag_end = p, alt or right, None
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            self.add_to_selection = True
 
     def move(self, canvas: "Canvas", p: Point, event: QInputEvent) -> None:
         """Show a box once a positive press has been dragged far enough."""
@@ -238,6 +241,7 @@ class AiSegmentTool(QObject, CanvasTool):
         """Drop every prompt and the preview."""
         self.points, self.labels, self.box, self._order = [], [], None, []
         self._press = self._drag_end = None
+        self.add_to_selection = False
         self._set_mask(None)
 
     def cancel(self, canvas: "Canvas") -> None:
@@ -266,7 +270,7 @@ class AiSegmentTool(QObject, CanvasTool):
         if canvas is None or self.mask is None or not self.mask.any():
             return
         full = self.mask
-        index = canvas.selected
+        index = canvas.selected if self.add_to_selection else None
         if index is not None and canvas.shapes[index].shape_type.is_area:
             full = full | shape_to_mask(canvas.shapes[index], *full.shape)
         else:

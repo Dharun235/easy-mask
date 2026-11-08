@@ -91,15 +91,6 @@ def test_remove_small_keeps_big_blobs():
     assert cleaned.sum() == 400 and not cleaned[35, 45]
 
 
-def test_grow_shrink_smooth():
-    full = blob(box=(10, 10, 20, 20))
-    assert masks.grow(full, 2).sum() > full.sum()
-    assert masks.shrink(full, 2).sum() < full.sum()
-    jagged = full.copy()
-    jagged[5, 5] = True  # isolated speck disappears when smoothing
-    assert not masks.smooth(jagged, 1)[5, 5]
-
-
 def test_to_polygons_one_per_blob():
     full = blob(box=(2, 2, 12, 12)) | blob(box=(20, 20, 30, 30))
     polygons = masks.to_polygons(full, tolerance=0.5)

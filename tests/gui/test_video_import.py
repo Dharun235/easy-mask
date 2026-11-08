@@ -136,5 +136,5 @@ def test_file_menu_import_entry(make_window, clip, monkeypatch):
     asked = []
     win.ask_video_import = lambda d, info, parent: asked.append(d) or None
     monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *a, **k: (str(clip), ""))
-    win.import_video_dialog()
+    win.video.open_video_dialog()
     assert asked and asked[0].video == clip

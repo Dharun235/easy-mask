@@ -136,7 +136,7 @@ def test_cleanup_and_conversion_menu_actions(window, ui):
     assert window.canvas.shapes[0].shape_type == ShapeType.MASK
     window.canvas.select(0)
     before = full(window).sum()
-    window.map_selected(lambda f: masks.grow(f, 2))
+    window.map_selected(lambda f: f | np.roll(f, 2, axis=1))
     assert full(window).sum() > before
     window.canvas.select(0)
     window.ask_number = lambda *a: 2.0

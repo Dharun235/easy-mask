@@ -1,12 +1,21 @@
-"""The Video menu: open a video, interpolate between keyframes, propagate masks.
+"""Video: one Propagate button carries this frame's work through the next frames.
 
 A video is just the folder of frames the main window already shows, so everything here
-works frame by frame on the same per-image JSON files. Shapes made automatically are
-flagged (see :mod:`easy_mask.core.video`) and replaced on the next run; hand-drawn ones
-are kept and steer the model.
+works frame by frame on the same per-image JSON files.
+
+**Propagate** sends the selected objects (or all of them) *and the last cut made on this
+frame* through the next frames together: the cut part is tracked like one more object and
+cut from the masks on every frame. The button's dropdown holds the rest: backward, AI or
+plain copying, frames per run, interpolate, clear, undo and stop. **Track** does the same
+one frame at a time whenever Next Image is pressed.
+
+Shapes made automatically are flagged (see :mod:`easy_mask.core.video`) and replaced on the
+next run; hand-drawn ones are kept and steer the model. Every run is journaled, so one Undo
+right after it restores every frame it changed.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -36,19 +45,34 @@ from easy_mask.propagation.tracker import CopyPropagator, Propagator
 if TYPE_CHECKING:  # the main window imports this module
     from easy_mask.gui.main_window import MainWindow
 
-DEFAULT_RUN = 50  # frames offered per propagation run: a few minutes on a laptop CPU
+DEFAULT_RUN = 50  # frames per propagation run: a few minutes on a laptop CPU
 COPY_MODEL = "copy"  # --video-model value for model-free propagation
 MISSING_EXTRA = (
-    "AI Propagate uses EfficientTAM (or SAM 2.1), which needs the optional video add-on "
+    "AI tracking uses EfficientTAM (or SAM 2.1), which needs the optional video add-on "
     "(PyTorch, about 1 GB):\n\n    SAM2_BUILD_CUDA=0 uv sync --extra video"
 )
-REGION_LABEL = "__region__"  # temporary object the model tracks for Cut Through Frames
-CUT_HINT = "Cut Through Frames: first cut a part with the Cut tool (K) on this frame"
+REGION_LABEL = "__region__"  # the cut part, tracked like an object during a run
+NOTHING_HINT = "Draw an object or cut a part on this frame first, then press Propagate"
 FALLBACK_NOTE = "AI tracking needs the video add-on (uv sync --extra video): copying instead"
 
 
-def _replace_with(kept: list[Shape], _old: list[Shape]) -> list[Shape]:
-    return kept
+@dataclass
+class Cut:
+    """A part cut out on one frame: the pixels removed and from which objects (None: all)."""
+
+    frame: int
+    part: np.ndarray
+    keys: set[ObjectKey] | None
+
+
+@dataclass
+class Carry:
+    """What a run starts from: the frame, its shapes, the objects to send and a cut."""
+
+    frame: int
+    shapes: list[Shape]
+    objects: set[ObjectKey]
+    cut: Cut | None
 
 
 def default_propagator(model: str) -> Propagator:
@@ -60,8 +84,12 @@ def default_propagator(model: str) -> Propagator:
     return Sam2Propagator(model)
 
 
+def _replace_with(kept: list[Shape], _old: list[Shape]) -> list[Shape]:
+    return kept
+
+
 class VideoMenu:
-    """Adds the Video menu to ``window`` and runs its commands."""
+    """The Propagate button, its dropdown and the Track toggle for ``window``."""
 
     def __init__(self, window: "MainWindow"):
         self.window = window
@@ -70,99 +98,262 @@ class VideoMenu:
             window.settings.video_model
         )
         self.propagator: Propagator | None = None  # the AI model: built once, then reused
-        self.copier = CopyPropagator()  # "Copy to frames" and the fallback without the extra
+        self.copier = CopyPropagator()  # plain copying, and the fallback without the extra
         self.worker: PropagationWorker | None = None
-        # The last cut made with the Cut tool: (frame, region, objects or None for all).
-        self.last_cut: tuple[int, np.ndarray, set[ObjectKey] | None] | None = None
-        # Frames as they were before the last run: index -> (shapes, file existed). One
-        # Ctrl+Z puts them all back while nothing else was edited since (see undo_run).
+        self.frames_per_run = DEFAULT_RUN
+        self.last_cut: Cut | None = None  # carried along by the next run from its frame
+        # Frames as they were before the last run: index -> (shapes, file existed).
         self.journal: dict[int, tuple[list[Shape], bool]] = {}
         self.journal_name = ""
         self.journal_version: int | None = None  # history version when the run ended
+        self._run_frames = 0
 
-        bar = window.menuBar()
-        menu = QMenu("&Video", bar)
-        bar.insertMenu(bar.actions()[-1], menu)  # before Help
-        window._action(menu, "Open Video...", self.open_video_dialog)
+        menu = QMenu("Propagate", window)  # the Propagate button's dropdown
+        self.menu = menu
+        a = window._action
+        self.propagate_action = a(menu, "Propagate Forward", lambda: self.propagate(+1))
+        a(menu, "Propagate Backward", lambda: self.propagate(-1))
         menu.addSeparator()
-        window._action(menu, "Interpolate From Previous Keyframe", self.interpolate, "Ctrl+Shift+I")
+        self.ai_action = a(menu, "Track with AI (EfficientTAM)", self._toggle_ai, checkable=True)
+        self.ai_action.setChecked(window.settings.video_model != COPY_MODEL)
+        self.track_action = a(menu, "Track on Next Image", self._toggle_tracking, checkable=True)
+        a(menu, "Frames per Run...", self.ask_frames_per_run)
         menu.addSeparator()
-        self.propagate_action = window._action(
-            menu, "AI Propagate Forward...", lambda: self.propagate(+1), "Ctrl+Shift+Right"
-        )
-        window._action(
-            menu, "AI Propagate Backward...", lambda: self.propagate(-1), "Ctrl+Shift+Left"
-        )
-        self.copy_action = window._action(
-            menu, "Copy to Next Frames...", lambda: self.propagate(+1, ai=False), "Ctrl+Alt+Right"
-        )
-        window._action(
-            menu,
-            "Copy to Previous Frames...",
-            lambda: self.propagate(-1, ai=False),
-            "Ctrl+Alt+Left",
-        )
+        a(menu, "Interpolate From Previous Keyframe", self.interpolate)
+        a(menu, "Clear Labels From Here...", self.clear_frames)
         menu.addSeparator()
-        self.cut_through_action = window._action(
-            menu, "Cut Through Frames...", self.cut_through, "Ctrl+Shift+X"
-        )
-        self.clear_action = window._action(menu, "Clear Labels on Frames...", self.clear_frames)
-        menu.addSeparator()
-        self.track_action = window._action(
-            menu, "Track Objects into Next Frame", self._toggle_tracking, "Ctrl+Shift+T", True
-        )
-        self.stop_action = window._action(menu, "Stop Propagation", self.stop, "Ctrl+.")
-        self.stop_action.setEnabled(False)
-        self.undo_run_action = window._action(
-            menu, "Undo Last Video Run", self.undo_run, "Ctrl+Alt+Z"
-        )
+        self.undo_run_action = a(menu, "Undo Last Run", self.undo_run)
         self.undo_run_action.setEnabled(False)
+        self.stop_action = a(menu, "Stop", self.stop)
+        self.stop_action.setEnabled(False)
 
-    # ------------------------------------------------------------------ tracking
+    # ------------------------------------------------------------------ options
+
+    @property
+    def use_ai(self) -> bool:
+        """True to track with the video model, False to copy masks unchanged."""
+        return self.ai_action.isChecked()
 
     @property
     def tracking(self) -> bool:
-        """True if moving to the next frame carries the objects along."""
+        """True if Next Image carries the objects (and a cut) into the next frame."""
         return self.track_action.isChecked()
 
-    def _toggle_tracking(self, checked: bool) -> None:
+    def _toggle_ai(self, checked: bool) -> None:
         self.window.statusBar().showMessage(
-            "Tracking on: Next Image (D) carries the selected (or all) objects forward"
-            if checked
-            else "Tracking off",
+            "Propagate tracks objects with AI" if checked else "Propagate copies masks unchanged",
             5000,
         )
 
-    def capture_for_tracking(self) -> tuple[int, list[Shape], set[ObjectKey]] | None:
-        """Before leaving a frame: what to carry into the next one (None if nothing)."""
+    def _toggle_tracking(self, checked: bool) -> None:
+        self.window.statusBar().showMessage(
+            "Track on: Next Image carries the selected (or all) objects and your cut forward"
+            if checked
+            else "Track off",
+            5000,
+        )
+
+    def ask_frames_per_run(self) -> None:
+        """Ask how many frames one Propagate goes through."""
         w = self.window
-        if not self.tracking or w.current_index is None:
-            return None
-        shapes = list(w.canvas.shapes)
-        chosen = [shapes[i] for i in w.canvas.selection] or shapes
-        objects = {object_key(s) for s in chosen if s.shape_type.is_area}
-        return (w.current_index, shapes, objects) if objects else None
-
-    def track(self, carry: tuple[int, list[Shape], set[ObjectKey]]) -> None:
-        """After arriving on the next frame: propagate the captured objects into it."""
-        start, shapes, objects = carry
-        if self.running:
-            self.window.statusBar().showMessage("Still tracking the previous frame...", 3000)
-            return
-        propagator = self._propagator_for(ai=True, ask=False)
-        assert propagator is not None  # without asking, there is always a fallback
-        self._run(start, +1, 1, objects, shapes, propagator)
-
-    @property
-    def running(self) -> bool:
-        """True while a propagation run is in progress."""
-        return self.worker is not None
+        count = w.ask_number(w, "Propagate", "Frames per run:", self.frames_per_run, 1, 10_000)
+        if count is not None:
+            self.frames_per_run = int(count)
 
     def open_video_dialog(self) -> None:
         """Ask for a video file and open it (importing its frames first if needed)."""
         name, _ = QFileDialog.getOpenFileName(self.window, "Open Video", "", VIDEO_FILTER)
         if name:
             self.window.open_path(Path(name))
+
+    @property
+    def running(self) -> bool:
+        """True while a propagation run is in progress."""
+        return self.worker is not None
+
+    # ------------------------------------------------------------------ propagate
+
+    def _carry(self, shapes: list[Shape]) -> Carry | None:
+        """This frame's selected (or all) objects and its cut; None if there is neither."""
+        w = self.window
+        assert w.current_index is not None
+        chosen = [shapes[i] for i in w.canvas.selection if i < len(shapes)] or shapes
+        objects = {object_key(s) for s in chosen if s.shape_type.is_area}
+        cut = self.last_cut if self.last_cut and self.last_cut.frame == w.current_index else None
+        if not objects and cut is None:
+            return None
+        return Carry(w.current_index, shapes, objects, cut)
+
+    def propagate(self, direction: int = +1) -> None:
+        """Send the selected (or all) objects and the last cut forward (+1) or back (-1)."""
+        w = self.window
+        current = w.current_index
+        if current is None or self.running:
+            return
+        shapes = confirm(w.canvas.shapes)  # propagating from a frame vouches for it
+        carry = self._carry(shapes)
+        if carry is None:
+            w.statusBar().showMessage(NOTHING_HINT, 6000)
+            return
+        remaining = len(w.image_paths) - 1 - current if direction > 0 else current
+        if remaining == 0:
+            w.statusBar().showMessage("No more frames in that direction", 4000)
+            return
+        propagator = self._propagator_for(self.use_ai, ask=True)
+        if propagator is None:
+            return
+        if shapes != w.canvas.shapes:
+            w._replace_shapes(shapes)
+        self._run(carry, direction, min(self.frames_per_run, remaining), propagator)
+
+    def capture_for_tracking(self) -> Carry | None:
+        """Before leaving a frame: what Track carries into the next one (None if nothing)."""
+        w = self.window
+        if not self.tracking or w.current_index is None:
+            return None
+        return self._carry(list(w.canvas.shapes))
+
+    def track(self, carry: Carry) -> None:
+        """After arriving on the next frame: propagate the captured objects and cut into it."""
+        if self.running:
+            self.window.statusBar().showMessage("Still tracking the previous frame...", 3000)
+            return
+        propagator = self._propagator_for(self.use_ai, ask=False)
+        assert propagator is not None  # without asking, there is always a fallback
+        self._run(carry, +1, 1, propagator)
+
+    def _propagator_for(self, ai: bool, ask: bool) -> Propagator | None:
+        """The copy propagator, or the AI model (loaded once).
+
+        If the video extra is missing, ``ask`` offers copying instead (None if declined);
+        without ``ask`` (automatic tracking) it copies and says so in the status bar.
+        """
+        if not ai or self.window.settings.video_model == COPY_MODEL:
+            return self.copier
+        if self.propagator is None:
+            try:
+                self.propagator = self.make_propagator()
+            except ImportError:
+                w = self.window
+                if not ask:
+                    w.statusBar().showMessage(FALLBACK_NOTE, 6000)
+                    return self.copier
+                answer = QMessageBox.question(
+                    w, "Propagate", f"{MISSING_EXTRA}\n\nCopy the masks unchanged instead?"
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    return None
+                self.ai_action.setChecked(False)
+                return self.copier
+        return self.propagator
+
+    def _run(self, carry: Carry, direction: int, count: int, propagator: Propagator) -> None:
+        """Propagate ``carry`` over ``count`` frames in ``direction`` in the background."""
+        w = self.window
+        height, width = w.image_size[1], w.image_size[0]
+        indices = [carry.frame + direction * step for step in range(count + 1)]
+        frame_shapes = [self._frame_shapes(i) for i in indices]
+        frame_shapes[0] = [s for s in carry.shapes if object_key(s) in carry.objects]
+        cut = carry.cut
+        if cut is not None:
+            region = masks.to_shape(REGION_LABEL, cut.part)
+            if region is not None:
+                frame_shapes[0].append(region)
+            # Later masks the cut is fixing still contain the part: as prompts they would
+            # pull it back into their object, so they do not steer this run.
+            for later in frame_shapes[1:]:
+                later[:] = [
+                    s
+                    for s in later
+                    if not s.shape_type.is_area or (cut.keys and object_key(s) not in cut.keys)
+                ]
+
+        def on_frame(index: int, new: list[Shape]) -> None:
+            moved = np.zeros((height, width), dtype=bool)
+            for shape in new:
+                if shape.label == REGION_LABEL:
+                    moved |= shape_to_mask(shape, height, width)
+            objects = [s for s in new if s.label != REGION_LABEL]
+
+            def transform(shapes: list[Shape]) -> list[Shape]:
+                shapes = merge_auto(shapes, carry.objects, objects)
+                if cut is not None and moved.any():
+                    shapes = cut_region(shapes, moved, height, width, cut.keys)
+                return shapes
+
+            self._update_frame(index, transform)
+
+        self._begin_run("Propagate")
+        self._start(indices, frame_shapes, propagator, on_frame)
+
+    def _start(
+        self,
+        indices: list[int],
+        frame_shapes: list[list[Shape]],
+        propagator: Propagator,
+        on_frame: Callable[[int, list[Shape]], None],
+    ) -> None:
+        """Run ``propagator`` over frames ``indices`` in the background with progress.
+
+        ``on_frame(frame index, propagated shapes)`` is called for each frame after the
+        first, on the GUI thread.
+        """
+        w = self.window
+        frames = [w.image_paths[i] for i in indices]
+        size = (w.image_size[1], w.image_size[0])
+        worker = PropagationWorker(propagator, frames, frame_shapes, size)
+        worker.frame_done.connect(
+            lambda position, new: self._on_frame_done(indices, position, new, on_frame)
+        )
+        worker.failed.connect(w._error)
+        worker.finished.connect(self._on_finished)
+        self.worker = worker
+        self._run_frames = len(indices) - 1
+        self.stop_action.setEnabled(True)
+        task = "Copying masks" if isinstance(propagator, CopyPropagator) else "AI tracking"
+        w.statusBar().showMessage(f"{task}...")
+        w.progress.begin("propagate", task, total=len(indices) - 1, cancel=self.stop)
+        worker.start()
+
+    def _on_frame_done(
+        self,
+        indices: list[int],
+        position: int,
+        new: list[Shape],
+        on_frame: Callable[[int, list[Shape]], None],
+    ) -> None:
+        on_frame(indices[position], new)
+        self.window.progress.report("propagate", position)
+
+    def stop(self, wait: bool = False) -> None:
+        """Cancel the running propagation after the current frame.
+
+        Args:
+            wait: Block until the worker thread has exited (used when closing the window).
+        """
+        if self.worker is not None:
+            self.worker.cancel()
+            if wait:
+                self.worker.wait()
+
+    def _on_finished(self) -> None:
+        if self.worker is not None:
+            self.worker.deleteLater()
+        self.worker = None
+        self.stop_action.setEnabled(False)
+        self._end_run()
+        self.window.progress.end("propagate")
+        changed, total = len(self.journal), self._run_frames
+        if changed == 0:
+            text = (
+                "Nothing changed: those frames already have hand-drawn masks of these objects "
+                "(delete them there, or Clear Labels From Here, then Propagate again)"
+            )
+        elif changed < total:
+            text = f"Updated {changed} of {total} frames (frames with hand-drawn masks keep them)"
+        else:
+            text = f"Updated {changed} frames  ·  Undo reverts all of them"
+        self.window.statusBar().showMessage(text, 8000)
 
     # ------------------------------------------------------------------ frame files
 
@@ -181,28 +372,31 @@ class VideoMenu:
     def _update_frame(self, index: int, transform: Callable[[list[Shape]], list[Shape]]) -> None:
         """Apply ``transform`` to frame ``index``'s shapes: on screen or on disk.
 
-        The frame's previous state goes into the run journal, so the run can be undone.
+        Frames that would not change are left alone; for the others the previous state goes
+        into the run journal, so the run can be undone.
         """
         w = self.window
-        if index not in self.journal:
-            json_path = ann_io.annotation_path_for(w.image_paths[index], w.settings.output_dir)
-            self.journal[index] = (self._frame_shapes(index), json_path.exists())
-        if index == w.current_index:
-            w._replace_shapes(transform(list(w.canvas.shapes)))
-            return
         path = w.image_paths[index]
         json_path = ann_io.annotation_path_for(path, w.settings.output_dir)
+        old = self._frame_shapes(index)
+        new = transform(list(old))
+        if new == old:
+            return
+        if index not in self.journal:
+            self.journal[index] = (old, json_path.exists())
+        if index == w.current_index:
+            w._replace_shapes(new)
+            return
         if json_path.exists():
             annotation = ann_io.load(json_path)
         else:
             width, height = image_size(path)
-            relative = ann_io.relative_image_path(path, json_path)
-            annotation = Annotation(relative, width, height)
-        annotation.shapes = transform(annotation.shapes)
+            annotation = Annotation(ann_io.relative_image_path(path, json_path), width, height)
+        annotation.shapes = new
         ann_io.save(annotation, json_path)
         w.file_list.mark_annotated(index)
 
-    # ------------------------------------------------------------------ interpolation
+    # ------------------------------------------------------------------ interpolate, clear
 
     def interpolate(self) -> None:
         """Fill the frames between the previous keyframe and this one.
@@ -211,7 +405,7 @@ class VideoMenu:
         """
         w = self.window
         current = w.current_index
-        if current is None:
+        if current is None or self.running:
             return
         end = [s for s in w.canvas.shapes if not is_auto(s)]
         previous = next(
@@ -236,89 +430,6 @@ class VideoMenu:
             f"Interpolated {len(frames)} frames from {w.image_paths[previous].name}", 5000
         )
 
-    # ------------------------------------------------------------------ propagation
-
-    def propagate(self, direction: int, ai: bool = True) -> None:
-        """Send objects on this frame forward (+1) or backward (-1) through the video.
-
-        With ``ai`` the video model (EfficientTAM by default) tracks and re-segments each
-        object from its mask on this frame; otherwise the mask is copied unchanged. With
-        shapes selected, only their objects go; otherwise every object on the frame does.
-        """
-        w = self.window
-        current = w.current_index
-        if current is None or self.running:
-            return
-        shapes = confirm(w.canvas.shapes)  # propagating from a frame vouches for it
-        chosen = [shapes[i] for i in w.canvas.selection] or shapes
-        objects = {object_key(s) for s in chosen if s.shape_type.is_area}
-        if not objects:
-            w.statusBar().showMessage("Draw or segment an object on this frame first", 4000)
-            return
-        remaining = len(w.image_paths) - 1 - current if direction > 0 else current
-        if remaining == 0:
-            w.statusBar().showMessage("No frames in that direction", 4000)
-            return
-        title = "AI Propagate" if ai else "Copy to Frames"
-        count = w.ask_number(
-            w, title, "Number of frames:", min(DEFAULT_RUN, remaining), 1, remaining
-        )
-        if count is None:
-            return
-        propagator = self._propagator_for(ai, ask=True)
-        if propagator is None:
-            return
-        if shapes != w.canvas.shapes:
-            w._replace_shapes(shapes)
-        self._run(current, direction, int(count), objects, shapes, propagator)
-
-    def cut_through(self, direction: int = +1) -> None:
-        """Repeat the last cut on the next frames, following the cut part as it moves.
-
-        The video model tracks the cut region (plain copying without the video add-on) and
-        the region is cut from the masks under it on every frame.
-        """
-        w = self.window
-        current = w.current_index
-        if current is None or self.running:
-            return
-        if self.last_cut is None or self.last_cut[0] != current:
-            w.statusBar().showMessage(CUT_HINT, 6000)
-            return
-        _, region, keys = self.last_cut
-        remaining = len(w.image_paths) - 1 - current if direction > 0 else current
-        if remaining == 0:
-            w.statusBar().showMessage("No frames in that direction", 4000)
-            return
-        count = w.ask_number(
-            w, "Cut Through Frames", "Number of frames:", min(DEFAULT_RUN, remaining), 1, remaining
-        )
-        if count is None:
-            return
-        region_shape = masks.to_shape(REGION_LABEL, region)
-        assert region_shape is not None  # the Cut tool only reports non-empty regions
-        height, width = region.shape
-        propagator = self._propagator_for(ai=True, ask=False)
-        assert propagator is not None  # without asking, there is always a fallback
-
-        def apply(index: int, new: list[Shape]) -> None:
-            moved = np.zeros((height, width), dtype=bool)
-            for shape in new:
-                moved |= shape_to_mask(shape, height, width)
-            self._update_frame(index, lambda frame: cut_region(frame, moved, height, width, keys))
-
-        indices = [current + direction * step for step in range(int(count) + 1)]
-        frame_shapes: list[list[Shape]] = [[region_shape]] + [[] for _ in indices[1:]]
-        copying = isinstance(propagator, CopyPropagator)
-        self._begin_run("Cut Through Frames")
-        self._start(
-            indices,
-            frame_shapes,
-            propagator,
-            apply,
-            "Cutting through frames" if copying else "AI cutting through frames",
-        )
-
     def clear_frames(self) -> None:
         """Delete every shape on this frame and the next ones (asks how many)."""
         w = self.window
@@ -327,16 +438,15 @@ class VideoMenu:
             return
         remaining = len(w.image_paths) - current
         count = w.ask_number(
-            w, "Clear Labels on Frames", "Frames to clear, from this one:", 1, 1, remaining
+            w, "Clear Labels", "Frames to clear, starting with this one:", 1, 1, remaining
         )
         if count is None:
             return
         self._begin_run("Clear Labels")
         for index in range(current, current + int(count)):
-            if self._frame_shapes(index):
-                self._update_frame(index, lambda shapes: [])
+            self._update_frame(index, lambda shapes: [])
         self._end_run()
-        w.statusBar().showMessage(f"Cleared {int(count)} frame(s)  ·  Ctrl+Z puts them back", 6000)
+        w.statusBar().showMessage(f"Cleared {len(self.journal)} frame(s)  ·  Undo puts them back")
 
     # ------------------------------------------------------------------ undo a run
 
@@ -365,128 +475,16 @@ class VideoMenu:
         w = self.window
         if not self.journal or self.running:
             return
-        for index, (shapes, existed) in sorted(self.journal.items()):
+        journal, self.journal = self.journal, {}
+        for index, (shapes, existed) in sorted(journal.items()):
             if index == w.current_index:
                 w._replace_shapes(shapes)
-                continue
-            json_path = ann_io.annotation_path_for(w.image_paths[index], w.settings.output_dir)
-            if existed:
+            elif existed:
                 self._update_frame(index, partial(_replace_with, shapes))
             else:
-                json_path.unlink(missing_ok=True)
+                path = ann_io.annotation_path_for(w.image_paths[index], w.settings.output_dir)
+                path.unlink(missing_ok=True)
                 w.file_list.mark_annotated(index, False)
-        count = len(self.journal)
         self.journal = {}
         self.undo_run_action.setEnabled(False)
-        w.statusBar().showMessage(f"Undid {self.journal_name} on {count} frame(s)", 5000)
-
-    def _propagator_for(self, ai: bool, ask: bool) -> Propagator | None:
-        """The copy propagator, or the AI model (loaded once).
-
-        If the video extra is missing, ``ask`` offers copying instead (None if declined);
-        without ``ask`` (automatic tracking) it copies and says so in the status bar.
-        """
-        if not ai or self.window.settings.video_model == COPY_MODEL:
-            return self.copier
-        if self.propagator is None:
-            try:
-                self.propagator = self.make_propagator()
-            except ImportError:
-                w = self.window
-                if not ask:
-                    w.statusBar().showMessage(FALLBACK_NOTE, 6000)
-                    return self.copier
-                answer = QMessageBox.question(
-                    w,
-                    "AI Propagate",
-                    f"{MISSING_EXTRA}\n\nCopy the mask to the next frames instead?",
-                )
-                return self.copier if answer == QMessageBox.StandardButton.Yes else None
-        return self.propagator
-
-    def _run(
-        self,
-        current: int,
-        direction: int,
-        count: int,
-        objects: set[ObjectKey],
-        shapes: list[Shape],
-        propagator: Propagator,
-    ) -> None:
-        """Propagate ``objects`` from frame ``current`` over ``count`` frames in the background."""
-        indices = [current + direction * step for step in range(count + 1)]
-        frame_shapes = [self._frame_shapes(i) for i in indices]
-        frame_shapes[0] = [s for s in shapes if object_key(s) in objects]  # only chosen objects
-        copying = isinstance(propagator, CopyPropagator)
-        self._begin_run("Copy to Frames" if copying else "AI Propagate")
-        self._start(
-            indices,
-            frame_shapes,
-            propagator,
-            lambda index, new: self._store(index, objects, new),
-            "Copying to frames" if copying else "AI propagating",
-        )
-
-    def _start(
-        self,
-        indices: list[int],
-        frame_shapes: list[list[Shape]],
-        propagator: Propagator,
-        on_frame: Callable[[int, list[Shape]], None],
-        task: str,
-    ) -> None:
-        """Run ``propagator`` over frames ``indices`` in the background with progress.
-
-        ``on_frame(frame index, propagated shapes)`` is called for each frame after the
-        first, on the GUI thread.
-        """
-        w = self.window
-        frames = [w.image_paths[i] for i in indices]
-        size = (w.image_size[1], w.image_size[0])
-        worker = PropagationWorker(propagator, frames, frame_shapes, size)
-        worker.frame_done.connect(
-            lambda position, new: self._on_frame_done(indices, position, new, on_frame)
-        )
-        worker.failed.connect(w._error)
-        worker.finished.connect(self._on_finished)
-        self.worker = worker
-        self.stop_action.setEnabled(True)
-        copying = isinstance(propagator, CopyPropagator)
-        w.statusBar().showMessage(
-            f"{task}..." if copying else f"{task}... (the first run loads the model)"
-        )
-        w.progress.begin("propagate", task, total=len(indices) - 1, cancel=self.stop)
-        worker.start()
-
-    def _on_frame_done(
-        self,
-        indices: list[int],
-        position: int,
-        new: list[Shape],
-        on_frame: Callable[[int, list[Shape]], None],
-    ) -> None:
-        on_frame(indices[position], new)
-        self.window.progress.report("propagate", position)
-        self.window.statusBar().showMessage(
-            f"Propagated {position}/{len(indices) - 1} frames (Video > Stop to cancel)"
-        )
-
-    def stop(self, wait: bool = False) -> None:
-        """Cancel the running propagation after the current frame.
-
-        Args:
-            wait: Block until the worker thread has exited (used when closing the window).
-        """
-        if self.worker is not None:
-            self.worker.cancel()
-            if wait:
-                self.worker.wait()
-
-    def _on_finished(self) -> None:
-        if self.worker is not None:
-            self.worker.deleteLater()
-        self.worker = None
-        self.stop_action.setEnabled(False)
-        self._end_run()
-        self.window.progress.end("propagate")
-        self.window.statusBar().showMessage("Propagation finished", 5000)
+        w.statusBar().showMessage(f"Undid {self.journal_name} on {len(journal)} frame(s)", 5000)

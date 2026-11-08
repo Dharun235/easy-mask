@@ -1,7 +1,5 @@
 """Main-window behaviour around errors, prompts and file dialogs."""
 
-from pathlib import Path
-
 import pytest
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -84,17 +82,6 @@ def test_step_stops_at_ends(window):
     for _ in range(5):
         window.next_image()
     assert window.image_path.name == "img10.png"
-
-
-def test_change_output_dir_reloads_from_new_folder(window, ui, monkeypatch, tmp_path):
-    out = tmp_path / "labels"
-    out.mkdir()
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(out))
-    window.change_output_dir()
-    assert window.settings.output_dir == Path(out)
-    make_dirty(window, ui)
-    window.save()
-    assert (out / "img1.json").exists()
 
 
 def test_open_dialogs(make_window, image_dir, monkeypatch):

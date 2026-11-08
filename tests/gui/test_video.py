@@ -40,11 +40,6 @@ def propagate(qtbot, video, direction=+1):
     qtbot.waitUntil(lambda: not video.running, timeout=5000)
 
 
-def test_video_menu_sits_before_help(window):
-    titles = [action.text() for action in window.menuBar().actions()]
-    assert titles[-1] == "&Help" and titles.index("&Video") > titles.index("&View")
-
-
 def test_propagate_forward_writes_flagged_masks_to_later_frames(qtbot, window, video, image_dir):
     window.canvas.set_shapes([rect(10)])
 
@@ -55,7 +50,7 @@ def test_propagate_forward_writes_flagged_masks_to_later_frames(qtbot, window, v
         assert shape.shape_type == ShapeType.MASK and shape.flags == {PROPAGATED_FLAG: True}
         assert shape.points[0] == (10 + 2 * step, 10)  # the fake moves 2 px per frame
     assert window.file_list.item(2).text() != ""  # list refreshed without errors
-    assert "finished" in window.statusBar().currentMessage()
+    assert "Updated 2 frames" in window.statusBar().currentMessage()
 
 
 def test_propagate_backward_from_last_frame(qtbot, window, video, image_dir):
@@ -69,18 +64,27 @@ def test_propagate_backward_from_last_frame(qtbot, window, video, image_dir):
     assert saved(image_dir, "img10") is None  # the start frame was not saved by us
 
 
-def test_frames_to_propagate_limits_the_run(qtbot, window, video, image_dir):
+def test_frames_per_run_limits_the_run(qtbot, window, video, image_dir):
     window.ask_number = lambda *args: 1
+    video.ask_frames_per_run()
     window.canvas.set_shapes([rect(10)])
     propagate(qtbot, video)
     assert saved(image_dir, "img2") is not None and saved(image_dir, "img10") is None
 
 
-def test_cancelled_frame_count_does_nothing(window, video, fake_propagator):
+def test_cancelled_frames_per_run_keeps_the_value(window, video):
     window.ask_number = lambda *args: None
+    video.ask_frames_per_run()
+    assert video.frames_per_run == 50
+
+
+def test_hand_drawn_frames_are_reported_not_silently_skipped(qtbot, window, video, image_dir):
+    for stem in FRAMES[1:]:
+        save_frame(image_dir, stem, [rect(40)])  # hand-drawn car everywhere
     window.canvas.set_shapes([rect(10)])
-    video.propagate(+1)
-    assert not video.running and fake_propagator.calls == []
+    propagate(qtbot, video)
+    assert "Nothing changed" in window.statusBar().currentMessage()
+    assert not video.undo_run_action.isEnabled()
 
 
 def test_nothing_to_propagate_explains(window, video):
@@ -92,7 +96,7 @@ def test_nothing_to_propagate_explains(window, video):
 def test_no_frames_in_that_direction(window, video):
     window.canvas.set_shapes([rect(10)])
     video.propagate(-1)
-    assert not video.running and "No frames" in window.statusBar().currentMessage()
+    assert not video.running and "No more frames" in window.statusBar().currentMessage()
 
 
 def test_start_frame_is_confirmed_as_manual(qtbot, window, video):
@@ -155,7 +159,8 @@ def test_ai_propagate_without_extra_offers_copy(qtbot, window, video, image_dir,
 
 def test_copy_to_frames_never_uses_the_model(qtbot, window, video, image_dir, fake_propagator):
     window.canvas.set_shapes([rect(10)])
-    video.propagate(+1, ai=False)
+    video.ai_action.setChecked(False)
+    video.propagate(+1)
     qtbot.waitUntil(lambda: not video.running, timeout=5000)
     assert fake_propagator.calls == []
     assert saved(image_dir, "img2")[0].points == [(10, 10), (19, 19)]
@@ -440,21 +445,37 @@ def test_cut_outside_every_mask_changes_nothing(window):
     assert "Nothing to cut" in window.statusBar().currentMessage()
 
 
-def test_cut_through_frames_follows_the_cut_part(qtbot, window, video, image_dir):
+def test_propagate_carries_the_cut_like_an_object(qtbot, window, video, image_dir):
     for stem in FRAMES[1:]:
         save_frame(image_dir, stem, [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (59, 29)])])
     wing_and_leg(window)
     lasso(window, 35, 99)
-    video.cut_through()  # the fake model moves the region 2 px per frame
-    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    assert video.last_cut is not None
+    part = video.last_cut.part
+    assert part[20, 40] and not part[5, 40]  # only the removed pixels, not the whole lasso
+    propagate(qtbot, video)  # the fake model moves every object 2 px per frame
     frame2 = pixels(saved(image_dir, "img2"), "wing")
     assert frame2[20, 36] and not frame2[20, 38]  # the cut moved from x=35 to x=37
 
 
-def test_cut_through_needs_a_cut_on_this_frame(window, video):
+def test_cut_is_carried_by_track_too(qtbot, window, video, image_dir):
+    save_frame(image_dir, "img2", [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (59, 29)])])
+    window.settings.autosave = True
     wing_and_leg(window)
-    video.cut_through()
-    assert "first cut a part" in window.statusBar().currentMessage()
+    lasso(window, 35, 99)
+    video.track_action.setChecked(True)
+    window.next_image()
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    here = pixels(window.canvas.shapes, "wing")
+    assert here[20, 30] and not here[20, 40]
+
+
+def test_two_cuts_on_a_frame_are_carried_together(window, video):
+    wing_and_leg(window)
+    lasso(window, 40, 49, 10, 15)
+    lasso(window, 10, 15, 10, 29)
+    part = video.last_cut.part
+    assert part[12, 45] and part[20, 12]
 
 
 def test_clear_frames_and_one_undo_puts_them_back(window, video, image_dir):
@@ -477,7 +498,7 @@ def test_undo_after_propagating_reverts_every_frame(qtbot, window, video, image_
     assert saved(image_dir, "img2") is None and saved(image_dir, "img10") is None
     assert window.file_list.item(1).checkState() == Qt.CheckState.Unchecked
     assert len(window.canvas.shapes) == 1  # this frame keeps its own shape
-    assert "Undid AI Propagate" in window.statusBar().currentMessage()
+    assert "Undid Propagate" in window.statusBar().currentMessage()
 
 
 def test_editing_after_a_run_makes_undo_local_again(qtbot, window, video, image_dir):
@@ -491,3 +512,13 @@ def test_editing_after_a_run_makes_undo_local_again(qtbot, window, video, image_
     assert video.undo_run_action.isEnabled()
     video.undo_run_action.trigger()  # the run can still be undone explicitly
     assert saved(image_dir, "img2") is None
+
+
+def test_masks_a_cut_fixes_do_not_steer_the_run(qtbot, window, video, image_dir, fake_propagator):
+    """Regression: later hand-drawn masks still holding the part pulled it back."""
+    for stem in FRAMES[1:]:
+        save_frame(image_dir, stem, [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (59, 29)])])
+    wing_and_leg(window)
+    lasso(window, 35, 99)
+    propagate(qtbot, video)
+    assert sorted(fake_propagator.calls[0][1]) == [0]  # only this frame prompts the model

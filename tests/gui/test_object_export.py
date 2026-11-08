@@ -66,7 +66,7 @@ def test_cancelling_parts_dialog_exports_nothing(make_window, image_dir):
 def test_export_menu_uses_readable_names(make_window):
     win = make_window(Settings())
     file_menu = next(a.menu() for a in win.menuBar().actions() if a.text() == "&File")
-    export_menu = next(a.menu() for a in file_menu.actions() if a.text() == "Export Folder As")
+    export_menu = next(a.menu() for a in file_menu.actions() if a.text() == "Export As")
     names = [a.text() for a in export_menu.actions()]
     assert names[0].startswith("Objects: binary masks, cutouts, coordinates")
     assert "COCO (exact RLE masks)" in names

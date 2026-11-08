@@ -74,7 +74,7 @@ def test_edit_label_still_opens_dialog(window, ui):
 
 def test_autosave_is_on_by_default(make_window, image_dir, driver):
     win = make_window(Settings())
-    assert win.settings.autosave and win.autosave_action.isChecked()
+    assert win.settings.autosave
     win.open_path(image_dir)
     win.set_active_label("cat")
     win.set_tool(ShapeType.POINT)

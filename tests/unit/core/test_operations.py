@@ -50,7 +50,7 @@ def test_combine_does_not_mutate_input():
 def test_map_pixels_only_touches_selected_area_shapes():
     line = Shape("edge", ShapeType.LINE, [(0, 0), (10, 10)])
     shapes = [rect("a", 10, 10, 20, 20), line, rect("b", 30, 30, 40, 40)]
-    result = operations.map_pixels(shapes, [0, 1], lambda f: masks.grow(f, 1), H, W)
+    result = operations.map_pixels(shapes, [0, 1], lambda f: f | np.roll(f, 1, axis=1), H, W)
     assert result[0].shape_type == ShapeType.MASK and result[1] is line and result[2] is shapes[2]
 
 

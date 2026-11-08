@@ -31,7 +31,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | --- | --- |
 | Shapes | polygon, rectangle, circle, line, line strip, point, pixel **mask** |
 | AI Segment | click an object (right/Alt-click = background, drag = box), live preview, Enter to keep; EfficientSAM on CPU, offline after a one-time download |
-| Mask editing | brush and eraser, lasso **cut** (any mask under it, also through frames), union / subtract / intersect, fill holes, remove specks, grow / shrink, smooth, mask <-> polygon |
+| Mask editing | brush and eraser, lasso **cut** (any mask under it, also through frames), union / subtract / intersect, fill holes, remove specks, mask <-> polygon (right-click a shape) |
 | Pixel tools (no AI) | magic wand, threshold (manual / Otsu / adaptive) and colour range with live preview |
 | Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
 | Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
@@ -84,32 +84,28 @@ code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/Effic
 
 ## Quick start: annotate fast
 
-1. `uv run easy-mask` opens a start page: **Open Folder**, or pick a recent folder.
-2. Press **1-9** to pick a label (or click it in the Labels panel). New shapes take it
-   with no dialog; **0** goes back to asking each time.
-3. Press **I** for AI Segment and click an object; **Enter** keeps it. Images ahead are
-   prepared in the background, so the next one is instant.
-4. Press **D** for the next image. Work is saved automatically.
-5. **Video:** draw a polygon / box / brush mask (or AI-click) on a frame, then press
-   **AI Propagate** (fast-forward button, `Ctrl+Shift+Right`): EfficientTAM tracks and
-   re-segments the object through the next frames. **Copy to next frames** (copy button,
-   `Ctrl+Alt+Right`) repeats the mask unchanged. To remove a wrong part (a leg merged into
-   a wing), press **K** (Cut) and drag a lasso around it: it is cut from every mask under
-   the lasso, no label needed (select masks first to cut only those). **Cut Through Frames**
-   (dashed-scissors button, `Ctrl+Shift+X`) then repeats the cut on the next frames, with
-   the AI following the part as it moves. **Video > Clear Labels on Frames** empties this
-   and the next frames. Right after any of these runs, one **Ctrl+Z** undoes it on every
-   frame it touched. Or turn on
-   **Video > Track Objects into Next Frame**
-   (`Ctrl+Shift+T`) and every **D** carries the selected (or all) objects forward: AI
-   tracking with the video extra, a plain copy without it. **N** then reviews the
-   automatic shapes first.
-6. Export once (File > Export Folder As); afterwards **Ctrl+Shift+E** repeats it, or tick
-   *Export Again When Closing* to keep the dataset current automatically.
-7. **F1** lists every shortcut.
+1. `uv run easy-mask` opens a start page: **Open Folder**, **Open Video**, or a recent folder.
+2. Click a label in the Labels panel to use it for every new shape (no dialog); click it
+   again to be asked each time.
+3. Pick **AI Segment** (sparkle button) and click an object; double-click keeps it. A
+   plain click always starts a new object; hold Shift to add to the selected one.
+4. Next image (arrow button). Work is saved automatically.
+5. **Video:** draw or AI-segment the objects on a frame and press **Propagate**
+   (fast-forward button): EfficientTAM tracks them through the next frames. To remove a
+   wrong part (a second dog merged into the first, a leg in a wing), pick **Cut**
+   (scissors) and drag a loop around it: it is cut from every mask underneath, no label
+   needed. Press **Propagate** and the cut part is tracked like another object and cut on
+   every frame. One **Undo** right after reverts the whole run. The arrow next to
+   Propagate holds the rest: backward, AI or plain copy, frames per run, interpolate,
+   clear labels from here, stop. **Track** (target button) does it one frame at a time
+   as you move to the next image.
+6. **Export** (top-right button): the first time it asks the format and folder, then it
+   repeats that export. *Export Again When Closing* (File > Export As) keeps the dataset
+   current automatically.
+7. Right-click a shape for its actions (edit label, delete, propagate, mask operations).
+   Help > Keyboard Shortcuts lists the optional keys.
 
-AI and smart-tool masks are tidied automatically (specks and pinholes removed; Mask > Auto
-Clean-Up). AI Segment needs no extra install: the model downloads on first use.
+AI and smart-tool masks are tidied automatically (specks and pinholes removed). AI Segment needs no extra install: the model downloads on first use.
 
 easy-mask remembers each folder's labels, flags, active label and annotation folder (in
 `.easy-mask.json` next to the images), plus window layout, brush sizes and recent folders.
@@ -147,41 +143,31 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
    already on the frame gets the next free **group id** automatically, so two dogs stay two
    objects. To join parts into one object, give them the same group id (Edit Label) or use
    Mask > Union.
-2. Optionally select the objects to track (Shift+click for several; nothing selected =
-   every object). **Video > Propagate Forward / Backward** (`Ctrl+Shift+Right` / `Left`)
-   tracks them through the next frames on a background thread (AI with the video extra,
-   plain copy without it); **Video > Stop** cancels. Results are
-   mask shapes flagged `propagated` and shown as `(auto)` in the shape list.
+2. Optionally select the objects to send (Shift+click for several; nothing selected =
+   every object) and press **Propagate**: they are tracked through the next frames on a
+   background thread (AI with the video extra, plain copy without it); the progress bar's
+   Cancel stops it. A cut made on the frame goes along and is cut on every frame. Results
+   are mask shapes flagged `propagated` and shown as `(auto)` in the shape list.
 3. Fix a bad frame by hand and propagate again from there: automatic shapes are
-   replaced, hand-drawn ones are never overwritten and also steer the model.
-4. Without the model: annotate two keyframes and use **Video > Interpolate From Previous
-   Keyframe** (`Ctrl+Shift+I`) on the later one. Polygons and boxes morph vertex by
+   replaced, hand-drawn ones are never overwritten and also steer the model. When nothing
+   could change (every frame already has hand-drawn masks), the status bar says so.
+4. Without the model: annotate two keyframes and use **Interpolate From Previous
+   Keyframe** (Propagate's arrow) on the later one. Polygons and boxes morph vertex by
    vertex, masks through signed distance fields; results are flagged `interpolated`.
 
 ### Keyboard shortcuts
 
+Everything is reachable with the mouse; keys are optional (Help > Keyboard Shortcuts).
+
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
-| `1`-`9` | use label 1-9 for new shapes | `0` | ask for the label each time |
-| `F1` / `?` | list all shortcuts | `Ctrl+Shift+E` | export again (last format and folder) |
-| `Ctrl+Shift+T` | track objects into next frame (toggle) | `K` | cut (lasso) |
-| `Ctrl+Shift+X` | cut through frames | `Ctrl+Z` | undo (the whole run, right after a video run) |
-| `P` | polygon | `E` | edit (select) mode |
-| `R` | rectangle | `Enter` / double-click | finish polygon / strip |
-| `C` | circle | `Backspace` | remove last point while drawing, else delete shape |
-| `L` | line | `Esc` | cancel drawing / deselect |
-| `T` | line strip | `Ctrl+D` | duplicate selected shape |
-| `O` | point | `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo |
-| `D` / `A` | next / previous image | `Ctrl+S` | save |
+| `E` | select | `P` / `R` / `C` | polygon / rectangle / circle |
+| `B` / `X` / `K` | brush / eraser / cut | `I` / `W` | AI Segment / magic wand |
+| `D` / `A` | next / previous image | `1`-`9`, `0` | use a label, ask each time |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | undo (right after Propagate: the whole run) / redo | `Ctrl+S` | save |
+| `Enter` / double-click | finish a polygon, keep an AI mask | `Esc` / `Backspace` | cancel / remove last point |
 | `Ctrl+wheel` | zoom at cursor | wheel / middle-drag | pan |
-| `F` | fit image to window | `Ctrl+C` / `Ctrl+V` | copy / paste shape |
-| `B` / `X` | brush / eraser | `[` / `]` | smaller / bigger brush (or wand tolerance) |
-| `W` | magic wand (Shift add, Alt subtract) | `L` / `T` / `O` | line / line strip / point (Draw menu) |
-| `Ctrl+T` | threshold / colour-range panel | View > Adjust Display | brightness, CLAHE, channel, mask opacity |
-| `N` / `Shift+N` | review next / previous object | `Ctrl+Alt+Right` | copy masks to next frames |
-| `Ctrl+I` | folder statistics | | |
-| `I` | AI Segment | click / right-click / drag | object point / background point / box |
-| `Enter` / double-click (AI) | keep the AI mask | `Esc` / `Backspace` (AI) | clear prompts / undo last prompt |
+| `[` / `]` | smaller / bigger brush or wand tolerance | `F` | fit image to window |
 
 Rectangles, circles and lines can be drawn by dragging or by two clicks. AI Segment adds the
 mask to the selected shape if one is selected, otherwise it creates a new mask and asks

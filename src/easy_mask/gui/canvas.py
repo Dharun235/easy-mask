@@ -14,7 +14,7 @@ Responsibilities are split with the main window like this:
 """
 
 import numpy as np
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QKeyEvent,
@@ -63,6 +63,7 @@ class Canvas(QWidget):
     double_clicked_shape = Signal(int)
     delete_requested = Signal()
     status_changed = Signal(str)
+    context_menu_requested = Signal(QPoint)  # right-click in Select mode, global position
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -283,6 +284,10 @@ class Canvas(QWidget):
         if event.button() == Qt.MouseButton.MiddleButton:
             self._pan_last = pos
             return
+        if event.button() == Qt.MouseButton.RightButton and self.tool is None and not self.mode:
+            self._pick_for_menu(self._clamp(self.to_image(pos)))
+            self.context_menu_requested.emit(event.globalPosition().toPoint())
+            return
         if not self._forwards(event):
             return
         p = self._clamp(self.to_image(pos))
@@ -342,6 +347,15 @@ class Canvas(QWidget):
                 self._drag_last = p
                 return
         self.select(None)
+
+    def _pick_for_menu(self, p: Point) -> None:
+        """Right-click: select the shape under the cursor unless it is already selected."""
+        tol = self._tolerance()
+        hit = next((i for i in self._hit_order() if self.shapes[i].hit(p, tol)), None)
+        if hit is None:
+            self.select(None)
+        elif hit not in self.selection:
+            self.select(hit)
 
     def _hit_order(self) -> list[int]:
         """Visible shape indices, selected first, then topmost (last drawn) first."""

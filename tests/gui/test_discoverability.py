@@ -1,5 +1,7 @@
 """Welcome page, toolbar icons and tooltips, and the keyboard shortcut list."""
 
+from PySide6.QtCore import Qt
+
 from easy_mask.gui.icons import ICON_DIR, icon
 from easy_mask.gui.main_window import MENU_ONLY, TOOLS, Settings
 from easy_mask.gui.shortcuts import shortcut_rows
@@ -98,11 +100,23 @@ def test_propagate_and_track_buttons_follow_the_image_arrows(make_window):
     (toolbar,) = win.findChildren(QToolBar)
     texts = [a.text() for a in toolbar.actions() if not a.isSeparator()]
     i = texts.index("Next Image")
-    assert texts[i + 1 : i + 5] == [
-        "AI Propagate Forward...",
-        "Copy to Next Frames...",
-        "Track Objects into Next Frame",
-        "Cut Through Frames...",
-    ]
+    assert texts[i + 1 : i + 3] == ["Propagate", "Track on Next Image"]
     assert win.video.track_action.isCheckable()
-    assert not win.video.propagate_action.icon().isNull()
+    assert win.propagate_button_action.menu() is win.video.menu  # dropdown with the options
+
+
+def test_only_four_menus(make_window):
+    win = make_window(Settings())
+    assert [a.text() for a in win.menuBar().actions()] == ["&File", "&Edit", "&View", "&Help"]
+
+
+def test_right_click_selects_and_offers_shape_actions(window, ui):
+    from easy_mask.core.shapes import Shape, ShapeType
+
+    window.canvas.set_shapes([Shape("cat", ShapeType.RECTANGLE, [(10, 10), (40, 40)])])
+    shown = []
+    window.show_menu = lambda menu, pos: shown.append(menu)
+    ui.click(20, 20, Qt.MouseButton.RightButton)
+    assert window.canvas.selection == [0]
+    texts = [a.text() for a in shown[0].actions()]
+    assert "Edit Label" in texts and "Propagate Selected" in texts and "Mask" in texts

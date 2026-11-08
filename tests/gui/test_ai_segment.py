@@ -101,15 +101,30 @@ def test_double_click_alone_segments_and_accepts(window, ui, ai):
     assert len(window.canvas.shapes) == 1 and full(window)[40, 50]
 
 
-def test_accept_adds_to_the_selected_mask(window, ui, ai):
+def test_shift_click_adds_to_the_selected_mask(window, ui, ai):
+    ui.click(20, 20)
+    ui.key(Qt.Key.Key_Return)
+    window.canvas.select(0)
+    ui.qtbot.mouseClick(
+        window.canvas,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.ShiftModifier,
+        ui.screen(70, 60),
+    )
+    ui.key(Qt.Key.Key_Enter)
+    assert len(window.canvas.shapes) == 1
+    assert full(window)[20, 20] and full(window)[60, 70]
+    assert window.canvas.selected == 0
+
+
+def test_plain_click_makes_a_new_object_even_with_a_selection(window, ui, ai):
+    """Regression: a mask left selected (e.g. after a brush stroke) swallowed new objects."""
     ui.click(20, 20)
     ui.key(Qt.Key.Key_Return)
     window.canvas.select(0)
     ui.click(70, 60)
     ui.key(Qt.Key.Key_Enter)
-    assert len(window.canvas.shapes) == 1
-    assert full(window)[20, 20] and full(window)[60, 70]
-    assert window.canvas.selected == 0
+    assert len(window.canvas.shapes) == 2
 
 
 def test_enter_without_a_mask_does_nothing(window, ui, ai):
@@ -299,8 +314,7 @@ def test_auto_cleanup_tidies_ai_result_and_can_be_turned_off(window, ui, ai, fak
     stored = m.to_full(window.canvas.shapes[-1], 80, 100)
     assert stored[30, 30] and not stored[5, 90]
 
-    window.cleanup_action.trigger()  # off
-    assert not window.auto_cleanup
+    window.auto_cleanup = False
     window._apply_smart(speckled.copy(), None)
     raw = m.to_full(window.canvas.shapes[-1], 80, 100)
     assert not raw[30, 30] and raw[5, 90]

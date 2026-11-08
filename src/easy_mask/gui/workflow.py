@@ -1,7 +1,7 @@
 """Workflow helpers for getting through a dataset quickly: review mode and statistics.
 
-They live in a ``Workflow`` menu attached to the :class:`MainWindow` and use only its
-editing primitives, so every change they make is undoable like any other edit.
+Review lives in the View menu and Statistics in the File menu of the :class:`MainWindow`;
+both use only its editing primitives, so every change they make is undoable like any other edit.
 
 Review mode needs no separate state: the selected shape *is* the review cursor.
 ``N`` selects and zooms to the next object; stepping past the last object marks the image
@@ -45,14 +45,14 @@ class Workflow:
     def __init__(self, window: "MainWindow"):
         self.window = window
         self.show_report = show_report  # swappable so tests never open a modal dialog
-        bar = window.menuBar()
-        menu = bar.addMenu("&Workflow")
-        bar.insertMenu(bar.actions()[-2], menu)  # before Help
-        window._action(menu, "Review Next Object", self.next_object, "N")
-        window._action(menu, "Review Previous Object", self.prev_object, "Shift+N")
-        menu.addSeparator()
-        menu.addSeparator()
-        window._action(menu, "Statistics...", self.show_statistics, "Ctrl+I")
+        view = window.view_menu
+        window._action(view, "Review Next Object", self.next_object, "N")
+        window._action(view, "Review Previous Object", self.prev_object, "Shift+N")
+        file_menu = window.file_menu
+        quit_action = file_menu.actions()[-1]
+        statistics = window._action(file_menu, "Statistics...", self.show_statistics)
+        file_menu.insertAction(quit_action, statistics)
+        file_menu.insertSeparator(quit_action)
 
     # ------------------------------------------------------------------ review
 
