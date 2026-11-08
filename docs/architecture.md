@@ -6,6 +6,7 @@ easy-mask is split into three layers with a one-way dependency: `gui -> io -> co
 | --- | --- | --- |
 | `core/` | numpy, Pillow, OpenCV (headless), stdlib | Qt, `io`, `gui` |
 | `io/` | `core`, numpy, Pillow | Qt, `gui` |
+| `propagation/` | `core`, numpy, Pillow; PyTorch lazily (`video` extra) | Qt, `gui` |
 | `gui/` | everything | — |
 
 Keeping Qt out of `core` and `io` means the annotation logic (geometry, file format,
@@ -25,13 +26,21 @@ src/easy_mask/
     rasterize.py         Shape -> boolean mask; semantic and instance masks
     masks.py             mask shapes <-> full masks, brush strokes, clean-up, mask -> polygons
     operations.py        pure list edits: combine (union/subtract/intersect), map, convert
+    video.py             object identity across frames, auto vs manual shapes, merging results
+    interpolate.py       keyframe interpolation: outline correspondence, SDF mask blending
   io/
     images.py            list images in a folder (natural sort), read size
+    video.py             extract a video's frames to <stem>_frames/ (step, max frames)
     export/
       common.py          collect (image, annotation) pairs, resolve class list, copy images
       masks.py           semantic + instance PNG masks
       coco.py            COCO instance segmentation JSON
       yolo.py            YOLO-seg label files + data.yaml
+      davis.py           DAVIS-style indexed PNG per frame, object ids stable across frames
+  propagation/
+    tracker.py           Propagator protocol; track(): shapes -> prompts -> flagged mask shapes
+    backend.py           EfficientTAM / SAM 2.1 video predictor, weights download, device pick
+    configs/             EfficientTAM config (its wheel ships none)
   gui/
     app.py               QApplication bootstrap
     main_window.py       menus, docks, open/save/navigate, edit commands, export menu
@@ -40,6 +49,8 @@ src/easy_mask/
     tools/brush.py       brush and eraser
     label_dialog.py      label / group id / description dialog with autocomplete
     widgets.py           list widgets for files, labels, shapes, flags
+    video_menu.py        Video menu: open video, interpolate, propagate / stop
+    propagate.py         PropagationWorker: QThread running the tracker, one signal per frame
 ```
 
 ## Data flow for one edit
@@ -67,6 +78,29 @@ Vector shapes are drawn by the canvas itself. Anything that works on pixels (bru
 eraser, and later magic wand or AI clicks) subclasses `CanvasTool` and is activated with
 `Canvas.set_tool`; the canvas forwards mouse, key and paint events. A tool reports its
 result through a callback, and `MainWindow` stores it and records undo history.
+
+## Video
+
+A video is a folder of frames (a video file is extracted to one first), so it reuses the
+file list, navigation and one-JSON-per-frame storage unchanged. An object's identity
+across frames is `(label, group_id)`.
+
+```
+Video > Propagate -> VideoMenu.propagate: confirm this frame's shapes (drop auto flags),
+                     read the range's annotations, start PropagationWorker
+PropagationWorker (QThread) -> track(propagator, frames, shapes)
+                                 |- prompts: this frame's area shapes (rasterized)
+                                 |           + hand-drawn shapes of those objects later on
+                                 '- Propagator.propagate() -> masks per frame
+      frame_done(position, shapes) --queued signal--> VideoMenu._store (GUI thread)
+                                 |- frame on screen: merge_auto -> MainWindow._replace_shapes
+                                 '- other frames:   load JSON, merge_auto, save
+```
+
+`merge_auto` replaces an object's earlier automatic shapes (flag `propagated` or
+`interpolated`) and never touches hand-drawn ones, which is what makes "fix a frame, run
+again" safe. The model sits behind the small `Propagator` protocol, so GUI tests use a
+deterministic fake and the real backend (PyTorch) is only imported when first used.
 
 ## Where SAM2 will plug in
 
