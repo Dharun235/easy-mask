@@ -23,7 +23,7 @@ EXPORTERS: dict[str, Exporter] = {
 
 # What the File > Export menu shows for each format.
 EXPORT_NAMES = {
-    "objects": "Objects: binary masks, cutouts, coordinates...",
+    "objects": "Objects (choose what to save below)",
     "masks": "Semantic + instance mask PNGs",
     "coco": "COCO (polygons)",
     "coco-rle": "COCO (exact RLE masks)",

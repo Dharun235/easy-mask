@@ -19,6 +19,7 @@ All notable changes to this project are documented here. Format follows
 - The Export button asks the format the first time, then repeats it.
 
 ### Removed
+- File > Export As submenu (its formats are in the Export window).
 - The separate Cut tool (the Eraser does it), Copy / Cut Through Frames buttons, the Video, Draw, Mask, Labels and Workflow menus, and multi-key shortcuts for them.
 - Grow / Shrink / Smooth, the Auto Save and Auto Clean-Up toggles (both always on) and Change Annotation Folder from the menus (`--output` / `--no-autosave` remain).
 - File > Import Video Frames (File > Open Video imports first).
@@ -42,6 +43,8 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Export window (the Export button, File > Export...): format, what to save, which frames (all, this one, or a range), folder and export-on-close in one place, filled in with the last choices; File > Export Again repeats without asking.
+- Objects export: **centroid** (mean of the mask's pixels) and **corners** (straight box corners and the tight rotated box's corners, clockwise from top-left) as two separate choices, in `objects.json` / `.csv` and `--parts centroid,corners`.
 - The status bar explains the active tool (how to place, finish, resize or cancel) while it is in use, and hovering any toolbar button or Propagate option explains what it does.
 - Label management in the Labels panel: an *Add a label* box; right-click a label to use it, apply it to the selected shapes, rename it on every frame, or delete it from this frame or from all frames (each one undo step). Right-click a mask > Label to change its label. New masks announce their label in the status bar.
 - Erase as a label: finish any shape with *Erase With It* (label dialog) and it cuts the masks under it instead of being kept; Propagate carries the cut. Or propagate a shape first and right-click > *Erase With This*: it cuts the other masks on this frame and every frame it was propagated to, then goes (one Undo reverts).

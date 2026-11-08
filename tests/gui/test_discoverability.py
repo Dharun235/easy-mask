@@ -29,7 +29,7 @@ def test_toolbar_is_one_row_of_labelled_buttons(make_window):
     actions = [a for a in toolbar.actions() if not a.isSeparator()]
     texts = [a.text() for a in actions]
     assert texts.index("Open Folder...") < texts.index("Select / Edit")  # file first
-    assert texts[-1] == "Export Again"  # export alone on the right
+    assert texts[-1] == "Export..."  # export alone on the right
     separators = sum(1 for a in toolbar.actions() if a.isSeparator())
     groups = {group for *_, group in TOOLS} - {KEYS_ONLY}
     assert separators == 3 + len(groups) - 1  # file groups + tool groups

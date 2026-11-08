@@ -9,11 +9,17 @@ Output layout (each part optional)::
       objects.json                      one record per object (see below)
       objects.csv                       the same, one row per object
 
+``objects.json`` / ``.csv`` are written when any of coordinates, centroid or corners is
+chosen, with the fields of the chosen ones.
+
 An *object* is every shape sharing ``(label, group_id)`` when ``group_id`` is set (one
 object in several parts), otherwise a single shape. ``NN`` numbers objects per image in
 drawing order. Each record has: image, object, label, group_id, shape_types, bbox
 ``[x_min, y_min, x_max, y_max]`` (inclusive pixels), area (pixels), polygons (outlines in
 image coordinates; points / lines give their own points) and the mask / cutout file names.
+*centroid* adds ``centroid`` ``[x, y]``, the mean of the object's pixels. *corners* adds
+``box_corners`` (the box above as four points) and ``rotated_corners`` (the four corners of
+the smallest rotated rectangle around the object); both start top-left and go clockwise.
 """
 
 import csv
@@ -22,6 +28,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -31,22 +38,33 @@ from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape
 from easy_mask.io.export.common import AnnotatedImage, ProgressFn, tracked
 
-PARTS = ("masks", "cutouts", "coordinates")
-CSV_FIELDS = [
-    "image",
-    "object",
-    "label",
-    "group_id",
-    "x_min",
-    "y_min",
-    "x_max",
-    "y_max",
-    "area",
-    "shape_types",
-    "polygon",
-    "mask_file",
-    "cutout_file",
-]
+PARTS = ("masks", "cutouts", "coordinates", "centroid", "corners")
+TABLE_PARTS = ("coordinates", "centroid", "corners")  # these go into objects.json / .csv
+CSV_FIELDS = {
+    None: ["image", "object", "label", "group_id"],
+    "coordinates": ["x_min", "y_min", "x_max", "y_max", "area", "shape_types", "polygon"],
+    "centroid": ["centroid_x", "centroid_y"],
+    "corners": ["box_corners", "rotated_corners"],
+}
+FILE_FIELDS = ["mask_file", "cutout_file"]
+Corners = list[list[float]]
+
+
+def clockwise_from_top_left(points: np.ndarray) -> Corners:
+    """Four corner points ordered top-left, top-right, bottom-right, bottom-left."""
+    centre = points.mean(axis=0)
+    angles = np.arctan2(points[:, 1] - centre[1], points[:, 0] - centre[0])
+    ordered = points[np.argsort(angles)]  # clockwise on screen (y grows downwards)
+    start = int(np.argmin(ordered.sum(axis=1)))  # top-left: smallest x + y
+    ordered = np.roll(ordered, -start, axis=0)
+    return [[round(float(x), 2), round(float(y), 2)] for x, y in ordered]
+
+
+def rotated_corners(full: np.ndarray) -> Corners:
+    """Corners of the smallest rotated rectangle around a mask's pixels."""
+    contours, _ = cv2.findContours(full.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    points = np.concatenate([c.reshape(-1, 2) for c in contours]).astype(np.float32)
+    return clockwise_from_top_left(cv2.boxPoints(cv2.minAreaRect(points)))
 
 
 @dataclass
@@ -128,57 +146,72 @@ def export_objects(
                 continue  # degenerate or off-image shape
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
             name = f"{item.image_path.stem}_{number:02d}_{safe_name(obj.label)}.png"
-            mask_file = cutout_file = ""
+            record: dict = {
+                "image": item.image_path.name,
+                "object": number,
+                "label": obj.label,
+                "group_id": obj.group_id,
+            }
+            if "coordinates" in parts:
+                record["shape_types"] = sorted({str(s.shape_type) for s in obj.shapes})
+                record["bbox"] = [x0, y0, x1, y1]
+                record["area"] = int(full.sum())
+                record["polygons"] = [
+                    [[round(x, 2), round(y, 2)] for x, y in polygon]
+                    for shape in obj.shapes
+                    for polygon in _polygons(shape)
+                ]
+            if "centroid" in parts:
+                record["centroid"] = [round(float(xs.mean()), 2), round(float(ys.mean()), 2)]
+            if "corners" in parts:
+                record["box_corners"] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+                record["rotated_corners"] = rotated_corners(full)
+            record["mask_file"] = record["cutout_file"] = ""
             if "masks" in parts:
-                mask_file = f"masks/{name}"
-                Image.fromarray(full.astype(np.uint8) * 255).save(out_dir / mask_file)
+                record["mask_file"] = f"masks/{name}"
+                Image.fromarray(full.astype(np.uint8) * 255).save(out_dir / record["mask_file"])
             if rgb is not None:
-                cutout_file = f"cutouts/{name}"
+                record["cutout_file"] = f"cutouts/{name}"
                 crop = np.zeros((y1 - y0 + 1, x1 - x0 + 1, 4), dtype=np.uint8)
                 crop[..., :3] = rgb[y0 : y1 + 1, x0 : x1 + 1]
                 crop[..., 3] = full[y0 : y1 + 1, x0 : x1 + 1] * 255
-                Image.fromarray(crop, mode="RGBA").save(out_dir / cutout_file)
-            records.append(
-                {
-                    "image": item.image_path.name,
-                    "object": number,
-                    "label": obj.label,
-                    "group_id": obj.group_id,
-                    "shape_types": sorted({str(s.shape_type) for s in obj.shapes}),
-                    "bbox": [x0, y0, x1, y1],
-                    "area": int(full.sum()),
-                    "polygons": [
-                        [[round(x, 2), round(y, 2)] for x, y in polygon]
-                        for shape in obj.shapes
-                        for polygon in _polygons(shape)
-                    ],
-                    "mask_file": mask_file,
-                    "cutout_file": cutout_file,
-                }
-            )
+                Image.fromarray(crop, mode="RGBA").save(out_dir / record["cutout_file"])
+            records.append(record)
 
-    if "coordinates" in parts:
-        (out_dir / "objects.json").write_text(json.dumps(records, indent=2), encoding="utf-8")
-        with (out_dir / "objects.csv").open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
-            writer.writeheader()
-            for r in records:
+    tables = [part for part in TABLE_PARTS if part in parts]
+    if tables:
+        _write_tables(records, out_dir, tables)
+
+
+def _points(points: Corners) -> str:
+    return " ".join(f"{x},{y}" for x, y in points)
+
+
+def _write_tables(records: list[dict], out_dir: Path, tables: list[str]) -> None:
+    """``objects.json`` with every record, ``objects.csv`` with one row per object."""
+    (out_dir / "objects.json").write_text(json.dumps(records, indent=2), encoding="utf-8")
+    fields = CSV_FIELDS[None] + [f for part in tables for f in CSV_FIELDS[part]] + FILE_FIELDS
+    with (out_dir / "objects.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for r in records:
+            row = {key: r[key] for key in (*CSV_FIELDS[None], *FILE_FIELDS)}
+            row["group_id"] = "" if r["group_id"] is None else r["group_id"]
+            if "coordinates" in tables:
                 x0, y0, x1, y1 = r["bbox"]
                 first = r["polygons"][0] if r["polygons"] else []
-                writer.writerow(
-                    {
-                        "image": r["image"],
-                        "object": r["object"],
-                        "label": r["label"],
-                        "group_id": "" if r["group_id"] is None else r["group_id"],
-                        "x_min": x0,
-                        "y_min": y0,
-                        "x_max": x1,
-                        "y_max": y1,
-                        "area": r["area"],
-                        "shape_types": " ".join(r["shape_types"]),
-                        "polygon": " ".join(f"{x},{y}" for x, y in first),
-                        "mask_file": r["mask_file"],
-                        "cutout_file": r["cutout_file"],
-                    }
+                row.update(
+                    x_min=x0,
+                    y_min=y0,
+                    x_max=x1,
+                    y_max=y1,
+                    area=r["area"],
+                    shape_types=" ".join(r["shape_types"]),
+                    polygon=_points(first),
                 )
+            if "centroid" in tables:
+                row["centroid_x"], row["centroid_y"] = r["centroid"]
+            if "corners" in tables:
+                row["box_corners"] = _points(r["box_corners"])
+                row["rotated_corners"] = _points(r["rotated_corners"])
+            writer.writerow(row)

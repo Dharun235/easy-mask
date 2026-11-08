@@ -86,10 +86,10 @@ def test_read_only_folder_is_not_an_error(make_window, image_dir, monkeypatch):
 
 
 def export_once(win, out, monkeypatch, fmt="coco"):
-    from PySide6.QtWidgets import QFileDialog
+    from dataclasses import replace
 
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(out))
-    win.export_dataset(fmt)
+    win.ask_export = lambda choice, count, current, parent: replace(choice, fmt=fmt, out=out)
+    win.export_dialog()
     win.export_worker.wait()  # exports run in the background
     win._on_export_finished()
 
@@ -146,13 +146,13 @@ def test_export_on_close(make_window, image_dir, tmp_path, monkeypatch, driver):
     assert (out / "class_names.txt").exists()
 
 
-def test_export_before_any_export_offers_the_formats(make_window, image_dir, monkeypatch):
+def test_export_again_before_any_export_opens_the_export_window(make_window, image_dir):
     win = make_window(Settings())
     win.open_path(image_dir)
     shown = []
-    monkeypatch.setattr(win.export_menu, "popup", lambda pos: shown.append(pos))
+    win.ask_export = lambda choice, count, current, parent: shown.append(choice)
     win.export_again()
-    assert shown and win.export_worker is None
+    assert shown and shown[0].fmt == "objects" and win.export_worker is None
 
 
 def test_unknown_export_format_in_project_is_ignored(make_window, image_dir):

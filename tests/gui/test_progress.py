@@ -45,9 +45,8 @@ def test_cancel_button_only_for_cancellable_tasks(qtbot):
 
 
 def test_export_reports_progress_and_finishes(
-    make_window, image_dir, tmp_path, driver, wait_export, monkeypatch
+    export_as, make_window, image_dir, tmp_path, driver, wait_export, monkeypatch
 ):
-    from PySide6.QtWidgets import QFileDialog
 
     win = make_window(Settings())
     win.open_path(image_dir)
@@ -62,8 +61,7 @@ def test_export_reports_progress_and_finishes(
         "report",
         lambda key, done, *a, **k: seen.append((key, done)) or original(key, done, *a, **k),
     )
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(tmp_path / "out"))
-    win.export_dataset("coco")
+    export_as(win, "coco", tmp_path / "out")
     assert win.progress.is_running("export")
     wait_export(win)
     assert ("export", 1) in seen and not win.progress.is_running("export")

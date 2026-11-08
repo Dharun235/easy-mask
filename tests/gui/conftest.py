@@ -125,3 +125,20 @@ def wait_export(qtbot):
         qtbot.waitUntil(lambda: win.export_worker is None, timeout=10_000)
 
     return wait
+
+
+@pytest.fixture
+def export_as():
+    """``export_as(win, fmt, out, **changes)``: export through the answered Export window."""
+    return _export_as
+
+
+def _export_as(win: MainWindow, fmt: str, out, **changes) -> None:
+    """Export through the Export window, answering it with ``fmt``, ``out`` and ``changes``."""
+    from dataclasses import replace
+    from pathlib import Path
+
+    win.ask_export = lambda choice, count, current, parent: replace(
+        choice, fmt=fmt, out=Path(out), **changes
+    )
+    win.export_dialog()

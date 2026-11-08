@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QPoint, QSize, Qt
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QCursor, QKeySequence, QPixmap
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
@@ -42,10 +42,10 @@ from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.core.video import ERASE_LABEL, ObjectKey, cut_region, free_group_id, object_key
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.display_dialog import DisplayDialog
+from easy_mask.gui.export_dialog import ExportChoice, ask_export
 from easy_mask.gui.export_worker import ExportWorker
 from easy_mask.gui.icons import icon
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
-from easy_mask.gui.object_export_dialog import ask_object_parts
 from easy_mask.gui.progress import ProgressPanel
 from easy_mask.gui.session import Session
 from easy_mask.gui.shortcuts import ShortcutsDialog
@@ -173,7 +173,7 @@ class MainWindow(QMainWindow):
         self.last_export: tuple[str, Path] | None = None  # (format, folder), per project
         self.export_worker: ExportWorker | None = None
         self.object_parts: list[str] = list(export.PARTS)  # what Objects exports, per project
-        self.ask_object_parts = ask_object_parts  # swappable in tests
+        self.ask_export = ask_export  # swappable in tests
         self.video_worker: VideoImportWorker | None = None
         self.ask_video_import = VideoImportDialog.ask  # swappable in tests
         # Tidy AI / smart-tool masks (specks, pinholes) before storing them; brush is exact.
@@ -354,18 +354,10 @@ class MainWindow(QMainWindow):
         m.addMenu(self.session.recent_menu)
         m.addSeparator()
         self._action(m, "Save", self.save, std.Save)
-        export_menu = m.addMenu("Export As")
-        self.export_menu = export_menu
-        for fmt, name in export.EXPORT_NAMES.items():
-            self._action(export_menu, name, lambda f=fmt: self.export_dataset(f))
-        export_menu.addSeparator()
-        self.export_on_close_action = self._action(
-            export_menu,
-            "Export Again When Closing",
-            lambda _=False: self.session.save_project(),
-            checkable=True,
-        )
+        self._export_action = self._action(m, "Export...", self.export_dialog)
         self._export_again_action = self._action(m, "Export Again", self.export_again)
+        # Set in the Export window; kept as a checkable action for the session state.
+        self.export_on_close_action = QAction("Export Again When Closing", self, checkable=True)
         m.addSeparator()
         self._action(m, "Quit", self.close, std.Quit)
 
@@ -463,12 +455,13 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
-        self._export_again_action.setIcon(icon("export"))
-        self._export_again_action.setIconText("Export")
-        self._export_again_action.setToolTip(
-            "Export (first time: choose format and folder; then repeats it)"
+        self._export_action.setIcon(icon("export"))
+        self._export_action.setIconText("Export")
+        self._export_action.setToolTip(
+            "Export: choose the format, what to save (masks, cutouts, coordinates, centroid, "
+            "corners), which frames and the folder"
         )
-        toolbar.addAction(self._export_again_action)
+        toolbar.addAction(self._export_action)
         for action in toolbar.actions():  # hovering a button explains it at the bottom
             action.setStatusTip(action.toolTip())
 
@@ -1198,40 +1191,58 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ export
 
-    def export_dataset(self, fmt: str) -> None:
-        """Export every annotated image in the open folder to dataset format ``fmt``."""
-        if self.image_path is None:
+    def export_dialog(self) -> None:
+        """Open the Export window (last choices filled in) and export what it says."""
+        if self.image_path is None or self.current_index is None:
             self._error("Open a folder first.")
             return
-        if not self.maybe_save():
+        folder = self.image_path.parent
+        fmt, out = self.last_export or ("objects", folder.parent / f"{folder.name}_export")
+        start = ExportChoice(
+            fmt,
+            out,
+            list(self.object_parts),
+            0,
+            len(self.image_paths) - 1,
+            self.export_on_close_action.isChecked(),
+        )
+        choice = self.ask_export(start, len(self.image_paths), self.current_index, self)
+        if choice is None or not self.maybe_save():
             return
-        if fmt == "objects":
-            parts = self.ask_object_parts(self.object_parts, self)
-            if parts is None:
-                return
-            self.object_parts = parts
-        out = QFileDialog.getExistingDirectory(self, f"Export {fmt} to folder")
-        if not out:
-            return
-        self.last_export = (fmt, Path(out))
+        self.last_export = (choice.fmt, choice.out)
+        if choice.parts:
+            self.object_parts = choice.parts
+        self.export_on_close_action.setChecked(choice.on_close)
         self.session.save_project()
-        self._export(fmt, Path(out))
+        self._export(choice.fmt, choice.out, frames=(choice.first, choice.last))
 
     def export_again(self) -> None:
-        """Repeat the last export (format and folder) without asking."""
-        if self.last_export is None:  # first time: pick the format (then the folder)
-            self.export_menu.popup(QCursor.pos())
+        """Repeat the last export (format, folder, all frames) without asking."""
+        if self.last_export is None:
+            self.export_dialog()
             return
         if self.image_path is not None and self.maybe_save():
             self._export(*self.last_export)
 
-    def _export(self, fmt: str, out: Path, wait: bool = False) -> None:
-        """Export the open folder in the background; ``wait`` blocks until done (on close)."""
+    def _export(
+        self, fmt: str, out: Path, wait: bool = False, frames: tuple[int, int] | None = None
+    ) -> None:
+        """Export the open folder's annotated frames in the background.
+
+        Args:
+            fmt: A key of ``export.EXPORTERS``.
+            out: Destination folder.
+            wait: Block until done (used when closing the window).
+            frames: First and last frame (0-based, inclusive) to export; None: all.
+        """
         assert self.image_path is not None
         if self.export_worker is not None:
             self.statusBar().showMessage("An export is already running", 4000)
             return
         items = export.collect(self.image_path.parent, self.settings.output_dir)
+        if frames is not None:
+            wanted = {p.resolve() for p in self.image_paths[frames[0] : frames[1] + 1]}
+            items = [item for item in items if item.image_path.resolve() in wanted]
         # Predefined labels first, then any seen in the folder, so nothing is dropped and
         # class ids follow the same order as the on-screen colours.
         for item in items:
@@ -1297,7 +1308,7 @@ class MainWindow(QMainWindow):
             *self.tool_actions.values(),
             *self.nav_actions,
             self.propagate_button_action,
-            self._export_again_action,
+            self._export_action,
         ]:
             action.setEnabled(visible)
         for dock in self.docks:

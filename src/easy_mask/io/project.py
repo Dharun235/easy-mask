@@ -24,7 +24,7 @@ class Project:
         export_format: Format of the last export (a key of ``io.export.EXPORTERS``).
         export_dir: Folder of the last export, relative to the image folder when possible.
         export_on_close: Repeat the last export when easy-mask closes.
-        object_parts: What the Objects export writes (masks / cutouts / coordinates).
+        object_parts: What the Objects export writes (see ``export.PARTS``).
     """
 
     labels: list[str] = field(default_factory=list)

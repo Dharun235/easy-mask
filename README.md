@@ -43,7 +43,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Image flags | per-image checkboxes for classification or data cleaning (`--flags`) |
 | Saving | one JSON per image next to the image or in `--output`, optional auto-save, crash-safe writes |
 | Export | semantic mask PNG, instance mask PNG, COCO instance JSON (polygons or exact RLE), YOLO-seg TXT, DAVIS-style video masks (GUI or CLI) |
-| Per-object export | **binary mask** PNG, **cutout** (the object's original pixels on transparency) and **coordinates** (box, area, outline points in `objects.json` / `objects.csv`) for every object; pick any of the three |
+| Per-object export | pick any of: **binary mask** PNG, **cutout** (the object's original pixels on transparency), **coordinates** (box, area, outline points), **centroid** and **corners** (straight and rotated box), in `objects.json` / `objects.csv` |
 | Workflow | review mode (step and zoom through every object, `reviewed` flag), folder statistics, strict label list |
 | Video | open mp4/avi/mov (frames extracted, `--frame-step`, `--max-frames`) or a frame folder; keyframe interpolation; mask propagation with memory (EfficientTAM / SAM 2.1, optional extra); erase through frames; clear frames; undo across frames |
 | Privacy | 100% offline; images never leave your disk |
@@ -105,7 +105,9 @@ Select, AI, Polygon, Box, Paint, Eraser, Export**.
 6. **Undo / Redo** work across the whole folder: each edit, on any frame, is one step,
    and a Propagate (or erase, clear) run is one step over all its frames. Undoing an edit
    made on another frame goes back to that frame.
-7. **Export**: the first click asks the format and folder; later clicks repeat it.
+7. **Export** opens one window: format, what to save (for Objects: binary masks, cutouts,
+   coordinates, centroid, corners), which frames (all, this one, or a range) and the
+   folder, filled in with your last choices. File > Export Again repeats it without asking.
 
 The bottom bar says how to use the tool you picked; hover any button to see what it does.
 Right-click a shape for its actions (edit label, delete, propagate, erase with it, mask
@@ -131,7 +133,7 @@ uv run easy-mask images/ --flags blurry,occluded --no-autosave   # ask before le
 uv run easy-mask export images/ --format coco  --out dataset/
 uv run easy-mask export images/ --format masks --out dataset/   # semantic + instance PNGs
 uv run easy-mask export images/ --format yolo  --out dataset/
-uv run easy-mask export images/ --format objects --parts masks,cutouts,coordinates --out objects/
+uv run easy-mask export images/ --format objects --parts masks,centroid,corners --out objects/
 uv run easy-mask export images/ --format coco --rle --out dataset/  # masks as exact COCO RLE
 
 # progress and label check: per-label objects/area, annotated/reviewed counts

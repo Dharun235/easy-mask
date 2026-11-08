@@ -94,3 +94,36 @@ def test_group_objects_and_safe_name():
     c = Shape("x", ShapeType.POINT, [(3, 3)], group_id=2)
     assert [len(o.shapes) for o in group_objects([a, b, c])] == [2, 1]
     assert safe_name("my cat!") == "my-cat" and safe_name("***") == "object"
+
+
+def test_centroid_and_corners(scene, tmp_path):
+    items, _rgb, _cat = scene
+    export.export_objects(items, tmp_path, parts=("centroid", "corners"))
+    assert not (tmp_path / "masks").exists()
+    cat, dog, _nose = json.loads((tmp_path / "objects.json").read_text())
+    assert cat["centroid"] == [19.5, 14.5]  # cat pixels x 10..29, y 10..19
+    assert cat["box_corners"] == [[10, 10], [29, 10], [29, 19], [10, 19]]
+    assert "bbox" not in cat and "polygons" not in cat  # coordinates were not chosen
+    xs = [x for x, _ in cat["rotated_corners"]]
+    assert min(xs) == 10 and max(xs) == 29  # an upright box: same as the straight one
+    assert dog["centroid"][1] == pytest.approx(15, abs=0.5)  # both parts, one centre
+    rows = list(csv.DictReader((tmp_path / "objects.csv").open()))
+    assert set(rows[0]) == {
+        "image", "object", "label", "group_id", "centroid_x", "centroid_y",
+        "box_corners", "rotated_corners", "mask_file", "cutout_file",
+    }  # fmt: skip
+    assert rows[0]["box_corners"] == "10,10 29,10 29,19 10,19"
+
+
+def test_rotated_corners_follow_a_tilted_object():
+    import cv2
+
+    from easy_mask.io.export.objects import rotated_corners
+
+    full = np.zeros((100, 100), np.uint8)
+    box = cv2.boxPoints(((50, 50), (60, 20), 30)).astype(np.int32)
+    cv2.fillPoly(full, [box], 1)
+    corners = np.array(rotated_corners(full.astype(bool)))
+    sides = np.linalg.norm(corners - np.roll(corners, -1, axis=0), axis=1)
+    assert sorted(sides.round()) == pytest.approx([19, 19, 59, 59], abs=2)  # tight, tilted
+    assert corners[0].sum() == corners.sum(axis=1).min()  # starts top-left

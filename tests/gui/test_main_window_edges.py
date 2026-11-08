@@ -101,7 +101,7 @@ def test_open_dialogs(make_window, image_dir, monkeypatch):
 
 def test_export_without_image_warns(make_window, dialogs):
     dialogs.allow_warnings = True
-    make_window().export_dataset("coco")
+    make_window().export_dialog()
     assert dialogs.warnings == ["Open a folder first."]
 
 
