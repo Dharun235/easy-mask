@@ -69,3 +69,46 @@ def test_unreadable_video_raises_and_leaves_no_folder(tmp_path):
     with pytest.raises(ValueError):
         extract_frames(broken)
     assert not frames_dir_for(broken).exists()
+
+
+@pytest.mark.parametrize("fmt", ["png", "jpg", "webp"])
+def test_every_image_format(video, tmp_path, fmt):
+    out = extract_frames(video, tmp_path / fmt, step=5, fmt=fmt)
+    assert [p.name for p in list_images(out)] == [f"frame_000000.{fmt}", f"frame_000005.{fmt}"]
+
+
+def test_png_is_lossless(video, tmp_path):
+    out = extract_frames(video, tmp_path / "png", max_frames=1, fmt="png")
+    source = cv2.VideoCapture(str(video))
+    _, frame = source.read()
+    source.release()
+    np.testing.assert_array_equal(cv2.imread(str(out / "frame_000000.png")), frame)
+
+
+def test_progress_and_stop(video, tmp_path):
+    seen = []
+    out = extract_frames(
+        video,
+        tmp_path / "out",
+        progress=lambda done, total: seen.append((done, total)),
+        should_stop=lambda: len(seen) >= 3,
+    )
+    assert seen == [(1, 10), (2, 10), (3, 10)]
+    assert len(list_images(out)) == 3  # stopping keeps what was written
+
+
+def test_bad_format_rejected(video):
+    with pytest.raises(ValueError, match="format"):
+        extract_frames(video, fmt="gif")
+
+
+def test_probe_and_planned_count(video):
+    from easy_mask.io.video import planned_count, probe
+
+    info = probe(video)
+    assert (info.frames, info.width, info.height) == (10, 64, 48)
+    assert info.fps == pytest.approx(10) and info.seconds == pytest.approx(1.0)
+    assert planned_count(10, 3, None) == 4 and planned_count(10, 1, 5) == 5
+    assert planned_count(0, 1, None) == 0
+    with pytest.raises(ValueError):
+        probe(video.with_name("missing.mp4"))

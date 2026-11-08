@@ -234,7 +234,7 @@ def test_interpolate_skips_frames_with_only_auto_shapes(window, image_dir):
 # ---------------------------------------------------------------------- opening videos
 
 
-def test_open_video_extracts_and_shows_frames(make_window, tmp_path):
+def test_open_video_extracts_and_shows_frames(qtbot, make_window, tmp_path):
     video_path = tmp_path / "clip.avi"
     writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"MJPG"), 10, (64, 48))
     for k in range(6):
@@ -243,7 +243,9 @@ def test_open_video_extracts_and_shows_frames(make_window, tmp_path):
     from easy_mask.gui.main_window import Settings
 
     win = make_window(Settings(frame_step=2))
+    win.ask_video_import = lambda defaults, info, parent: defaults  # accept the defaults
     win.open_path(video_path)
+    qtbot.waitUntil(lambda: win.video_worker is None, timeout=5000)
     assert [p.name for p in win.image_paths] == [
         "frame_000000.jpg",
         "frame_000002.jpg",

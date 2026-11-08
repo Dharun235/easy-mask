@@ -50,13 +50,20 @@ from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
 from easy_mask.gui.tools.region import GrabCutTool, MagicWandTool, SuperpixelTool
 from easy_mask.gui.tools.watershed import WatershedTool
+from easy_mask.gui.video_import import (
+    VIDEO_FILTER,
+    ImportOptions,
+    VideoImportDialog,
+    VideoImportWorker,
+    default_options,
+)
 from easy_mask.gui.video_menu import VideoMenu
 from easy_mask.gui.welcome import WelcomePage
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
 from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
 from easy_mask.io.images import is_image, list_images
-from easy_mask.io.video import extract_frames, is_video
+from easy_mask.io.video import frames_dir_for, is_video, planned_count, probe
 
 PREFETCH_AHEAD = 3  # images encoded ahead for AI Segment: the current one and the next two
 DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
@@ -121,6 +128,8 @@ class MainWindow(QMainWindow):
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
         self.last_export: tuple[str, Path] | None = None  # (format, folder), per project
         self.export_worker: ExportWorker | None = None
+        self.video_worker: VideoImportWorker | None = None
+        self.ask_video_import = VideoImportDialog.ask  # swappable in tests
         # Tidy AI / smart-tool masks (specks, pinholes) before storing them; brush is exact.
         self.auto_cleanup = True
         # With an active label, new shapes take it directly instead of opening the dialog.
@@ -269,6 +278,7 @@ class MainWindow(QMainWindow):
         self._action(m, "Open Image...", self.open_image_dialog, std.Open)
         open_folder = self._action(m, "Open Folder...", self.open_folder_dialog, "Ctrl+Shift+O")
         m.addMenu(self.session.recent_menu)
+        self._action(m, "Import Video Frames...", self.import_video_dialog)
         self._action(m, "Change Annotation Folder...", self.change_output_dir)
         m.addSeparator()
         save = self._action(m, "Save", self.save, std.Save)
@@ -402,14 +412,17 @@ class MainWindow(QMainWindow):
         return self.image_paths[self.current_index]
 
     def open_path(self, path: Path) -> None:
-        """Open an image file, every image in a folder, or the frames of a video."""
+        """Open an image file, every image in a folder, or the frames of a video.
+
+        A video whose frames were extracted before opens straight away; otherwise the
+        import dialog asks how to turn it into images.
+        """
         if is_video(path):
-            try:
-                path = extract_frames(
-                    path, step=self.settings.frame_step, max_frames=self.settings.max_frames
-                )
-            except ValueError as exc:
-                self._error(str(exc))
+            frames = frames_dir_for(path)
+            if frames.is_dir() and list_images(frames):
+                path = frames
+            else:
+                self.import_video(path)
                 return
         if path.is_dir():
             paths = list_images(path)
@@ -432,6 +445,54 @@ class MainWindow(QMainWindow):
         self.current_index = None
         self._refresh_file_list()
         self._load(start)
+
+    # ------------------------------------------------------------------ video import
+
+    def import_video_dialog(self) -> None:
+        """File > Import Video Frames: pick a video, then choose how to import it."""
+        name, _ = QFileDialog.getOpenFileName(self, "Import Video Frames", "", VIDEO_FILTER)
+        if name:
+            self.import_video(Path(name))
+
+    def import_video(self, video: Path) -> None:
+        """Ask how to turn ``video`` into images, then extract them in the background."""
+        if self.video_worker is not None:
+            self.statusBar().showMessage("A video import is already running", 4000)
+            return
+        try:
+            info = probe(video)
+        except ValueError as exc:
+            self._error(str(exc))
+            return
+        defaults = default_options(video, self.settings.frame_step, self.settings.max_frames)
+        options = self.ask_video_import(defaults, info, self)
+        if options is None:
+            return
+        if options.out_dir.is_dir() and list_images(options.out_dir):
+            self.statusBar().showMessage(f"{options.out_dir} already has images: opened", 5000)
+            self.open_path(options.out_dir)
+            return
+        worker = VideoImportWorker(options)
+        planned = planned_count(info.frames, options.step, options.max_frames)
+        self.progress.begin("video", f"Importing {video.name}", planned, cancel=worker.cancel)
+        worker.progress.connect(lambda done, total: self.progress.report("video", done, total))
+        worker.failed.connect(self._error)
+        worker.done.connect(lambda folder: self._on_video_imported(folder, options))
+        worker.finished.connect(self._on_video_worker_finished)
+        self.video_worker = worker
+        worker.start()
+
+    def _on_video_imported(self, folder: Path, options: ImportOptions) -> None:
+        count = len(list_images(folder))
+        self.statusBar().showMessage(f"Imported {count} images to {folder}", 5000)
+        if options.open_after:
+            self.open_path(folder)
+
+    def _on_video_worker_finished(self) -> None:
+        if self.video_worker is not None:
+            self.video_worker.deleteLater()
+        self.video_worker = None
+        self.progress.end("video")
 
     def _load(self, index: int) -> None:
         """Show image ``index`` and its annotation (if one exists)."""

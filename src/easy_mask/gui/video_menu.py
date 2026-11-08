@@ -18,8 +18,8 @@ from easy_mask.core.interpolate import interpolate_frames
 from easy_mask.core.shapes import Shape
 from easy_mask.core.video import ObjectKey, confirm, is_auto, merge_auto, object_key
 from easy_mask.gui.propagate import PropagationWorker
+from easy_mask.gui.video_import import VIDEO_FILTER
 from easy_mask.io.images import image_size
-from easy_mask.io.video import VIDEO_EXTENSIONS
 from easy_mask.propagation.tracker import CopyPropagator, Propagator
 
 if TYPE_CHECKING:  # the main window imports this module
@@ -108,9 +108,8 @@ class VideoMenu:
         return self.worker is not None
 
     def open_video_dialog(self) -> None:
-        """Ask for a video file and open its frames."""
-        patterns = " ".join(f"*{ext}" for ext in sorted(VIDEO_EXTENSIONS))
-        name, _ = QFileDialog.getOpenFileName(self.window, "Open Video", "", f"Videos ({patterns})")
+        """Ask for a video file and open it (importing its frames first if needed)."""
+        name, _ = QFileDialog.getOpenFileName(self.window, "Open Video", "", VIDEO_FILTER)
         if name:
             self.window.open_path(Path(name))
 
