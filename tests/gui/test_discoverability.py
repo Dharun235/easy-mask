@@ -87,3 +87,15 @@ def test_view_menu_can_toggle_panels(make_window, image_dir):
     assert set(toggles) == {"Flags", "Labels", "Shapes", "Files"}
     toggles["Files"].trigger()
     assert not next(d for d in win.docks if d.objectName() == "Files").isVisible()
+
+
+def test_propagate_and_track_buttons_follow_the_image_arrows(make_window):
+    from PySide6.QtWidgets import QToolBar
+
+    win = make_window(Settings())
+    (toolbar,) = win.findChildren(QToolBar)
+    texts = [a.text() for a in toolbar.actions() if not a.isSeparator()]
+    i = texts.index("Next Image")
+    assert texts[i + 1 : i + 3] == ["Propagate Forward...", "Track Objects into Next Frame"]
+    assert win.video.track_action.isCheckable()
+    assert not win.video.propagate_action.icon().isNull()

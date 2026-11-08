@@ -61,7 +61,9 @@ class VideoMenu:
         menu.addSeparator()
         window._action(menu, "Interpolate From Previous Keyframe", self.interpolate, "Ctrl+Shift+I")
         menu.addSeparator()
-        window._action(menu, "Propagate Forward...", lambda: self.propagate(+1), "Ctrl+Shift+Right")
+        self.propagate_action = window._action(
+            menu, "Propagate Forward...", lambda: self.propagate(+1), "Ctrl+Shift+Right"
+        )
         window._action(menu, "Propagate Backward...", lambda: self.propagate(-1), "Ctrl+Shift+Left")
         self.track_action = window._action(
             menu, "Track Objects into Next Frame", self._toggle_tracking, "Ctrl+Shift+T", True

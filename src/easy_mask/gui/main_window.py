@@ -172,6 +172,7 @@ class MainWindow(QMainWindow):
         self._build_panels()
         self._build_actions()
         self.video = VideoMenu(self)
+        self._add_video_buttons()
         self._connect_canvas()
         self.workflow = Workflow(self)  # review mode, copy previous, statistics
 
@@ -274,6 +275,7 @@ class MainWindow(QMainWindow):
     def _build_actions(self) -> None:
         bar = self.menuBar()
         toolbar = self.addToolBar("Tools")  # one quiet row: file | tools | export
+        self.toolbar = toolbar
         toolbar.setObjectName("Tools")
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
@@ -988,6 +990,27 @@ class MainWindow(QMainWindow):
     def _toggle_fill(self, checked: bool) -> None:
         self.canvas.fill = checked
         self.canvas.update()
+
+    def _add_video_buttons(self) -> None:
+        """Propagate and Track buttons right after the image arrows (the menu is easy to miss)."""
+        actions = self.toolbar.actions()
+        next_index = next(i for i, a in enumerate(actions) if a.text() == "Next Image")
+        before = actions[next_index + 1]
+        for action, icon_name, tip in (
+            (
+                self.video.propagate_action,
+                "propagate",
+                "Propagate the selected (or all) objects to the next frames  ·  Ctrl+Shift+Right",
+            ),
+            (
+                self.video.track_action,
+                "track",
+                "Track objects into each next frame when pressing D (on / off)  ·  Ctrl+Shift+T",
+            ),
+        ):
+            action.setIcon(icon(icon_name))
+            action.setToolTip(tip)
+            self.toolbar.insertAction(before, action)
 
     def _show_panels(self, visible: bool) -> None:
         """Show the side panels (the Flags panel only when there are flags)."""
