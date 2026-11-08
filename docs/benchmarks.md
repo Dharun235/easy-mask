@@ -244,3 +244,14 @@ below 0.05% of the image, at least 20 px; larger holes are kept):
 
 A small but consistent gain that mostly removes visual noise (stray specks, pinholes), so
 it is on by default (Mask > Auto Clean-Up). The brush and eraser are never cleaned.
+
+### AI Propagate vs Copy from one polygon (v0.8)
+
+Through the GUI: one polygon traced from the frame-0 ground truth of DAVIS 2017 `blackswan`,
+then 15 frames of AI Propagate (EfficientTAM-Ti 512, Apple M2 GPU via MPS) or Copy; IoU
+against the ground truth of frames 1-15:
+
+| mode | mean IoU | frame 1 | frame 15 | time for 15 frames |
+|---|---|---|---|---|
+| AI Propagate | 0.965 | 0.970 | 0.963 | 9.4 s (incl. model load) |
+| Copy | 0.635 | 0.914 | 0.503 | 0.1 s |

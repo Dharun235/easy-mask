@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QFileDialog, QMenu
+from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox
 
 from easy_mask.core import annotation as ann_io
 from easy_mask.core.annotation import Annotation
@@ -27,10 +27,11 @@ if TYPE_CHECKING:  # the main window imports this module
 
 DEFAULT_RUN = 50  # frames offered per propagation run: a few minutes on a laptop CPU
 COPY_MODEL = "copy"  # --video-model value for model-free propagation
-FALLBACK_NOTE = (
-    "AI tracking needs the video extra (uv sync --extra video); "
-    "copying the mask unchanged to each frame instead"
+MISSING_EXTRA = (
+    "AI Propagate uses EfficientTAM (or SAM 2.1), which needs the optional video add-on "
+    "(PyTorch, about 1 GB):\n\n    SAM2_BUILD_CUDA=0 uv sync --extra video"
 )
+FALLBACK_NOTE = "AI tracking needs the video add-on (uv sync --extra video): copying instead"
 
 
 def default_propagator(model: str) -> Propagator:
@@ -51,7 +52,8 @@ class VideoMenu:
         self.make_propagator: Callable[[], Propagator] = lambda: default_propagator(
             window.settings.video_model
         )
-        self.propagator: Propagator | None = None  # built once, then reused across runs
+        self.propagator: Propagator | None = None  # the AI model: built once, then reused
+        self.copier = CopyPropagator()  # "Copy to frames" and the fallback without the extra
         self.worker: PropagationWorker | None = None
 
         bar = window.menuBar()
@@ -62,9 +64,20 @@ class VideoMenu:
         window._action(menu, "Interpolate From Previous Keyframe", self.interpolate, "Ctrl+Shift+I")
         menu.addSeparator()
         self.propagate_action = window._action(
-            menu, "Propagate Forward...", lambda: self.propagate(+1), "Ctrl+Shift+Right"
+            menu, "AI Propagate Forward...", lambda: self.propagate(+1), "Ctrl+Shift+Right"
         )
-        window._action(menu, "Propagate Backward...", lambda: self.propagate(-1), "Ctrl+Shift+Left")
+        window._action(
+            menu, "AI Propagate Backward...", lambda: self.propagate(-1), "Ctrl+Shift+Left"
+        )
+        self.copy_action = window._action(
+            menu, "Copy to Next Frames...", lambda: self.propagate(+1, ai=False), "Ctrl+Alt+Right"
+        )
+        window._action(
+            menu,
+            "Copy to Previous Frames...",
+            lambda: self.propagate(-1, ai=False),
+            "Ctrl+Alt+Left",
+        )
         self.track_action = window._action(
             menu, "Track Objects into Next Frame", self._toggle_tracking, "Ctrl+Shift+T", True
         )
@@ -102,7 +115,9 @@ class VideoMenu:
         if self.running:
             self.window.statusBar().showMessage("Still tracking the previous frame...", 3000)
             return
-        self._run(start, +1, 1, objects, shapes)
+        propagator = self._propagator_for(ai=True, ask=False)
+        assert propagator is not None  # without asking, there is always a fallback
+        self._run(start, +1, 1, objects, shapes, propagator)
 
     @property
     def running(self) -> bool:
@@ -177,11 +192,12 @@ class VideoMenu:
 
     # ------------------------------------------------------------------ propagation
 
-    def propagate(self, direction: int) -> None:
-        """Propagate objects on this frame forward (+1) or backward (-1).
+    def propagate(self, direction: int, ai: bool = True) -> None:
+        """Send objects on this frame forward (+1) or backward (-1) through the video.
 
-        With shapes selected, only their objects are propagated; otherwise every object on
-        the frame is. Without the video extra, masks are copied unchanged.
+        With ``ai`` the video model (EfficientTAM by default) tracks and re-segments each
+        object from its mask on this frame; otherwise the mask is copied unchanged. With
+        shapes selected, only their objects go; otherwise every object on the frame does.
         """
         w = self.window
         current = w.current_index
@@ -197,21 +213,41 @@ class VideoMenu:
         if remaining == 0:
             w.statusBar().showMessage("No frames in that direction", 4000)
             return
+        title = "AI Propagate" if ai else "Copy to Frames"
         count = w.ask_number(
-            w, "Propagate", "Frames to propagate:", min(DEFAULT_RUN, remaining), 1, remaining
+            w, title, "Number of frames:", min(DEFAULT_RUN, remaining), 1, remaining
         )
         if count is None:
             return
+        propagator = self._propagator_for(ai, ask=True)
+        if propagator is None:
+            return
         if shapes != w.canvas.shapes:
             w._replace_shapes(shapes)
-        self._run(current, direction, int(count), objects, shapes)
+        self._run(current, direction, int(count), objects, shapes, propagator)
 
-    def _ensure_propagator(self) -> Propagator:
+    def _propagator_for(self, ai: bool, ask: bool) -> Propagator | None:
+        """The copy propagator, or the AI model (loaded once).
+
+        If the video extra is missing, ``ask`` offers copying instead (None if declined);
+        without ``ask`` (automatic tracking) it copies and says so in the status bar.
+        """
+        if not ai or self.window.settings.video_model == COPY_MODEL:
+            return self.copier
         if self.propagator is None:
             try:
                 self.propagator = self.make_propagator()
             except ImportError:
-                self.propagator = CopyPropagator()
+                w = self.window
+                if not ask:
+                    w.statusBar().showMessage(FALLBACK_NOTE, 6000)
+                    return self.copier
+                answer = QMessageBox.question(
+                    w,
+                    "AI Propagate",
+                    f"{MISSING_EXTRA}\n\nCopy the mask to the next frames instead?",
+                )
+                return self.copier if answer == QMessageBox.StandardButton.Yes else None
         return self.propagator
 
     def _run(
@@ -221,10 +257,10 @@ class VideoMenu:
         count: int,
         objects: set[ObjectKey],
         shapes: list[Shape],
+        propagator: Propagator,
     ) -> None:
         """Propagate ``objects`` from frame ``current`` over ``count`` frames in the background."""
         w = self.window
-        propagator = self._ensure_propagator()
         indices = [current + direction * step for step in range(count + 1)]
         frames = [w.image_paths[i] for i in indices]
         frame_shapes = [self._frame_shapes(i) for i in indices]
@@ -238,12 +274,12 @@ class VideoMenu:
         worker.finished.connect(self._on_finished)
         self.worker = worker
         self.stop_action.setEnabled(True)
-        if isinstance(propagator, CopyPropagator):
-            note = "" if w.settings.video_model == COPY_MODEL else f"{FALLBACK_NOTE}. "
-            w.statusBar().showMessage(f"{note}Copying masks...")
-        else:
-            w.statusBar().showMessage("Propagating... (first run loads the model)")
-        w.progress.begin("propagate", "Propagating", total=count, cancel=self.stop)
+        copying = isinstance(propagator, CopyPropagator)
+        task = "Copying to frames" if copying else "AI propagating"
+        w.statusBar().showMessage(
+            f"{task}..." if copying else f"{task}... (the first run loads the model)"
+        )
+        w.progress.begin("propagate", task, total=count, cancel=self.stop)
         worker.start()
 
     def _on_frame_done(

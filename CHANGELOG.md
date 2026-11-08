@@ -19,6 +19,7 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- AI Propagate vs Copy: separate actions and toolbar buttons. AI Propagate gives the frame's masks (from any area shape) to EfficientTAM / SAM 2.1; Copy repeats them unchanged. Without the video add-on, AI Propagate explains how to install it and offers copying instead.
 - Progress feedback: a status-bar progress panel with Cancel for AI model download / image preparation, propagation, export and video import; exports and video imports run in the background.
 - File > Import Video Frames: choose output folder, PNG / JPEG / WebP and quality, every n-th frame and a frame limit; opening a not-yet-imported video shows this dialog.
 - Calm minimal theme (light / dark, follows the system), Lucide icons, one icon-only toolbar, quieter start page; side panels hidden until an image is open; View > Panels.

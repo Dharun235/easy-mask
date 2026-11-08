@@ -1000,12 +1000,19 @@ class MainWindow(QMainWindow):
             (
                 self.video.propagate_action,
                 "propagate",
-                "Propagate the selected (or all) objects to the next frames  ·  Ctrl+Shift+Right",
+                "AI Propagate: track the selected (or all) objects through the next frames "
+                "with EfficientTAM  ·  Ctrl+Shift+Right",
+            ),
+            (
+                self.video.copy_action,
+                "copy",
+                "Copy the selected (or all) masks unchanged to the next frames  ·  Ctrl+Alt+Right",
             ),
             (
                 self.video.track_action,
                 "track",
-                "Track objects into each next frame when pressing D (on / off)  ·  Ctrl+Shift+T",
+                "Track objects into each next frame when pressing D: AI if installed, else copy "
+                "(on / off)  ·  Ctrl+Shift+T",
             ),
         ):
             action.setIcon(icon(icon_name))

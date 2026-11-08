@@ -89,7 +89,10 @@ code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/Effic
 3. Press **I** for AI Segment and click an object; **Enter** keeps it. Images ahead are
    prepared in the background, so the next one is instant.
 4. Press **D** for the next image. Work is saved automatically.
-5. **Video / similar frames:** turn on **Video > Track Objects into Next Frame**
+5. **Video:** draw a polygon / box / brush mask (or AI-click) on a frame, then press
+   **AI Propagate** (fast-forward button, `Ctrl+Shift+Right`): EfficientTAM tracks and
+   re-segments the object through the next frames. **Copy to next frames** (copy button,
+   `Ctrl+Alt+Right`) repeats the mask unchanged. Or turn on **Video > Track Objects into Next Frame**
    (`Ctrl+Shift+T`) and every **D** carries the selected (or all) objects forward: AI
    tracking with the video extra, a plain copy without it. **N** then reviews the
    automatic shapes first.

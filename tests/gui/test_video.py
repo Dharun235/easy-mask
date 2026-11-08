@@ -130,19 +130,47 @@ def test_stop_cancels_after_the_current_frame(qtbot, window, video, image_dir, f
     assert saved(image_dir, "img2") is not None and saved(image_dir, "img10") is None
 
 
-def test_missing_video_extra_falls_back_to_copying(qtbot, window, video, image_dir):
+def test_ai_propagate_without_extra_offers_copy(qtbot, window, video, image_dir, dialogs):
+    from PySide6.QtWidgets import QMessageBox
+
     def missing():
         raise ImportError("No module named 'torch'")
 
     video.make_propagator = missing
     window.canvas.set_shapes([rect(10)])
+    dialogs.answer = QMessageBox.StandardButton.No  # declined: nothing happens
     video.propagate(+1)
-    assert "uv sync --extra video" in window.statusBar().currentMessage()
+    assert "uv sync --extra video" in dialogs.questions[0]
+    assert not video.running and saved(image_dir, "img2") is None
+
+    dialogs.answer = QMessageBox.StandardButton.Yes  # accepted: copies instead
+    video.propagate(+1)
     qtbot.waitUntil(lambda: not video.running, timeout=5000)
     for stem in FRAMES[1:]:
         (shape,) = saved(image_dir, stem)
         assert shape.flags == {PROPAGATED_FLAG: True}
         assert shape.points == [(10, 10), (19, 19)]  # same pixels, not moved
+
+
+def test_copy_to_frames_never_uses_the_model(qtbot, window, video, image_dir, fake_propagator):
+    window.canvas.set_shapes([rect(10)])
+    video.propagate(+1, ai=False)
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    assert fake_propagator.calls == []
+    assert saved(image_dir, "img2")[0].points == [(10, 10), (19, 19)]
+
+
+def test_tracking_without_extra_copies_without_asking(qtbot, window, image_dir):
+    def missing():
+        raise ImportError("No module named 'torch'")
+
+    window.video.make_propagator = missing
+    window.settings.autosave = True
+    window.canvas.set_shapes([rect(10)])
+    window.video.track_action.setChecked(True)
+    window.next_image()  # the dialogs fixture would fail on any question
+    qtbot.waitUntil(lambda: not window.video.running, timeout=5000)
+    assert window.canvas.shapes[0].points == [(10, 10), (19, 19)]
 
 
 def test_copy_model_can_be_chosen_explicitly(qtbot, window, image_dir):
@@ -285,22 +313,21 @@ def test_shape_list_marks_auto_shapes(window):
     assert "(auto)" not in texts[0] and texts[1].endswith("(auto)")
 
 
-def test_default_backend_without_video_extra_copies_instead(qtbot, window, image_dir, monkeypatch):
+def test_default_backend_without_video_extra_offers_copy(
+    qtbot, window, image_dir, monkeypatch, dialogs
+):
     import importlib.util
 
-    from easy_mask.propagation.tracker import CopyPropagator
+    from PySide6.QtWidgets import QMessageBox
 
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
     window.ask_number = lambda *args: 1
+    dialogs.answer = QMessageBox.StandardButton.Yes
     window.canvas.set_shapes([rect(10)])
     window.video.propagate(+1)
-    assert isinstance(window.video.propagator, CopyPropagator)
-    assert "--extra video" in window.statusBar().currentMessage()
+    assert window.video.propagator is None  # the model was not loaded
     qtbot.waitUntil(lambda: not window.video.running, timeout=5000)
     assert saved(image_dir, "img2")[0].points == [(10, 10), (19, 19)]
-
-
-# ---------------------------------------------------------------------- track while navigating
 
 
 def test_tracking_carries_objects_into_next_frame(qtbot, window, video, image_dir):
