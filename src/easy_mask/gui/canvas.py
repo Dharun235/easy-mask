@@ -13,6 +13,7 @@ Responsibilities are split with the main window like this:
   refreshes the side panels.
 """
 
+import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
@@ -28,10 +29,11 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from easy_mask.core.display import DisplaySettings, adjust
 from easy_mask.core.geometry import Point
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape, ShapeType
-from easy_mask.gui.tools.base import CanvasTool, mask_image
+from easy_mask.gui.tools.base import CanvasTool, mask_image, pixmap_to_rgb, rgb_to_pixmap
 
 HIT_TOLERANCE_PX = 6  # how close (in screen pixels) a click must be to grab something
 VERTEX_SIZE_PX = 7
@@ -68,6 +70,9 @@ class Canvas(QWidget):
         self.setMinimumSize(200, 200)
 
         self.pixmap = QPixmap()
+        self.display = DisplaySettings()  # view adjustments; never touch saved data
+        self._shown = QPixmap()  # pixmap with display adjustments applied
+        self._rgb: np.ndarray | None = None  # cached pixels of ``pixmap`` for pixel tools
         self.shapes: list[Shape] = []
         self.hidden: set[int] = set()  # id() of shapes the user hid
         self.selection: list[int] = []  # selected indices, in pick order
@@ -94,8 +99,25 @@ class Canvas(QWidget):
     def set_image(self, pixmap: QPixmap) -> None:
         """Show a new image and fit it to the window."""
         self.pixmap = pixmap
+        self._rgb = None
+        self.set_display(self.display)
         self.cancel_draft()
         self.fit_to_window()
+
+    def image_rgb(self) -> np.ndarray:
+        """The original image as an RGB array (cached; display adjustments not applied)."""
+        if self._rgb is None:
+            self._rgb = pixmap_to_rgb(self.pixmap)
+        return self._rgb
+
+    def set_display(self, settings: DisplaySettings) -> None:
+        """Change how the image and masks are drawn (brightness, CLAHE, opacity, ...)."""
+        self.display = settings
+        if settings.changes_image and not self.pixmap.isNull():
+            self._shown = rgb_to_pixmap(adjust(self.image_rgb(), settings))
+        else:
+            self._shown = self.pixmap
+        self.update()
 
     def set_shapes(self, shapes: list[Shape]) -> None:
         """Replace all shapes (e.g. after loading or undo). Clears selection."""
@@ -434,7 +456,7 @@ class Canvas(QWidget):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, self.scale < 1.0)
         painter.translate(self.offset)
         painter.scale(self.scale, self.scale)
-        painter.drawPixmap(0, 0, self.pixmap)
+        painter.drawPixmap(0, 0, self._shown)
 
         editing = getattr(self.tool, "hidden_index", None)  # shape a tool is redrawing
         for index, shape in enumerate(self.shapes):
@@ -456,7 +478,7 @@ class Canvas(QWidget):
         pen.setCosmetic(True)  # constant on-screen width at any zoom
         painter.setPen(pen)
         if self.fill and shape.shape_type.is_area:
-            painter.setBrush(QColor(r, g, b, 120 if selected else 60))
+            painter.setBrush(QColor(r, g, b, self._alpha(120 if selected else 60)))
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
 
@@ -482,7 +504,9 @@ class Canvas(QWidget):
         if shape.mask is None:
             return
         x1, y1 = round(shape.points[0][0]), round(shape.points[0][1])
-        painter.drawImage(QPointF(x1, y1), mask_image(shape.mask, rgb, 150 if selected else 100))
+        painter.drawImage(
+            QPointF(x1, y1), mask_image(shape.mask, rgb, self._alpha(150 if selected else 100))
+        )
         if selected:  # dashed bounding box so a selected mask is easy to spot
             pen = QPen(QColor(255, 255, 255), 1, Qt.PenStyle.DashLine)
             pen.setCosmetic(True)
@@ -490,6 +514,10 @@ class Canvas(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             height, width = shape.mask.shape
             painter.drawRect(QRectF(x1, y1, width, height))
+
+    def _alpha(self, alpha: int) -> int:
+        """Fill opacity scaled by the user's mask-opacity setting."""
+        return round(alpha * self.display.mask_opacity)
 
     def _paint_vertices(
         self, painter: QPainter, pts: list[QPointF], color: QColor, selected: bool

@@ -1,12 +1,13 @@
-"""Base class for canvas tools, plus a helper to draw boolean masks as overlays."""
+"""Base class for canvas tools, plus helpers between numpy arrays and Qt images."""
 
 from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QInputEvent, QKeyEvent, QPainter
+from PySide6.QtGui import QImage, QInputEvent, QKeyEvent, QPainter, QPixmap
 
 from easy_mask.core.geometry import Point
+from easy_mask.core.rasterize import shape_to_mask
 
 if TYPE_CHECKING:  # avoid a runtime import cycle: the canvas imports this module
     from easy_mask.gui.canvas import Canvas
@@ -40,6 +41,29 @@ class CanvasTool:
         """The tool is being switched off; drop any half-finished work."""
 
 
+def combine_with_selection(
+    canvas: "Canvas", result: np.ndarray, modifiers: Qt.KeyboardModifier
+) -> tuple[np.ndarray, int | None] | None:
+    """Apply the Shift = add / Alt = subtract convention of region tools.
+
+    Plain clicks make a new mask. Shift adds ``result`` to the selected area shape and
+    Alt removes it; without a selected area shape, Shift makes a new mask and Alt does
+    nothing.
+
+    Returns:
+        ``(full_mask, index_or_None)`` for a ``StrokeCallback``, or None for no edit.
+    """
+    add = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+    subtract = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+    index = canvas.selected
+    has_target = index is not None and canvas.shapes[index].shape_type.is_area
+    if not (add or subtract) or not has_target:
+        return None if subtract or not result.any() else (result, None)
+    assert index is not None
+    current = shape_to_mask(canvas.shapes[index], *result.shape)
+    return (current & ~result if subtract else current | result), index
+
+
 def mask_image(mask: np.ndarray, rgb: tuple[int, int, int], alpha: int) -> QImage:
     """A boolean mask as a translucent coloured image (transparent where False)."""
     height, width = mask.shape
@@ -47,3 +71,19 @@ def mask_image(mask: np.ndarray, rgb: tuple[int, int, int], alpha: int) -> QImag
     rgba[mask] = (*rgb, alpha)
     image = QImage(rgba.data, width, height, 4 * width, QImage.Format.Format_RGBA8888)
     return image.copy()  # detach from the numpy buffer, which is freed on return
+
+
+def pixmap_to_rgb(pixmap: QPixmap) -> np.ndarray:
+    """A pixmap's pixels as an ``(height, width, 3)`` uint8 RGB array."""
+    image = pixmap.toImage().convertToFormat(QImage.Format.Format_RGB888)
+    height, width = image.height(), image.width()
+    rows = np.frombuffer(image.constBits(), np.uint8).reshape(height, image.bytesPerLine())
+    return rows[:, : 3 * width].reshape(height, width, 3).copy()
+
+
+def rgb_to_pixmap(rgb: np.ndarray) -> QPixmap:
+    """An ``(height, width, 3)`` uint8 RGB array as a pixmap."""
+    height, width = rgb.shape[:2]
+    data = np.ascontiguousarray(rgb)
+    image = QImage(data.data, width, height, 3 * width, QImage.Format.Format_RGB888)
+    return QPixmap.fromImage(image.copy())
