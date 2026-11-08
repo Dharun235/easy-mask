@@ -3,6 +3,7 @@
 import cv2
 import numpy as np
 import pytest
+from PySide6.QtCore import Qt
 
 from easy_mask.core import annotation as ann_io
 from easy_mask.core.annotation import Annotation
@@ -385,96 +386,108 @@ def test_tracking_toggle_is_remembered(make_window):
     assert make_window(Settings()).video.tracking
 
 
-# ---------------------------------------------------------------------- subtract through frames
+# ---------------------------------------------------------------------- cut, clear, undo a run
 
 
-def wing_and_cutter(window):
-    """A wide 'wing' rectangle and a polygon over its right part, selected wing-first."""
+def wing_and_leg(window):
+    """A wide 'wing' and a 'leg' over its right part (different labels)."""
     wing = Shape("wing", ShapeType.RECTANGLE, [(10, 10), (49, 29)])
-    cutter = Shape("wing", ShapeType.POLYGON, [(35, 5), (55, 5), (55, 35), (35, 35)])
-    window.canvas.set_shapes([wing, cutter])
+    leg = Shape("leg", ShapeType.RECTANGLE, [(40, 20), (49, 39)])
+    window.canvas.set_shapes([wing, leg])
     window._commit()  # an undo step, as if the user had drawn them
-    window.canvas.set_selection([0, 1])
 
 
-def wing_pixels(shapes):
-    from easy_mask.core import masks as m
+def pixels(shapes, label):
+    from easy_mask.core.rasterize import shape_to_mask
 
-    (wing,) = [s for s in shapes if s.label == "wing"]
-    return m.to_full(wing, 80, 100)
-
-
-def test_subtract_copy_cuts_this_and_next_frames(qtbot, window, video, image_dir):
-    for stem in FRAMES[1:]:
-        save_frame(image_dir, stem, [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (49, 29)])])
-    wing_and_cutter(window)
-    video.edit_through("subtract", ai=False)
-    qtbot.waitUntil(lambda: not video.running, timeout=5000)
-    here = wing_pixels(window.canvas.shapes)
-    assert len(window.canvas.shapes) == 1  # the cutting polygon is gone
-    assert here[20, 20] and not here[20, 40]
-    for stem in FRAMES[1:]:
-        later = wing_pixels(saved(image_dir, stem))
-        assert later[20, 20] and not later[20, 40]
+    found = [s for s in shapes if s.label == label]
+    return shape_to_mask(found[0], 80, 100) if found else np.zeros((80, 100), bool)
 
 
-def test_subtract_ai_follows_the_moving_region(qtbot, window, video, image_dir):
-    for stem in FRAMES[1:]:
-        save_frame(image_dir, stem, [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (59, 29)])])
-    wing_and_cutter(window)
-    video.edit_through("subtract")  # the fake model moves the region 2 px per frame
-    qtbot.waitUntil(lambda: not video.running, timeout=5000)
-    frame2 = wing_pixels(saved(image_dir, "img2"))
-    assert frame2[20, 36] and not frame2[20, 38]  # cut moved from x=35 to x=37
+def lasso(window, x0, x1, y0=0, y1=79):
+    """Drag the Cut tool's lasso around the box x0..x1, y0..y1."""
+    window.set_tool("cut")
+    tool, canvas = window.pixel_tools["cut"], window.canvas
+    tool.press(canvas, (x0, y0), None)
+    for p in ((x1, y0), (x1, y1), (x0, y1)):
+        tool.move(canvas, p, None)
+    tool.release(canvas, (x0, y1), None)
 
 
-def test_subtract_needs_target_then_cutter(window, video):
-    window.canvas.set_shapes([Shape("wing", ShapeType.RECTANGLE, [(10, 10), (49, 29)])])
-    window.canvas.select(0)
-    video.edit_through("subtract")
-    assert "select the mask to fix" in window.statusBar().currentMessage()
-
-
-def test_subtract_this_frame_only_with_zero_frames(window, video):
-    window.ask_number = lambda *args: 0
-    wing_and_cutter(window)
-    video.edit_through("subtract")
-    assert not video.running
-    assert not wing_pixels(window.canvas.shapes)[20, 40]
+def test_cut_tool_cuts_every_mask_under_the_lasso_without_asking_a_label(window):
+    window.ask_label = lambda *args: pytest.fail("the cut tool must not ask for a label")
+    wing_and_leg(window)
+    lasso(window, 35, 60)
+    wing = pixels(window.canvas.shapes, "wing")
+    assert wing[15, 20] and not wing[15, 40]
+    assert [s.label for s in window.canvas.shapes] == ["wing"]  # leg cut away completely
     window.undo()
-    assert len(window.canvas.shapes) == 2  # one undo brings back the wing and the cutter
-
-
-def test_subtract_cancelled_dialog_changes_nothing(window, video):
-    window.ask_number = lambda *args: None
-    wing_and_cutter(window)
-    video.edit_through("subtract")
     assert len(window.canvas.shapes) == 2
 
 
-def test_add_through_frames_grows_the_object_and_creates_it_where_missing(
-    qtbot, window, video, image_dir
-):
-    save_frame(image_dir, "img2", [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (29, 29)])])
-    # img10 has no wing at all: Add creates it there from the region
-    wing = Shape("wing", ShapeType.RECTANGLE, [(10, 10), (29, 29)])
-    paw = Shape("wing", ShapeType.RECTANGLE, [(40, 10), (49, 29)])
-    window.canvas.set_shapes([wing, paw])
-    window._commit()
-    window.canvas.set_selection([0, 1])
-    video.edit_through("add", ai=False)
-    qtbot.waitUntil(lambda: not video.running, timeout=5000)
-    here = wing_pixels(window.canvas.shapes)
-    assert here[20, 20] and here[20, 45] and len(window.canvas.shapes) == 1
-    frame2 = wing_pixels(saved(image_dir, "img2"))
-    assert frame2[20, 20] and frame2[20, 45]
-    (created,) = saved(image_dir, "img10")
-    assert created.flags.get(PROPAGATED_FLAG) and wing_pixels([created])[20, 45]
-    assert not wing_pixels([created])[20, 20]  # only the added region exists there
-
-
-def test_add_hint_names_the_operation(window, video):
-    window.canvas.set_shapes([Shape("wing", ShapeType.RECTANGLE, [(10, 10), (49, 29)])])
+def test_cut_with_a_selection_only_cuts_those_objects(window):
+    wing_and_leg(window)
     window.canvas.select(0)
-    video.edit_through("add")
-    assert window.statusBar().currentMessage().startswith("Add Through Frames")
+    lasso(window, 35, 60)
+    assert not pixels(window.canvas.shapes, "wing")[15, 40]
+    assert pixels(window.canvas.shapes, "leg")[30, 45]
+
+
+def test_cut_outside_every_mask_changes_nothing(window):
+    wing_and_leg(window)
+    lasso(window, 70, 90)
+    assert len(window.canvas.shapes) == 2
+    assert "Nothing to cut" in window.statusBar().currentMessage()
+
+
+def test_cut_through_frames_follows_the_cut_part(qtbot, window, video, image_dir):
+    for stem in FRAMES[1:]:
+        save_frame(image_dir, stem, [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (59, 29)])])
+    wing_and_leg(window)
+    lasso(window, 35, 99)
+    video.cut_through()  # the fake model moves the region 2 px per frame
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    frame2 = pixels(saved(image_dir, "img2"), "wing")
+    assert frame2[20, 36] and not frame2[20, 38]  # the cut moved from x=35 to x=37
+
+
+def test_cut_through_needs_a_cut_on_this_frame(window, video):
+    wing_and_leg(window)
+    video.cut_through()
+    assert "first cut a part" in window.statusBar().currentMessage()
+
+
+def test_clear_frames_and_one_undo_puts_them_back(window, video, image_dir):
+    save_frame(image_dir, "img2", [rect(10)])
+    window.canvas.set_shapes([rect(30)])
+    window._commit()
+    window.ask_number = lambda *args: 2
+    video.clear_frames()
+    assert window.canvas.shapes == [] and saved(image_dir, "img2") == []
+    window.undo()
+    assert len(window.canvas.shapes) == 1 and len(saved(image_dir, "img2")) == 1
+
+
+def test_undo_after_propagating_reverts_every_frame(qtbot, window, video, image_dir):
+    window.canvas.set_shapes([rect(10)])
+    window._commit()
+    propagate(qtbot, video)
+    assert saved(image_dir, "img2") is not None
+    window.undo()
+    assert saved(image_dir, "img2") is None and saved(image_dir, "img10") is None
+    assert window.file_list.item(1).checkState() == Qt.CheckState.Unchecked
+    assert len(window.canvas.shapes) == 1  # this frame keeps its own shape
+    assert "Undid AI Propagate" in window.statusBar().currentMessage()
+
+
+def test_editing_after_a_run_makes_undo_local_again(qtbot, window, video, image_dir):
+    window.canvas.set_shapes([rect(10)])
+    window._commit()
+    propagate(qtbot, video)
+    window.canvas.set_shapes([rect(10), rect(40)])
+    window._commit()
+    window.undo()  # undoes the edit, not the run
+    assert len(window.canvas.shapes) == 1 and saved(image_dir, "img2") is not None
+    assert video.undo_run_action.isEnabled()
+    video.undo_run_action.trigger()  # the run can still be undone explicitly
+    assert saved(image_dir, "img2") is None

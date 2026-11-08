@@ -7,6 +7,8 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Removed
+- Add / Subtract Through Frames (replaced by the Cut tool and Cut Through Frames).
+- The Save toolbar button (auto-save is on; Ctrl+S and File > Save remain).
 - GrabCut, Watershed and Superpixels tools (AI Segment's box prompt, the wand and the brush cover them; core GrabCut stays as a benchmark baseline).
 - Workflow > Copy Shapes from Previous Image (same as Copy to Next Frames / Track).
 - Line, line strip and point left the toolbar (still in the Draw menu with L / T / O).
@@ -24,7 +26,10 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
-- Add / Subtract Through Frames (AI or copy): select the mask to fix, Shift+click a shape over the missing / extra part; the edit applies on this frame and the video model tracks that part through the next frames, adding or removing it on each (Add creates the object where it is missing).
+- Cut tool (`K`): drag a lasso to cut that part out of every mask under it, no label needed (only the selected objects, if any). Video > Cut Through Frames (`Ctrl+Shift+X`) repeats the last cut on the next frames, the video model following the part (copy without the video add-on).
+- Video > Clear Labels on Frames: delete every shape on this and the next frames.
+- One undo per video run: right after AI Propagate, Copy, Track, Cut Through, Interpolate or Clear, `Ctrl+Z` restores every frame the run touched (Video > Undo Last Video Run, `Ctrl+Alt+Z`, works until the next run).
+- New objects whose label is already on the frame get the next free group id, so same-label objects stay separate when propagating, cutting and exporting.
 - Objects export (File > Export Folder As > Objects, or `--format objects --parts ...`): per object a binary mask PNG, a cutout of the original pixels (RGBA, cropped) and/or coordinates (`objects.json` / `objects.csv` with box, area and outline points); the choice is remembered per folder.
 - AI Propagate vs Copy: separate actions and toolbar buttons. AI Propagate gives the frame's masks (from any area shape) to EfficientTAM / SAM 2.1; Copy repeats them unchanged. Without the video add-on, AI Propagate explains how to install it and offers copying instead.
 - Progress feedback: a status-bar progress panel with Cancel for AI model download / image preparation, propagation, export and video import; exports and video imports run in the background.

@@ -31,7 +31,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | --- | --- |
 | Shapes | polygon, rectangle, circle, line, line strip, point, pixel **mask** |
 | AI Segment | click an object (right/Alt-click = background, drag = box), live preview, Enter to keep; EfficientSAM on CPU, offline after a one-time download |
-| Mask editing | brush and eraser, union / subtract / intersect, fill holes, remove specks, grow / shrink, smooth, mask <-> polygon |
+| Mask editing | brush and eraser, lasso **cut** (any mask under it, also through frames), union / subtract / intersect, fill holes, remove specks, grow / shrink, smooth, mask <-> polygon |
 | Pixel tools (no AI) | magic wand, threshold (manual / Otsu / adaptive) and colour range with live preview |
 | Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
 | Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
@@ -45,7 +45,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Export | semantic mask PNG, instance mask PNG, COCO instance JSON (polygons or exact RLE), YOLO-seg TXT, DAVIS-style video masks (GUI or CLI) |
 | Per-object export | **binary mask** PNG, **cutout** (the object's original pixels on transparency) and **coordinates** (box, area, outline points in `objects.json` / `objects.csv`) for every object; pick any of the three |
 | Workflow | review mode (step and zoom through every object, `reviewed` flag), folder statistics, strict label list |
-| Video | open mp4/avi/mov (frames extracted, `--frame-step`, `--max-frames`) or a frame folder; keyframe interpolation; mask propagation with memory (EfficientTAM / SAM 2.1, optional extra) |
+| Video | open mp4/avi/mov (frames extracted, `--frame-step`, `--max-frames`) or a frame folder; keyframe interpolation; mask propagation with memory (EfficientTAM / SAM 2.1, optional extra); cut through frames; clear frames; one undo per run |
 | Privacy | 100% offline; images never leave your disk |
 
 ## Install
@@ -93,10 +93,13 @@ code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/Effic
 5. **Video:** draw a polygon / box / brush mask (or AI-click) on a frame, then press
    **AI Propagate** (fast-forward button, `Ctrl+Shift+Right`): EfficientTAM tracks and
    re-segments the object through the next frames. **Copy to next frames** (copy button,
-   `Ctrl+Alt+Right`) repeats the mask unchanged. To fix a mask on many frames at once, select
-   it, Shift+click a shape over the part it is missing or should not have, and press
-   **Add / Subtract Through Frames** (plus / minus buttons, `Ctrl+Shift+A` / `Ctrl+Shift+X`):
-   the AI follows that part through the next frames and adds or removes it on each. Or turn on
+   `Ctrl+Alt+Right`) repeats the mask unchanged. To remove a wrong part (a leg merged into
+   a wing), press **K** (Cut) and drag a lasso around it: it is cut from every mask under
+   the lasso, no label needed (select masks first to cut only those). **Cut Through Frames**
+   (dashed-scissors button, `Ctrl+Shift+X`) then repeats the cut on the next frames, with
+   the AI following the part as it moves. **Video > Clear Labels on Frames** empties this
+   and the next frames. Right after any of these runs, one **Ctrl+Z** undoes it on every
+   frame it touched. Or turn on
    **Video > Track Objects into Next Frame**
    (`Ctrl+Shift+T`) and every **D** carries the selected (or all) objects forward: AI
    tracking with the video extra, a plain copy without it. **N** then reviews the
@@ -139,9 +142,11 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
 
 ### Video workflow
 
-1. Open a video (or a folder of frames). Draw or brush the objects on one frame. Give
-   objects that share a label different **group ids**: `(label, group id)` is an object's
-   identity across frames.
+1. Open a video (or a folder of frames). Draw or brush the objects on one frame.
+   `(label, group id)` is an object's identity across frames; a new object with a label
+   already on the frame gets the next free **group id** automatically, so two dogs stay two
+   objects. To join parts into one object, give them the same group id (Edit Label) or use
+   Mask > Union.
 2. Optionally select the objects to track (Shift+click for several; nothing selected =
    every object). **Video > Propagate Forward / Backward** (`Ctrl+Shift+Right` / `Left`)
    tracks them through the next frames on a background thread (AI with the video extra,
@@ -159,7 +164,8 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
 | --- | --- | --- | --- |
 | `1`-`9` | use label 1-9 for new shapes | `0` | ask for the label each time |
 | `F1` / `?` | list all shortcuts | `Ctrl+Shift+E` | export again (last format and folder) |
-| `Ctrl+Shift+T` | track objects into next frame (toggle) | | |
+| `Ctrl+Shift+T` | track objects into next frame (toggle) | `K` | cut (lasso) |
+| `Ctrl+Shift+X` | cut through frames | `Ctrl+Z` | undo (the whole run, right after a video run) |
 | `P` | polygon | `E` | edit (select) mode |
 | `R` | rectangle | `Enter` / double-click | finish polygon / strip |
 | `C` | circle | `Backspace` | remove last point while drawing, else delete shape |

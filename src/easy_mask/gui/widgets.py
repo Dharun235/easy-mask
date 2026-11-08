@@ -39,10 +39,11 @@ class FileList(QListWidget):
             self.addItem(item)
         self.blockSignals(False)
 
-    def mark_annotated(self, row: int) -> None:
-        """Tick one row after its annotation is saved."""
+    def mark_annotated(self, row: int, annotated: bool = True) -> None:
+        """Tick one row after its annotation is saved (untick when it is removed)."""
         if 0 <= row < self.count():
-            self.item(row).setCheckState(Qt.CheckState.Checked)
+            state = Qt.CheckState.Checked if annotated else Qt.CheckState.Unchecked
+            self.item(row).setCheckState(state)
 
     def set_current_row_silently(self, row: int) -> None:
         """Highlight ``row`` without emitting a selection signal."""

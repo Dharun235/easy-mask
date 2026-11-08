@@ -76,54 +76,47 @@ def test_merge_auto_leaves_other_auto_objects():
     assert merge_auto([other], {("car", None)}, [new]) == [other, new]
 
 
-def test_subtract_from_object_cuts_only_that_object():
-    import numpy as np
-
-    from easy_mask.core import masks
+def test_cut_region_cuts_every_shape_under_it():
     from easy_mask.core.shapes import Shape, ShapeType
-    from easy_mask.core.video import edit_object
+    from easy_mask.core.video import cut_region
 
     wing = Shape("wing", ShapeType.RECTANGLE, [(0, 0), (19, 9)], flags={"propagated": True})
     leg = Shape("leg", ShapeType.RECTANGLE, [(10, 0), (19, 9)])
+    far = Shape("bird", ShapeType.RECTANGLE, [(25, 15), (29, 19)])
     cut = np.zeros((20, 30), bool)
     cut[:, 10:20] = True
-    result = edit_object([wing, leg], ("wing", None), cut, 20, 30, "subtract")
-    new_wing, same_leg = result
-    assert same_leg is leg  # other objects untouched
+    new_wing, far_again = cut_region([wing, leg, far], cut, 20, 30)
+    assert far_again is far  # untouched shapes are kept as they are
     full = masks.to_full(new_wing, 20, 30)
-    assert full[5, 5] and not full[5, 15]
+    assert full[5, 5] and not full[5, 15]  # the leg was cut away completely
     assert new_wing.flags == {"propagated": True}  # metadata kept
 
 
-def test_subtract_from_object_noop_and_removal():
-    import numpy as np
-
+def test_cut_region_limited_to_objects_and_noop():
     from easy_mask.core.shapes import Shape, ShapeType
-    from easy_mask.core.video import edit_object
+    from easy_mask.core.video import cut_region
 
-    wing = Shape("wing", ShapeType.RECTANGLE, [(0, 0), (9, 9)])
+    wing = Shape("wing", ShapeType.RECTANGLE, [(0, 0), (19, 9)])
+    leg = Shape("leg", ShapeType.RECTANGLE, [(10, 0), (19, 9)])
+    cut = np.zeros((20, 30), bool)
+    cut[:, 10:20] = True
+    kept_wing, new_leg = cut_region([wing, leg], cut, 20, 30, keys={("wing", None)})
+    assert new_leg is leg and not masks.to_full(kept_wing, 20, 30)[5, 15]
     shapes = [wing]
     miss = np.zeros((20, 30), bool)
     miss[15:, 25:] = True
-    assert edit_object(shapes, ("wing", None), miss, 20, 30, "subtract") is shapes
-    assert edit_object(shapes, ("absent", None), miss, 20, 30, "subtract") is shapes
-    everything = np.ones((20, 30), bool)
-    assert edit_object(shapes, ("wing", None), everything, 20, 30, "subtract") == []
+    assert cut_region(shapes, miss, 20, 30) is shapes
 
 
-def test_edit_object_add_merges_and_creates_from_template():
-    import numpy as np
-
-    from easy_mask.core import masks
+def test_free_group_id_separates_objects_with_the_same_label():
     from easy_mask.core.shapes import Shape, ShapeType
-    from easy_mask.core.video import edit_object
+    from easy_mask.core.video import free_group_id
 
-    wing = Shape("wing", ShapeType.RECTANGLE, [(0, 0), (9, 9)], group_id=3)
-    region = np.zeros((20, 30), bool)
-    region[0:10, 20:25] = True
-    (merged,) = edit_object([wing], ("wing", 3), region, 20, 30, "add")
-    full = masks.to_full(merged, 20, 30)
-    assert full[5, 5] and full[5, 22] and merged.group_id == 3
-    assert edit_object([], ("wing", 3), region, 20, 30, "add") == []  # no template: nothing
-    (created,) = edit_object([], ("wing", 3), region, 20, 30, "add", template=wing)
-    assert created.label == "wing" and masks.to_full(created, 20, 30)[5, 22]
+    def dog(group_id=None):
+        return Shape("dog", ShapeType.RECTANGLE, [(0, 0), (5, 5)], group_id=group_id)
+
+    assert free_group_id([], "dog") is None
+    assert free_group_id([dog()], "dog") == 1
+    assert free_group_id([dog(), dog(1), dog(4)], "dog") == 5
+    assert free_group_id([dog(2)], "dog") is None  # the plain key is still free
+    assert free_group_id([dog()], "cat") is None

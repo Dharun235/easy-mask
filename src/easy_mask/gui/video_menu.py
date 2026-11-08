@@ -7,8 +7,9 @@ are kept and steer the model.
 """
 
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox
@@ -20,10 +21,9 @@ from easy_mask.core.interpolate import interpolate_frames
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape
 from easy_mask.core.video import (
-    PROPAGATED_FLAG,
     ObjectKey,
     confirm,
-    edit_object,
+    cut_region,
     is_auto,
     merge_auto,
     object_key,
@@ -42,12 +42,13 @@ MISSING_EXTRA = (
     "AI Propagate uses EfficientTAM (or SAM 2.1), which needs the optional video add-on "
     "(PyTorch, about 1 GB):\n\n    SAM2_BUILD_CUDA=0 uv sync --extra video"
 )
-REGION_LABEL = "__region__"  # temporary object the model tracks for Add / Subtract Through
-EDIT_HINT = (
-    "{op} Through Frames: select the mask to fix, then Shift+click the shape covering the "
-    "part to {op_lower}"
-)
+REGION_LABEL = "__region__"  # temporary object the model tracks for Cut Through Frames
+CUT_HINT = "Cut Through Frames: first cut a part with the Cut tool (K) on this frame"
 FALLBACK_NOTE = "AI tracking needs the video add-on (uv sync --extra video): copying instead"
+
+
+def _replace_with(kept: list[Shape], _old: list[Shape]) -> list[Shape]:
+    return kept
 
 
 def default_propagator(model: str) -> Propagator:
@@ -71,6 +72,13 @@ class VideoMenu:
         self.propagator: Propagator | None = None  # the AI model: built once, then reused
         self.copier = CopyPropagator()  # "Copy to frames" and the fallback without the extra
         self.worker: PropagationWorker | None = None
+        # The last cut made with the Cut tool: (frame, region, objects or None for all).
+        self.last_cut: tuple[int, np.ndarray, set[ObjectKey] | None] | None = None
+        # Frames as they were before the last run: index -> (shapes, file existed). One
+        # Ctrl+Z puts them all back while nothing else was edited since (see undo_run).
+        self.journal: dict[int, tuple[list[Shape], bool]] = {}
+        self.journal_name = ""
+        self.journal_version: int | None = None  # history version when the run ended
 
         bar = window.menuBar()
         menu = QMenu("&Video", bar)
@@ -95,29 +103,20 @@ class VideoMenu:
             "Ctrl+Alt+Left",
         )
         menu.addSeparator()
-        self.add_action = window._action(
-            menu, "AI Add Through Frames...", lambda: self.edit_through("add"), "Ctrl+Shift+A"
+        self.cut_through_action = window._action(
+            menu, "Cut Through Frames...", self.cut_through, "Ctrl+Shift+X"
         )
-        self.cut_action = window._action(
-            menu,
-            "AI Subtract Through Frames...",
-            lambda: self.edit_through("subtract"),
-            "Ctrl+Shift+X",
-        )
-        window._action(
-            menu, "Copy Add Through Frames...", lambda: self.edit_through("add", ai=False)
-        )
-        window._action(
-            menu,
-            "Copy Subtract Through Frames...",
-            lambda: self.edit_through("subtract", ai=False),
-        )
+        self.clear_action = window._action(menu, "Clear Labels on Frames...", self.clear_frames)
         menu.addSeparator()
         self.track_action = window._action(
             menu, "Track Objects into Next Frame", self._toggle_tracking, "Ctrl+Shift+T", True
         )
         self.stop_action = window._action(menu, "Stop Propagation", self.stop, "Ctrl+.")
         self.stop_action.setEnabled(False)
+        self.undo_run_action = window._action(
+            menu, "Undo Last Video Run", self.undo_run, "Ctrl+Alt+Z"
+        )
+        self.undo_run_action.setEnabled(False)
 
     # ------------------------------------------------------------------ tracking
 
@@ -180,8 +179,14 @@ class VideoMenu:
         self._update_frame(index, lambda shapes: merge_auto(shapes, objects, new))
 
     def _update_frame(self, index: int, transform: Callable[[list[Shape]], list[Shape]]) -> None:
-        """Apply ``transform`` to frame ``index``'s shapes: on screen (undoable) or on disk."""
+        """Apply ``transform`` to frame ``index``'s shapes: on screen or on disk.
+
+        The frame's previous state goes into the run journal, so the run can be undone.
+        """
         w = self.window
+        if index not in self.journal:
+            json_path = ann_io.annotation_path_for(w.image_paths[index], w.settings.output_dir)
+            self.journal[index] = (self._frame_shapes(index), json_path.exists())
         if index == w.current_index:
             w._replace_shapes(transform(list(w.canvas.shapes)))
             return
@@ -223,8 +228,10 @@ class VideoMenu:
         start = [s for s in self._frame_shapes(previous) if not is_auto(s)]
         height, width = w.image_size[1], w.image_size[0]
         frames = interpolate_frames(start, end, current - previous, height, width)
+        self._begin_run("Interpolate")
         for offset, shapes in enumerate(frames, start=1):
             self._store(previous + offset, {object_key(s) for s in shapes}, shapes)
+        self._end_run()
         w.statusBar().showMessage(
             f"Interpolated {len(frames)} frames from {w.image_paths[previous].name}", 5000
         )
@@ -265,78 +272,113 @@ class VideoMenu:
             w._replace_shapes(shapes)
         self._run(current, direction, int(count), objects, shapes, propagator)
 
-    def edit_through(
-        self, op: Literal["add", "subtract"], ai: bool = True, direction: int = +1
-    ) -> None:
-        """Add a region to an object, or cut it out, on this frame and the next ones.
+    def cut_through(self, direction: int = +1) -> None:
+        """Repeat the last cut on the next frames, following the cut part as it moves.
 
-        Select the mask to fix first, then Shift+click the shape(s) covering the part to add
-        (a missed paw) or remove (a leg wrongly merged into a wing). The edit applies here
-        at once; with ``ai`` the video model then tracks that region through the next frames
-        so the edit follows it, otherwise the same pixels are used on every frame.
+        The video model tracks the cut region (plain copying without the video add-on) and
+        the region is cut from the masks under it on every frame.
         """
         w = self.window
         current = w.current_index
         if current is None or self.running:
             return
-        selection = w.canvas.selection
-        shapes = list(w.canvas.shapes)
-        regions = [shapes[i] for i in selection[1:] if shapes[i].shape_type.is_area]
-        if len(selection) < 2 or not shapes[selection[0]].shape_type.is_area or not regions:
-            w.statusBar().showMessage(EDIT_HINT.format(op=op.capitalize(), op_lower=op), 8000)
+        if self.last_cut is None or self.last_cut[0] != current:
+            w.statusBar().showMessage(CUT_HINT, 6000)
             return
-        target = shapes[selection[0]]
-        key = object_key(target)
-        height, width = w.image_size[1], w.image_size[0]
-        region = np.zeros((height, width), dtype=bool)
-        for shape in regions:
-            region |= shape_to_mask(shape, height, width)
-
+        _, region, keys = self.last_cut
         remaining = len(w.image_paths) - 1 - current if direction > 0 else current
-        count = 0
-        if remaining:
-            title = f"{'AI' if ai else 'Copy'} {op.capitalize()} Through Frames"
-            asked = w.ask_number(
-                w, title, "Also on the next frames:", min(DEFAULT_RUN, remaining), 0, remaining
-            )
-            if asked is None:
-                return
-            count = int(asked)
-        propagator = self._propagator_for(ai, ask=True) if count else self.copier
-        if propagator is None:
+        if remaining == 0:
+            w.statusBar().showMessage("No frames in that direction", 4000)
             return
-
-        # This frame: drop the region shapes and add / remove their pixels.
-        kept = [s for i, s in enumerate(shapes) if i not in selection[1:]]
-        w._replace_shapes(edit_object(kept, key, region, height, width, op))
+        count = w.ask_number(
+            w, "Cut Through Frames", "Number of frames:", min(DEFAULT_RUN, remaining), 1, remaining
+        )
+        if count is None:
+            return
         region_shape = masks.to_shape(REGION_LABEL, region)
-        verb = "Added to" if op == "add" else "Removed from"
-        if not count or region_shape is None:
-            w.statusBar().showMessage(f"{verb} the object on this frame", 4000)
-            return
-        template = target.copy()
-        template.flags = {**template.flags, PROPAGATED_FLAG: True}
+        assert region_shape is not None  # the Cut tool only reports non-empty regions
+        height, width = region.shape
+        propagator = self._propagator_for(ai=True, ask=False)
+        assert propagator is not None  # without asking, there is always a fallback
 
         def apply(index: int, new: list[Shape]) -> None:
             moved = np.zeros((height, width), dtype=bool)
             for shape in new:
                 moved |= shape_to_mask(shape, height, width)
-            self._update_frame(
-                index,
-                lambda frame: edit_object(frame, key, moved, height, width, op, template),
-            )
+            self._update_frame(index, lambda frame: cut_region(frame, moved, height, width, keys))
 
-        indices = [current + direction * step for step in range(count + 1)]
+        indices = [current + direction * step for step in range(int(count) + 1)]
         frame_shapes: list[list[Shape]] = [[region_shape]] + [[] for _ in indices[1:]]
         copying = isinstance(propagator, CopyPropagator)
-        action = "Adding" if op == "add" else "Subtracting"
+        self._begin_run("Cut Through Frames")
         self._start(
             indices,
             frame_shapes,
             propagator,
             apply,
-            f"{action} through frames" if copying else f"AI {action.lower()} through frames",
+            "Cutting through frames" if copying else "AI cutting through frames",
         )
+
+    def clear_frames(self) -> None:
+        """Delete every shape on this frame and the next ones (asks how many)."""
+        w = self.window
+        current = w.current_index
+        if current is None or self.running:
+            return
+        remaining = len(w.image_paths) - current
+        count = w.ask_number(
+            w, "Clear Labels on Frames", "Frames to clear, from this one:", 1, 1, remaining
+        )
+        if count is None:
+            return
+        self._begin_run("Clear Labels")
+        for index in range(current, current + int(count)):
+            if self._frame_shapes(index):
+                self._update_frame(index, lambda shapes: [])
+        self._end_run()
+        w.statusBar().showMessage(f"Cleared {int(count)} frame(s)  ·  Ctrl+Z puts them back", 6000)
+
+    # ------------------------------------------------------------------ undo a run
+
+    def _begin_run(self, name: str) -> None:
+        """Start a new journal: frames changed from now on are undone together."""
+        self.journal = {}
+        self.journal_name = name
+        self.journal_version = None
+        self.undo_run_action.setEnabled(False)
+
+    def _end_run(self) -> None:
+        self.journal_version = self.window.history.version
+        self.undo_run_action.setEnabled(bool(self.journal))
+
+    @property
+    def run_is_last_edit(self) -> bool:
+        """True if the last run can be undone and nothing was edited on screen since."""
+        return (
+            bool(self.journal)
+            and not self.running
+            and self.journal_version == self.window.history.version
+        )
+
+    def undo_run(self) -> None:
+        """Put back every frame the last run changed, as it was before the run."""
+        w = self.window
+        if not self.journal or self.running:
+            return
+        for index, (shapes, existed) in sorted(self.journal.items()):
+            if index == w.current_index:
+                w._replace_shapes(shapes)
+                continue
+            json_path = ann_io.annotation_path_for(w.image_paths[index], w.settings.output_dir)
+            if existed:
+                self._update_frame(index, partial(_replace_with, shapes))
+            else:
+                json_path.unlink(missing_ok=True)
+                w.file_list.mark_annotated(index, False)
+        count = len(self.journal)
+        self.journal = {}
+        self.undo_run_action.setEnabled(False)
+        w.statusBar().showMessage(f"Undid {self.journal_name} on {count} frame(s)", 5000)
 
     def _propagator_for(self, ai: bool, ask: bool) -> Propagator | None:
         """The copy propagator, or the AI model (loaded once).
@@ -376,6 +418,7 @@ class VideoMenu:
         frame_shapes = [self._frame_shapes(i) for i in indices]
         frame_shapes[0] = [s for s in shapes if object_key(s) in objects]  # only chosen objects
         copying = isinstance(propagator, CopyPropagator)
+        self._begin_run("Copy to Frames" if copying else "AI Propagate")
         self._start(
             indices,
             frame_shapes,
@@ -444,5 +487,6 @@ class VideoMenu:
             self.worker.deleteLater()
         self.worker = None
         self.stop_action.setEnabled(False)
+        self._end_run()
         self.window.progress.end("propagate")
         self.window.statusBar().showMessage("Propagation finished", 5000)

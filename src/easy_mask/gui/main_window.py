@@ -37,6 +37,7 @@ from easy_mask.core import masks, operations
 from easy_mask.core.annotation import Annotation
 from easy_mask.core.history import History
 from easy_mask.core.shapes import Shape, ShapeType
+from easy_mask.core.video import cut_region, free_group_id, object_key
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.display_dialog import DisplayDialog
 from easy_mask.gui.export_worker import ExportWorker
@@ -50,6 +51,7 @@ from easy_mask.gui.threshold_dialog import ThresholdDialog
 from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
+from easy_mask.gui.tools.lasso import LassoCutTool
 from easy_mask.gui.tools.region import MagicWandTool
 from easy_mask.gui.video_import import (
     VIDEO_FILTER,
@@ -84,6 +86,7 @@ TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
     ("Point", "Point", ShapeType.POINT, "O", "point", MENU_ONLY),
     ("Brush", "Brush", "brush", "B", "brush", "paint"),
     ("Eraser", "Erase", "eraser", "X", "eraser", "paint"),
+    ("Cut", "Cut", "cut", "K", "cut", "paint"),
     ("AI Segment", "AI", "ai", "I", "ai", "smart"),
     ("Magic wand", "Wand", "wand", "W", "wand", "smart"),
 ]
@@ -150,6 +153,7 @@ class MainWindow(QMainWindow):
         self.pixel_tools: dict[str, CanvasTool] = {
             "brush": BrushTool(self._apply_stroke),
             "eraser": BrushTool(self._apply_stroke, erase=True),
+            "cut": LassoCutTool(self.cut),
             "wand": MagicWandTool(self._apply_smart),
             "ai": self.ai_tool,
         }
@@ -287,7 +291,7 @@ class MainWindow(QMainWindow):
         import_video = self._action(m, "Import Video Frames...", self.import_video_dialog)
         self._action(m, "Change Annotation Folder...", self.change_output_dir)
         m.addSeparator()
-        save = self._action(m, "Save", self.save, std.Save)
+        self._action(m, "Save", self.save, std.Save)
         self.autosave_action = self._action(m, "Auto Save", self._toggle_autosave, checkable=True)
         self.autosave_action.setChecked(self.settings.autosave)
         m.addSeparator()
@@ -401,7 +405,6 @@ class MainWindow(QMainWindow):
             (
                 (open_folder, "open", "Open folder  ·  Ctrl+Shift+O"),
                 (import_video, "video", "Import video frames"),
-                (save, "save", "Save  ·  Ctrl+S"),
             ),
             (
                 (self.undo_action, "undo", "Undo  ·  Ctrl+Z"),
@@ -744,11 +747,23 @@ class MainWindow(QMainWindow):
             return LabelInfo(label=self.active_label)
         return self._ask_label(LabelInfo(label=self.last_label))
 
+    def _group_for(self, info: LabelInfo) -> int | None:
+        """The group id for a new shape: the one typed in, else one that keeps it separate.
+
+        Two objects with the same label would otherwise count as one object when
+        propagating, cutting or exporting; to join parts on purpose, give them the same
+        group id (Edit Label) or use Mask > Union.
+        """
+        if info.group_id is not None:
+            return info.group_id
+        return free_group_id(self.canvas.shapes, info.label)
+
     def _on_shape_drawn(self, shape: Shape) -> None:
         info = self._label_for_new_shape()
         if info is None:
             return
-        shape.label, shape.group_id, shape.description = info.label, info.group_id, info.description
+        shape.label, shape.description = info.label, info.description
+        shape.group_id = self._group_for(info)
         self._remember_label(info.label)
         self.last_label = info.label
         self.canvas.shapes.append(shape)
@@ -784,7 +799,7 @@ class MainWindow(QMainWindow):
             new = None
             if info is not None:
                 new = masks.to_shape(
-                    info.label, full, group_id=info.group_id, description=info.description
+                    info.label, full, group_id=self._group_for(info), description=info.description
                 )
             if new is None:
                 self.canvas.update()
@@ -800,6 +815,22 @@ class MainWindow(QMainWindow):
         else:
             shapes[index] = changed
             self._replace_shapes(shapes, select=index)
+
+    def cut(self, region: np.ndarray) -> None:
+        """Cut ``region`` out of every mask under it (only the selected objects, if any)."""
+        selected = [self.canvas.shapes[i] for i in self.canvas.selection]
+        keys = {object_key(s) for s in selected} or None
+        shapes = cut_region(self.canvas.shapes, region, *self._size, keys)
+        if shapes is self.canvas.shapes:
+            self.statusBar().showMessage("Nothing to cut there", 3000)
+            return
+        self._replace_shapes(shapes)
+        if self.current_index is not None:
+            self.video.last_cut = (self.current_index, region, keys)
+        follow = (
+            "  ·  Ctrl+Shift+X repeats it on the next frames" if len(self.image_paths) > 1 else ""
+        )
+        self.statusBar().showMessage(f"Cut{follow}", 6000)
 
     def combine(self, op: operations.CombineOp) -> None:
         """Union / subtract / intersect the selected shapes; the first picked is the target."""
@@ -891,6 +922,7 @@ class MainWindow(QMainWindow):
             return
         copy = self.canvas.shapes[index].copy()
         copy.translate(DUPLICATE_OFFSET, DUPLICATE_OFFSET)
+        copy.group_id = free_group_id(self.canvas.shapes, copy.label)
         self._add_and_select(copy)
 
     def copy_selected(self) -> None:
@@ -909,7 +941,10 @@ class MainWindow(QMainWindow):
         self.canvas.select(len(self.canvas.shapes) - 1)
 
     def undo(self) -> None:
-        """Revert the last edit."""
+        """Revert the last edit; right after a video run, revert the whole run."""
+        if self.video.run_is_last_edit:
+            self.video.undo_run()
+            return
         self._restore(self.history.undo())
 
     def redo(self) -> None:
@@ -1020,18 +1055,10 @@ class MainWindow(QMainWindow):
                 "(on / off)  ·  Ctrl+Shift+T",
             ),
             (
-                self.video.add_action,
-                "add_through",
-                "Add through frames: select the mask to fix, Shift+click a shape over the part "
-                "it is missing, then click; the AI follows that part through the next frames  "
-                "·  Ctrl+Shift+A",
-            ),
-            (
-                self.video.cut_action,
-                "subtract_through",
-                "Subtract through frames: select the mask to fix, Shift+click a shape over the "
-                "part to remove, then click; the AI follows that part through the next frames  "
-                "·  Ctrl+Shift+X",
+                self.video.cut_through_action,
+                "cut_through",
+                "Cut through frames: repeat the last Cut (K) on the next frames; the AI follows "
+                "the cut part as it moves  ·  Ctrl+Shift+X",
             ),
         ):
             action.setIcon(icon(icon_name))

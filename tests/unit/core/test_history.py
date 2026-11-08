@@ -40,3 +40,17 @@ def test_limit_drops_oldest(square):
     while history.undo() is not None:
         undos += 1
     assert undos == 2
+
+
+def test_version_changes_on_every_state_change():
+    history = History()
+    seen = {history.version}
+    history.push([])
+    seen.add(history.version)
+    history.undo()
+    seen.add(history.version)
+    history.redo()
+    seen.add(history.version)
+    history.reset([])
+    seen.add(history.version)
+    assert len(seen) == 5

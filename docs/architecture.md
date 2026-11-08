@@ -69,6 +69,7 @@ src/easy_mask/
     video_import.py      Import Video Frames dialog + background extraction worker
     tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
     tools/brush.py       brush and eraser
+    tools/lasso.py       cut: lasso a region out of the masks under it
     tools/region.py      magic wand (Shift add / Alt subtract)
     threshold_dialog.py  threshold / colour-range panel with live canvas preview
     display_dialog.py    View > Adjust Display panel
@@ -115,7 +116,8 @@ draws, so tools, saving and export never see them.
 
 A video is a folder of frames (a video file is extracted to one first), so it reuses the
 file list, navigation and one-JSON-per-frame storage unchanged. An object's identity
-across frames is `(label, group_id)`.
+across frames is `(label, group_id)`; `free_group_id` gives a new object with a label
+already on the frame its own group id.
 
 ```
 Video > Propagate -> VideoMenu.propagate: confirm this frame's shapes (drop auto flags),
@@ -133,6 +135,13 @@ PropagationWorker (QThread) -> track(propagator, frames, shapes)
 `interpolated`) and never touches hand-drawn ones, which is what makes "fix a frame, run
 again" safe. The model sits behind the small `Propagator` protocol, so GUI tests use a
 deterministic fake and the real backend (PyTorch) is only imported when first used.
+
+Cut Through Frames propagates the cut region itself (a temporary `__region__` object) and
+calls `cut_region` on each frame with where it moved. Every run (propagate, copy, track,
+cut through, interpolate, clear) records each frame's shapes before its first change in
+`VideoMenu.journal`; `undo_run` writes them back (deleting files the run created).
+`MainWindow.undo` does that instead of a canvas undo while `History.version` still equals
+the version at the end of the run, i.e. nothing was edited on screen since.
 
 ## Where SAM2 will plug in
 

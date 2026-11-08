@@ -87,3 +87,13 @@ def test_cli_autosave_flags():
     parser = build_gui_parser()
     assert parser.parse_args([]).autosave is True
     assert parser.parse_args(["--no-autosave"]).autosave is False
+
+
+def test_second_object_with_the_same_label_gets_its_own_group_id(window, ui):
+    window.set_active_label("dog")
+    window.set_tool(ShapeType.RECTANGLE)
+    ui.drag((10, 10), (30, 30))
+    ui.drag((50, 10), (70, 30))
+    first, second = window.canvas.shapes
+    assert (first.label, first.group_id) == ("dog", None)
+    assert (second.label, second.group_id) == ("dog", 1)  # a separate object

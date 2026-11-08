@@ -1,13 +1,12 @@
 """Objects across video frames: identity, automatic vs. manual shapes, merging results.
 
 A video is a folder of frames with one annotation per frame. An *object* is identified
-across frames by ``(label, group_id)``; give objects that share a label different group
-ids. Shapes created by interpolation or propagation carry a flag (``interpolated`` or
-``propagated``) so users and tools can tell them from hand-drawn ones: automatic shapes
-are replaced when an object is re-propagated, manual ones are never overwritten.
+across frames by ``(label, group_id)``; new objects that share a label get different
+group ids automatically (:func:`free_group_id`). Shapes created by interpolation or
+propagation carry a flag (``interpolated`` or ``propagated``) so users and tools can tell
+them from hand-drawn ones: automatic shapes are replaced when an object is re-propagated,
+manual ones are never overwritten.
 """
-
-from typing import Literal
 
 import numpy as np
 
@@ -72,40 +71,43 @@ def merge_auto(shapes: list[Shape], objects: set[ObjectKey], new: list[Shape]) -
     return kept + [s for s in new if object_key(s) in replaced]
 
 
-def edit_object(
+def cut_region(
     shapes: list[Shape],
-    key: ObjectKey,
     region: np.ndarray,
     height: int,
     width: int,
-    op: Literal["add", "subtract"],
-    template: Shape | None = None,
+    keys: set[ObjectKey] | None = None,
 ) -> list[Shape]:
-    """Add ``region``'s pixels to object ``key``, or remove them from it.
+    """Remove ``region``'s pixels from every area shape under it (or only from ``keys``).
 
-    The object's area shapes become one mask shape (keeping the first one's label, group,
-    note and flags) at the first one's position; if nothing is left, the object is
-    removed. If the object is absent, ``add`` creates it from ``template`` (when given).
-    Returns ``shapes`` unchanged when nothing would change.
+    Edited shapes become masks that keep their label, group, note and flags; a shape cut
+    away completely is dropped. Returns ``shapes`` itself when nothing is under the region.
     """
-    targets = [i for i, s in enumerate(shapes) if s.shape_type.is_area and object_key(s) == key]
-    if not targets:
-        if op == "add" and template is not None and region.any():
-            created = with_pixels(template, region)
-            return [*shapes, created] if created is not None else shapes
-        return shapes
-    full = np.zeros((height, width), dtype=bool)
-    for i in targets:
-        full |= shape_to_mask(shapes[i], height, width)
-    edited = full | region if op == "add" else full & ~region
-    if np.array_equal(edited, full):
-        return shapes
-    replacement = with_pixels(shapes[targets[0]], edited)
     result: list[Shape] = []
-    for i, shape in enumerate(shapes):
-        if i == targets[0]:
-            if replacement is not None:
-                result.append(replacement)
-        elif i not in targets:
+    changed = False
+    for shape in shapes:
+        if not shape.shape_type.is_area or (keys is not None and object_key(shape) not in keys):
             result.append(shape)
-    return result
+            continue
+        full = shape_to_mask(shape, height, width)
+        if not (full & region).any():
+            result.append(shape)
+            continue
+        changed = True
+        edited = with_pixels(shape, full & ~region)
+        if edited is not None:
+            result.append(edited)
+    return result if changed else shapes
+
+
+def free_group_id(shapes: list[Shape], label: str) -> int | None:
+    """A group id that makes a new ``label`` object distinct from those in ``shapes``.
+
+    None while no area shape has ``label`` with no group id (labelme's default), else one
+    more than the largest group id used with ``label``, so two objects with the same label
+    are never mistaken for one when propagating or exporting.
+    """
+    same = [s.group_id for s in shapes if s.shape_type.is_area and s.label == label]
+    if None not in same:
+        return None
+    return max((g for g in same if g is not None), default=0) + 1

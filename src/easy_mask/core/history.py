@@ -22,11 +22,13 @@ class History:
         self._limit = limit
         self._states: list[list[Shape]] = [[]]
         self._index = 0
+        self.version = 0  # changes on every push / reset / undo / redo
 
     def reset(self, shapes: list[Shape]) -> None:
         """Forget all history and start from ``shapes``."""
         self._states = [_snapshot(shapes)]
         self._index = 0
+        self.version += 1
 
     def push(self, shapes: list[Shape]) -> None:
         """Record ``shapes`` as the newest state, discarding any redo states."""
@@ -35,6 +37,7 @@ class History:
         if len(self._states) > self._limit:
             self._states.pop(0)
         self._index = len(self._states) - 1
+        self.version += 1
 
     @property
     def can_undo(self) -> bool:
@@ -51,6 +54,7 @@ class History:
         if not self.can_undo:
             return None
         self._index -= 1
+        self.version += 1
         return _snapshot(self._states[self._index])
 
     def redo(self) -> list[Shape] | None:
@@ -58,4 +62,5 @@ class History:
         if not self.can_redo:
             return None
         self._index += 1
+        self.version += 1
         return _snapshot(self._states[self._index])
