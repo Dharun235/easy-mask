@@ -20,21 +20,23 @@ from easy_mask.core.video import ObjectKey, confirm, is_auto, merge_auto, object
 from easy_mask.gui.propagate import PropagationWorker
 from easy_mask.io.images import image_size
 from easy_mask.io.video import VIDEO_EXTENSIONS
-from easy_mask.propagation.tracker import Propagator
+from easy_mask.propagation.tracker import CopyPropagator, Propagator
 
 if TYPE_CHECKING:  # the main window imports this module
     from easy_mask.gui.main_window import MainWindow
 
 DEFAULT_RUN = 50  # frames offered per propagation run: a few minutes on a laptop CPU
-INSTALL_HINT = (
-    "Mask propagation needs the optional video extra (PyTorch + SAM 2 models):\n"
-    "    uv sync --extra video\n"
-    "or  pip install 'easy-mask[video]'"
+COPY_MODEL = "copy"  # --video-model value for model-free propagation
+FALLBACK_NOTE = (
+    "AI tracking needs the video extra (uv sync --extra video); "
+    "copying the mask unchanged to each frame instead"
 )
 
 
 def default_propagator(model: str) -> Propagator:
-    """The real model backend (needs PyTorch; weights download on first use)."""
+    """The chosen backend: the real model (needs PyTorch) or plain copying."""
+    if model == COPY_MODEL:
+        return CopyPropagator()
     from easy_mask.propagation.backend import Sam2Propagator
 
     return Sam2Propagator(model)
@@ -139,13 +141,18 @@ class VideoMenu:
     # ------------------------------------------------------------------ propagation
 
     def propagate(self, direction: int) -> None:
-        """Propagate the objects on this frame forward (+1) or backward (-1)."""
+        """Propagate objects on this frame forward (+1) or backward (-1).
+
+        With shapes selected, only their objects are propagated; otherwise every object on
+        the frame is. Without the video extra, masks are copied unchanged.
+        """
         w = self.window
         current = w.current_index
         if current is None or self.running:
             return
         shapes = confirm(w.canvas.shapes)  # propagating from a frame vouches for it
-        objects = {object_key(s) for s in shapes if s.shape_type.is_area}
+        chosen = [shapes[i] for i in w.canvas.selection] or shapes
+        objects = {object_key(s) for s in chosen if s.shape_type.is_area}
         if not objects:
             w.statusBar().showMessage("Draw or segment an object on this frame first", 4000)
             return
@@ -162,14 +169,14 @@ class VideoMenu:
             try:
                 self.propagator = self.make_propagator()
             except ImportError:
-                w._error(INSTALL_HINT)
-                return
+                self.propagator = CopyPropagator()
         if shapes != w.canvas.shapes:
             w._replace_shapes(shapes)
 
         indices = [current + direction * step for step in range(int(count) + 1)]
         frames = [w.image_paths[i] for i in indices]
         frame_shapes = [self._frame_shapes(i) for i in indices]
+        frame_shapes[0] = [s for s in shapes if object_key(s) in objects]  # only chosen objects
         size = (w.image_size[1], w.image_size[0])
         worker = PropagationWorker(self.propagator, frames, frame_shapes, size)
         worker.frame_done.connect(
@@ -179,7 +186,11 @@ class VideoMenu:
         worker.finished.connect(self._on_finished)
         self.worker = worker
         self.stop_action.setEnabled(True)
-        w.statusBar().showMessage("Propagating... (first run loads the model)")
+        if isinstance(self.propagator, CopyPropagator):
+            note = "" if w.settings.video_model == COPY_MODEL else f"{FALLBACK_NOTE}. "
+            w.statusBar().showMessage(f"{note}Copying masks...")
+        else:
+            w.statusBar().showMessage("Propagating... (first run loads the model)")
         worker.start()
 
     def _on_frame_done(

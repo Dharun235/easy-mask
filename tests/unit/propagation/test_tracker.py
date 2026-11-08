@@ -65,3 +65,22 @@ def test_mask_prompts_keep_their_pixels(fake_propagator):
     full[5, 5:9] = True
     run(fake_propagator, [[masks.to_shape("hair", full)], [], [], []])
     assert (fake_propagator.calls[0][1][0][1] == full).all()
+
+
+def test_copy_propagator_repeats_masks_and_follows_corrections():
+    from pathlib import Path
+
+    from easy_mask.propagation.tracker import CopyPropagator
+
+    first = np.zeros((4, 4), bool)
+    first[0, 0] = True
+    fixed = np.zeros((4, 4), bool)
+    fixed[3, 3] = True
+    frames = [Path(f"{i}.jpg") for i in range(4)]
+    results = list(CopyPropagator().propagate(frames, {0: {1: first}, 2: {1: fixed}}))
+    assert [list(r) for r in results] == [[1], [2], [3]]
+    assert np.array_equal(results[0][1][1], first)
+    assert np.array_equal(results[1][2][1], fixed)  # the hand-fixed mask wins from frame 2
+    assert np.array_equal(results[2][3][1], fixed)
+    results[0][1][1][0, 0] = False
+    assert first[0, 0]  # yields copies, never the caller's arrays

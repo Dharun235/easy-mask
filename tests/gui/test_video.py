@@ -130,16 +130,38 @@ def test_stop_cancels_after_the_current_frame(qtbot, window, video, image_dir, f
     assert saved(image_dir, "img2") is not None and saved(image_dir, "img10") is None
 
 
-def test_missing_video_extra_shows_install_hint(window, video, dialogs):
+def test_missing_video_extra_falls_back_to_copying(qtbot, window, video, image_dir):
     def missing():
         raise ImportError("No module named 'torch'")
 
-    dialogs.allow_warnings = True
     video.make_propagator = missing
     window.canvas.set_shapes([rect(10)])
     video.propagate(+1)
-    assert "uv sync --extra video" in dialogs.warnings[0]
-    assert not video.running
+    assert "uv sync --extra video" in window.statusBar().currentMessage()
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    for stem in FRAMES[1:]:
+        (shape,) = saved(image_dir, stem)
+        assert shape.flags == {PROPAGATED_FLAG: True}
+        assert shape.points == [(10, 10), (19, 19)]  # same pixels, not moved
+
+
+def test_copy_model_can_be_chosen_explicitly(qtbot, window, image_dir):
+    from easy_mask.gui.video_menu import default_propagator
+    from easy_mask.propagation.tracker import CopyPropagator
+
+    assert isinstance(default_propagator("copy"), CopyPropagator)
+
+
+def test_only_selected_objects_are_propagated(qtbot, window, video, image_dir):
+    window.canvas.set_shapes([rect(10, label="car"), rect(40, label="bike")])
+    window.canvas.select(1)
+
+    propagate(qtbot, video)
+
+    (shape,) = saved(image_dir, "img2")
+    assert shape.label == "bike"
+    (kept_car, kept_bike) = window.canvas.shapes  # the start frame keeps both objects
+    assert (kept_car.label, kept_bike.label) == ("car", "bike")
 
 
 def test_model_failure_is_reported(qtbot, window, video, dialogs, fake_propagator):
@@ -261,12 +283,16 @@ def test_shape_list_marks_auto_shapes(window):
     assert "(auto)" not in texts[0] and texts[1].endswith("(auto)")
 
 
-def test_default_backend_without_video_extra_shows_install_hint(window, dialogs, monkeypatch):
+def test_default_backend_without_video_extra_copies_instead(qtbot, window, image_dir, monkeypatch):
     import importlib.util
 
+    from easy_mask.propagation.tracker import CopyPropagator
+
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
-    dialogs.allow_warnings = True
     window.ask_number = lambda *args: 1
     window.canvas.set_shapes([rect(10)])
     window.video.propagate(+1)
-    assert "--extra video" in dialogs.warnings[0]
+    assert isinstance(window.video.propagator, CopyPropagator)
+    assert "--extra video" in window.statusBar().currentMessage()
+    qtbot.waitUntil(lambda: not window.video.running, timeout=5000)
+    assert saved(image_dir, "img2")[0].points == [(10, 10), (19, 19)]

@@ -40,10 +40,11 @@ def build_gui_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--video-model",
-        choices=("efficienttam_ti_512", "sam2.1_hiera_tiny"),
+        choices=("efficienttam_ti_512", "sam2.1_hiera_tiny", "copy"),
         default="efficienttam_ti_512",
-        help="mask propagation model (needs the video extra): fast default, or SAM 2.1 for "
-        "~3 points better J&F at ~5x the time",
+        help="mask propagation: EfficientTAM (fast default) or SAM 2.1 (~3 points better J&F, "
+        "~5x slower) need the video extra; 'copy' repeats the mask unchanged, no model. "
+        "Without the extra, propagation falls back to copy.",
     )
     return parser
 

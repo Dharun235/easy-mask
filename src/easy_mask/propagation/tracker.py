@@ -37,6 +37,22 @@ class Propagator(Protocol):
         ...
 
 
+class CopyPropagator:
+    """No model: repeat each object's mask unchanged on every later frame.
+
+    Used when the video extra (PyTorch) is not installed, or chosen explicitly with
+    ``--video-model copy``. Good for static objects or as a starting point to fix by hand.
+    A hand-corrected mask on a later frame replaces the copied one from that frame on.
+    """
+
+    def propagate(self, frames: list[Path], prompts: FrameMasks) -> Iterator[FrameMasks]:
+        """Yield the most recent known mask of every object for each later frame."""
+        current = dict(prompts[0])
+        for position in range(1, len(frames)):
+            current.update(prompts.get(position, {}))
+            yield {position: {object_id: m.copy() for object_id, m in current.items()}}
+
+
 def track(
     propagator: Propagator,
     frames: list[Path],

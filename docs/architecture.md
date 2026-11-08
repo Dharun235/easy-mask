@@ -38,7 +38,7 @@ src/easy_mask/
       yolo.py            YOLO-seg label files + data.yaml
       davis.py           DAVIS-style indexed PNG per frame, object ids stable across frames
   propagation/
-    tracker.py           Propagator protocol; track(): shapes -> prompts -> flagged mask shapes
+    tracker.py           Propagator protocol, CopyPropagator (no model); track(): shapes -> prompts -> flagged masks
     backend.py           EfficientTAM / SAM 2.1 video predictor, weights download, device pick
     configs/             EfficientTAM config (its wheel ships none)
   gui/

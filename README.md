@@ -52,9 +52,10 @@ uv sync
 
 ### Optional: video mask propagation
 
-Propagation needs PyTorch and the EfficientTAM / SAM 2.1 model code (~1 GB with
+AI propagation needs PyTorch and the EfficientTAM / SAM 2.1 model code (~1 GB with
 PyTorch; more on Linux, where PyPI's PyTorch includes CUDA). It is an extra so the base
-app stays light:
+app stays light. Without it, **Propagate still works by copying the mask unchanged** to
+each frame (choose this explicitly with `--video-model copy`):
 
 ```bash
 SAM2_BUILD_CUDA=0 uv sync --extra video
@@ -93,8 +94,10 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
 1. Open a video (or a folder of frames). Draw or brush the objects on one frame. Give
    objects that share a label different **group ids**: `(label, group id)` is an object's
    identity across frames.
-2. **Video > Propagate Forward / Backward** (`Ctrl+Shift+Right` / `Left`) tracks them
-   through the next frames on a background thread; **Video > Stop** cancels. Results are
+2. Optionally select the objects to track (Shift+click for several; nothing selected =
+   every object). **Video > Propagate Forward / Backward** (`Ctrl+Shift+Right` / `Left`)
+   tracks them through the next frames on a background thread (AI with the video extra,
+   plain copy without it); **Video > Stop** cancels. Results are
    mask shapes flagged `propagated` and shown as `(auto)` in the shape list.
 3. Fix a bad frame by hand and propagate again from there: automatic shapes are
    replaced, hand-drawn ones are never overwritten and also steer the model.
