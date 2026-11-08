@@ -39,8 +39,9 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Navigation | open image or folder, file list with done-marks, next/prev, zoom at cursor, pan, fit |
 | Image flags | per-image checkboxes for classification or data cleaning (`--flags`) |
 | Saving | one JSON per image next to the image or in `--output`, optional auto-save, crash-safe writes |
-| Export | semantic mask PNG, instance mask PNG, COCO instance JSON (polygons or exact RLE), YOLO-seg TXT (GUI or CLI) |
+| Export | semantic mask PNG, instance mask PNG, COCO instance JSON (polygons or exact RLE), YOLO-seg TXT, DAVIS-style video masks (GUI or CLI) |
 | Workflow | review mode (step and zoom through every object, `reviewed` flag), copy shapes from previous image, folder statistics, strict label list |
+| Video | open mp4/avi/mov (frames extracted, `--frame-step`, `--max-frames`) or a frame folder; keyframe interpolation; mask propagation with memory (EfficientTAM / SAM 2.1, optional extra) |
 | Privacy | 100% offline; images never leave your disk |
 
 ## Install
@@ -57,6 +58,26 @@ uv sync --extra ai     # optional: AI Segment (adds onnxruntime, ~75 MB)
 The first time you use AI Segment it downloads the EfficientSAM ViT-T model (41 MB) to
 `~/.cache/easy-mask/models` (override with `EASY_MASK_MODELS`), checks its sha256, and
 then works offline. `--ai-model efficientsam-vits` picks the larger, slower model (106 MB).
+
+### Optional: video mask propagation
+
+AI propagation needs PyTorch and the EfficientTAM / SAM 2.1 model code (~1 GB with
+PyTorch; more on Linux, where PyPI's PyTorch includes CUDA). It is an extra so the base
+app stays light. Without it, **Propagate still works by copying the mask unchanged** to
+each frame (choose this explicitly with `--video-model copy`):
+
+```bash
+SAM2_BUILD_CUDA=0 uv sync --extra video
+```
+
+Weights download on first use to `~/.cache/easy-mask/checkpoints` (EfficientTAM-Ti 72 MB;
+SAM 2.1 Hiera-Tiny 156 MB if selected). The device is picked automatically: CUDA, then
+Apple MPS, then CPU. On a laptop CPU expect roughly 0.3-2 s per frame with EfficientTAM
+(more objects, more time) and 5-10x that with SAM 2.1; see
+[docs/benchmarks.md](docs/benchmarks.md#video-propagation-v05).
+Pick SAM 2.1 (better quality, slower) with `--video-model sam2.1_hiera_tiny`. Both models'
+code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/EfficientTAM),
+[SAM 2](https://github.com/facebookresearch/sam2)).
 
 ## Usage
 
@@ -77,7 +98,27 @@ uv run easy-mask export images/ --format coco --rle --out dataset/  # masks as e
 # progress and label check: per-label objects/area, annotated/reviewed counts
 uv run easy-mask stats images/                     # plain table (or --json)
 uv run easy-mask stats images/ --labels cat,dog    # exit 1 if other labels are used
+
+# video: frames are extracted next to the video (clip_frames/), one JSON per frame
+uv run easy-mask clip.mp4 --frame-step 2 --max-frames 300
+uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG per frame
 ```
+
+### Video workflow
+
+1. Open a video (or a folder of frames). Draw or brush the objects on one frame. Give
+   objects that share a label different **group ids**: `(label, group id)` is an object's
+   identity across frames.
+2. Optionally select the objects to track (Shift+click for several; nothing selected =
+   every object). **Video > Propagate Forward / Backward** (`Ctrl+Shift+Right` / `Left`)
+   tracks them through the next frames on a background thread (AI with the video extra,
+   plain copy without it); **Video > Stop** cancels. Results are
+   mask shapes flagged `propagated` and shown as `(auto)` in the shape list.
+3. Fix a bad frame by hand and propagate again from there: automatic shapes are
+   replaced, hand-drawn ones are never overwritten and also steer the model.
+4. Without the model: annotate two keyframes and use **Video > Interpolate From Previous
+   Keyframe** (`Ctrl+Shift+I`) on the later one. Polygons and boxes morph vertex by
+   vertex, masks through signed distance fields; results are flagged `interpolated`.
 
 ### Keyboard shortcuts
 
@@ -133,7 +174,7 @@ Full plan with milestones: [docs/roadmap.md](docs/roadmap.md).
 - [x] **v0.2 Mask shapes:** pixel masks, brush/eraser, boolean combine, clean-up, mask <-> polygon
 - [x] **v0.4 AI click-to-segment on CPU:** EfficientSAM, positive/negative clicks and box prompts, live preview
 - [x] **v0.4 Click benchmark:** NoC@85/90 and mIoU on GrabCut, Berkeley, DAVIS ([docs/benchmarks.md](docs/benchmarks.md))
-- [ ] **v0.4 Video:** SAM2 propagation across frames, object tracks
+- [x] **v0.5 Video:** open videos, keyframe interpolation, mask propagation (EfficientTAM / SAM 2.1), DAVIS export
 - [ ] Text-prompted pre-labelling (SAM3 / Grounding-DINO style)
 - [ ] Brightness / contrast, keep previous annotations, COCO import, Pascal VOC export
 - [ ] Standalone app bundles (no Python needed)
@@ -161,7 +202,8 @@ doesn't do yet, one of them probably does.
 | [LabelImg](https://github.com/HumanSignal/labelImg) | Bounding-box annotator, now archived (MIT) | Boxes only; easy-mask covers boxes and masks |
 | [Segment Anything (SAM)](https://github.com/facebookresearch/segment-anything) | Promptable segmentation model (Apache-2.0) | Model family behind click-to-segment |
 | [EfficientSAM](https://github.com/yformer/EfficientSAM) | Lightweight SAM (Apache-2.0); ONNX export by the labelme project | AI Segment backend |
-| [SAM 2](https://github.com/facebookresearch/sam2) | SAM for images and video (Apache-2.0) | Candidate video backend |
+| [SAM 2](https://github.com/facebookresearch/sam2) | SAM for images and video (Apache-2.0) | Optional video propagation backend (SAM 2.1 Hiera-Tiny) |
+| [EfficientTAM](https://github.com/yformer/EfficientTAM) | Efficient Track Anything: SAM 2's video API with a light ViT (Apache-2.0) | Default video propagation backend |
 | [SAM 3](https://github.com/facebookresearch/sam3) | Text/concept-prompted segmentation | Candidate for text pre-labelling |
 | [SimpleClick](https://github.com/uncbiag/SimpleClick) | Interactive segmentation research code (MIT) | Benchmark datasets and evaluation protocol |
 | [FiftyOne](https://github.com/voxel51/fiftyone) | Dataset curation and visualisation (Apache-2.0) | Good companion for inspecting exported datasets |

@@ -43,8 +43,8 @@ dataset above in the format RITM introduced
 | [COCO 2017](https://cocodataset.org/) val (5k images, polygon masks) | Real-world manual-annotation tests; round-trip our COCO export against the official GT |
 | [LVIS](https://www.lvisdataset.org/) | Long-tail categories, more precise masks than COCO |
 | [SA-1B](https://ai.meta.com/datasets/segment-anything/) | The data SAM was trained on; diverse images for click-to-segment demos |
-| [SA-V](https://ai.meta.com/datasets/segment-anything-video/) | SAM2's video dataset; for the v0.4 propagation milestone |
-| [DAVIS 2017](https://davischallenge.org/) | Video object segmentation; measure J&F after propagation |
+| [SA-V](https://ai.meta.com/datasets/segment-anything-video/) | SAM2's video dataset; a larger propagation test set |
+| [DAVIS 2017](https://davischallenge.org/) (CC BY 4.0) | Video object segmentation; J&F after propagation. `DAVIS-2017-trainval-480p.zip` (833 MB) unzipped to `data/benchmarks/DAVIS2017/` |
 
 ## Results
 
@@ -153,6 +153,54 @@ the first 20 DAVIS frames are harder than the full set):
 
 ViT-S is better on the first click and about 2x slower to encode, but its corrections
 help less (mIoU falls from 3 to 5 clicks), so ViT-T stays the default.
+
+### Video propagation (v0.5)
+
+`uv run python -m benchmarks.video` on the first five DAVIS 2017 val sequences, 480p
+(bike-packing, blackswan, bmx-trees, breakdance, camel; 373 frames, 7 objects), 2026-11-08.
+Machine: MacBook Air M2 (8 cores, 16 GB), macOS 26.5, Python 3.12, PyTorch 2.15.
+J = region IoU, F = boundary F-measure (DAVIS definitions; see the script docstring), each
+averaged per object, then over objects. Seconds per frame include frame loading but not
+the one-off model load (2-5 s).
+
+**Propagation from the first frame's ground truth** (model sees frame 0 only):
+
+| model | frames | device | J | F | J&F | s / frame |
+|---|---|---|---|---|---|---|
+| EfficientTAM-Ti 512 (default) | all 373 | CPU | 0.838 | 0.934 | 0.885 | 1.48 |
+| EfficientTAM-Ti 512 (default) | all 373 | MPS | 0.838 | 0.934 | 0.885 | 0.34 |
+| EfficientTAM-Ti 512 | first 30 per sequence | CPU | 0.875 | 0.953 | 0.914 | 1.51 |
+| SAM 2.1 Hiera-Tiny | first 30 per sequence | CPU | 0.914 | 0.974 | 0.945 | 7.38 |
+
+Per sequence (EfficientTAM, CPU, all frames):
+
+| sequence | frames | J | F | J&F | s / frame |
+|---|---|---|---|---|---|
+| bike-packing | 69 | 0.778 | 0.860 | 0.819 | 2.14 |
+| blackswan | 50 | 0.958 | 0.991 | 0.974 | 0.41 |
+| bmx-trees | 80 | 0.606 | 0.915 | 0.760 | 1.71 |
+| breakdance | 84 | 0.893 | 0.919 | 0.906 | 1.94 |
+| camel | 90 | 0.953 | 0.983 | 0.968 | 1.22 |
+
+**Keyframe interpolation, no model** (ground truth on frames 0 and 9 of each 10-frame
+window, the 8 frames between scored; masks blended by signed distance after centring):
+
+| sequence | objects | J | F | J&F |
+|---|---|---|---|---|
+| bike-packing | 2 | 0.673 | 0.780 | 0.726 |
+| blackswan | 1 | 0.931 | 0.999 | 0.965 |
+| bmx-trees | 2 | 0.316 | 0.755 | 0.535 |
+| breakdance | 1 | 0.526 | 0.377 | 0.452 |
+| camel | 1 | 0.865 | 0.896 | 0.880 |
+| **mean** | | 0.662 | 0.761 | 0.712 |
+
+Takeaways: EfficientTAM is the default because it is ~5x faster than SAM 2.1 on CPU
+(and ~4x faster again on Apple MPS, where SAM 2.1 barely speeds up: 8.7 s/frame in a
+separate run) for about 3 points of J&F. Pick SAM 2.1 with `--video-model
+sam2.1_hiera_tiny` when quality matters more than time. Time grows with the number of
+objects (bike-packing, 2 objects, is the slowest). Interpolation is free and good for
+rigid or slow motion (blackswan, camel) but fails on articulated motion and occlusion
+(breakdance, bmx-trees): propagate those instead, and use interpolation for short gaps.
 
 ## Plan
 

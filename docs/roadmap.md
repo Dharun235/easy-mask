@@ -34,10 +34,12 @@ Manual tools on par with classic annotators.
 - [x] Click benchmark: NoC@85/90 and mIoU@k on GrabCut / Berkeley / DAVIS
 
 ## v0.5 — video (`feat/video`)
-- [ ] Open a video file or frame folder
-- [ ] Propagate masks across frames with memory (SAM 2 / EfficientTAM), correct and re-run
-- [ ] Keyframe interpolation and copy-forward without a model
-- [ ] Export DAVIS-style mask sequences
+- [x] Open a video file (frames extracted with step / max-frames) or frame folder
+- [x] Propagate masks across frames with memory (EfficientTAM / SAM 2.1), correct and re-run
+- [x] Keyframe interpolation without a model (outline correspondence, SDF for masks)
+- [ ] Copy-forward without a model (lands with `feat/workflow`)
+- [x] Export DAVIS-style mask sequences
+- [x] Video benchmark: J&F and seconds per frame on DAVIS 2017 val
 
 ## v0.6 — workflow (`feat/workflow`)
 - [x] COCO RLE export (`--rle`, pure numpy, byte-identical to pycocotools)

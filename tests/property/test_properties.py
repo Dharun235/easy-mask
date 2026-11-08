@@ -9,9 +9,16 @@ import numpy as np
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from easy_mask.core import geometry
+from easy_mask.core import geometry, masks
 from easy_mask.core.annotation import Annotation
 from easy_mask.core.history import History
+from easy_mask.core.interpolate import (
+    OUTLINE_POINTS,
+    align,
+    interpolate_mask,
+    interpolate_outline,
+    resample_closed,
+)
 from easy_mask.core.labels import label_color
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape, ShapeType
@@ -134,3 +141,42 @@ def test_mask_shape_roundtrip_is_lossless(height, width, seed):
         return
     restored = Shape.from_dict(shape.to_dict())
     assert np.array_equal(masks.to_full(restored, height, width), full)
+
+
+# ---------------------------------------------------------------------- interpolation
+
+small = st.floats(min_value=0, max_value=60, allow_nan=False)
+
+
+@st.composite
+def boxes(draw) -> Shape:
+    """A rectangle with a non-zero size inside a 100 x 100 image."""
+    x, y = draw(small), draw(small)
+    w, h = draw(st.floats(2, 30)), draw(st.floats(2, 30))
+    return Shape("obj", ShapeType.RECTANGLE, [(x, y), (x + w, y + h)])
+
+
+@given(boxes(), st.integers(0, 15))
+def test_outline_interpolation_endpoints_reproduce_keyframes(box, rotate):
+    """t=0 and t=1 give back each keyframe's outline, whatever the vertex order of the end."""
+    outline = box.outline()
+    rotated = outline[rotate % 4 :] + outline[: rotate % 4]
+    start = resample_closed(outline, OUTLINE_POINTS)
+    end = align(start, resample_closed(rotated, OUTLINE_POINTS))
+    assert np.allclose(interpolate_outline(outline, rotated, 0.0), start)
+    assert np.allclose(interpolate_outline(outline, rotated, 1.0), end, atol=1e-6)
+
+
+@given(boxes(), boxes(), st.floats(0, 1))
+def test_interpolated_outline_centre_moves_linearly(a, b, t):
+    """The blend of two boxes is centred on the linear blend of their centres."""
+    centre_a, centre_b = (np.mean(s.points, axis=0) for s in (a, b))
+    blended = interpolate_outline(a.outline(), b.outline(), t)
+    assert np.allclose(np.mean(blended, axis=0), (1 - t) * centre_a + t * centre_b, atol=1e-6)
+
+
+@settings(max_examples=25, deadline=None)
+@given(boxes(), st.floats(0, 1))
+def test_mask_interpolation_of_identical_masks_is_identity(box, t):
+    full = shape_to_mask(box, 100, 100)
+    assert masks.iou(interpolate_mask(full, full, t), full) > 0.95

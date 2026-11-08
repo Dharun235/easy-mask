@@ -3,9 +3,9 @@
 Three forms::
 
     easy-mask [PATH] [--output DIR] [--labels ...] [--strict-labels] [--flags ...] [--autosave]
-              [--ai-model M]
-    easy-mask export IMAGE_DIR --format {masks,coco,yolo} [--rle] --out DIR    # headless export
-    easy-mask stats IMAGE_DIR [--labels ...] [--json]                           # folder statistics
+              [--ai-model M] [--video-model M] [--frame-step N] [--max-frames N]
+    easy-mask export IMAGE_DIR --format {masks,coco,yolo,davis} [--rle] --out DIR   # headless
+    easy-mask stats IMAGE_DIR [--labels ...] [--json]                                # statistics
 """
 
 import argparse
@@ -17,7 +17,7 @@ from easy_mask import __version__
 from easy_mask.ai import efficient_sam
 from easy_mask.core.labels import parse_name_list
 
-EXPORT_FORMATS = ("masks", "coco", "yolo")
+EXPORT_FORMATS = ("masks", "coco", "yolo", "davis")
 
 
 def build_gui_parser() -> argparse.ArgumentParser:
@@ -47,6 +47,20 @@ def build_gui_parser() -> argparse.ArgumentParser:
         default=efficient_sam.DEFAULT_MODEL,
         choices=sorted(efficient_sam.MODELS),
         help="model for the AI Segment tool (vits: slower, more accurate)",
+    )
+    parser.add_argument(
+        "--frame-step", type=int, default=1, help="when opening a video: keep every n-th frame"
+    )
+    parser.add_argument(
+        "--max-frames", type=int, help="when opening a video: extract at most this many frames"
+    )
+    parser.add_argument(
+        "--video-model",
+        choices=("efficienttam_ti_512", "sam2.1_hiera_tiny", "copy"),
+        default="efficienttam_ti_512",
+        help="mask propagation: EfficientTAM (fast default) or SAM 2.1 (~3 points better J&F, "
+        "~5x slower) need the video extra; 'copy' repeats the mask unchanged, no model. "
+        "Without the extra, propagation falls back to copy.",
     )
     return parser
 
@@ -144,5 +158,8 @@ def main(argv: list[str] | None = None) -> int:
         autosave=args.autosave,
         strict_labels=args.strict_labels,
         ai_model=args.ai_model,
+        frame_step=args.frame_step,
+        max_frames=args.max_frames,
+        video_model=args.video_model,
     )
     return run(args.path, settings)

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QAbstractItemView, QListWidget, QListWidgetItem, Q
 
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
+from easy_mask.core.video import is_auto
 
 
 def color_icon(label: str, labels: list[str], size: int = 12) -> QIcon:
@@ -87,6 +88,8 @@ class ShapeList(QListWidget):
             text = f"{shape.label}  [{shape.shape_type}]"
             if shape.group_id is not None:
                 text += f"  g{shape.group_id}"
+            if is_auto(shape):  # interpolated or propagated, not yet checked by hand
+                text += "  (auto)"
             item = QListWidgetItem(color_icon(shape.label, labels), text)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             visible = id(shape) not in hidden

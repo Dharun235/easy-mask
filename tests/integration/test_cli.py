@@ -103,3 +103,10 @@ def test_ai_model_option():
     assert parser.parse_args(["--ai-model", "efficientsam-vits"]).ai_model == "efficientsam-vits"
     with pytest.raises(SystemExit):
         parser.parse_args(["--ai-model", "nope"])
+
+
+def test_export_davis_command(image_dir, square, tmp_path):
+    ann_io.save(Annotation("img1.png", 100, 80, [square]), image_dir / "img1.json")
+    out = tmp_path / "davis"
+    assert main(["export", str(image_dir), "--format", "davis", "--out", str(out)]) == 0
+    assert (out / "Annotations" / image_dir.name / "img1.png").exists()

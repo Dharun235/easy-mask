@@ -17,6 +17,7 @@ FORBIDDEN = {
     "core": ("PySide6", "easy_mask.gui", "easy_mask.io"),
     "io": ("PySide6", "easy_mask.gui"),
     "ai": ("PySide6", "easy_mask.gui", "easy_mask.io"),
+    "propagation": ("PySide6", "easy_mask.gui"),
 }
 
 

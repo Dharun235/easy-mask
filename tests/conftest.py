@@ -101,3 +101,31 @@ class FakeSegmenter(Segmenter):
 def fake_segmenter() -> FakeSegmenter:
     """A fresh :class:`FakeSegmenter`."""
     return FakeSegmenter()
+
+
+class FakePropagator:
+    """Deterministic stand-in for the video model: each frame shifts the prompt right.
+
+    Frame ``k`` gets the most recent prompt mask of each object moved ``shift * (k - p)``
+    pixels to the right, where ``p`` is that prompt's frame. Records every call.
+    """
+
+    def __init__(self, shift: int = 2):
+        self.shift = shift
+        self.calls: list[tuple[list[Path], dict]] = []
+
+    def propagate(self, frames, prompts):
+        self.calls.append((list(frames), prompts))
+        for position in range(1, len(frames)):
+            result = {}
+            for object_id in prompts[0]:
+                origin = max(p for p in prompts if p <= position and object_id in prompts[p])
+                shift = self.shift * (position - origin)
+                result[object_id] = np.roll(prompts[origin][object_id], shift, axis=1)
+            yield {position: result}
+
+
+@pytest.fixture
+def fake_propagator() -> FakePropagator:
+    """A fresh :class:`FakePropagator`."""
+    return FakePropagator()

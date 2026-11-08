@@ -6,6 +6,7 @@ dataset folder with a copy of every annotated image.
 
 from easy_mask.io.export.coco import export_coco, export_coco_rle
 from easy_mask.io.export.common import AnnotatedImage, collect
+from easy_mask.io.export.davis import export_davis
 from easy_mask.io.export.masks import export_masks
 from easy_mask.io.export.yolo import export_yolo
 
@@ -15,6 +16,7 @@ EXPORTERS = {
     "coco": export_coco,
     "coco-rle": export_coco_rle,
     "yolo": export_yolo,
+    "davis": export_davis,
 }
 
 __all__ = [
@@ -23,6 +25,7 @@ __all__ = [
     "collect",
     "export_coco",
     "export_coco_rle",
+    "export_davis",
     "export_masks",
     "export_yolo",
 ]

@@ -22,17 +22,37 @@ dependencies = [
     "PySide6>=6.7",
 ]
 
+[project.optional-dependencies]
+# AI Segment: EfficientSAM on CPU via ONNX Runtime (~75 MB installed).
+ai = [
+    "onnxruntime>=1.31.1",
+]
+# Video mask propagation (EfficientTAM / SAM 2.1). Heavy: pulls in PyTorch.
+video = [
+    "torch>=2.5.1",
+    "torchvision>=0.20.1",
+    "hydra-core>=1.3.2",
+    "efficient-track-anything",
+    "sam-2",
+]
+
+[tool.uv.sources]
+sam-2 = { git = "https://github.com/facebookresearch/sam2" }
+efficient-track-anything = { git = "https://github.com/yformer/EfficientTAM" }
+
+# EfficientTAM declares its Gradio demo's dependencies (gradio, moviepy, opencv-python, ...),
+# which would downgrade Pillow and add a second OpenCV. The model code only needs these.
+[[tool.uv.dependency-metadata]]
+name = "efficient-track-anything"
+version = "1.0"
+requires-dist = ["torch", "torchvision", "numpy", "hydra-core", "iopath", "pillow", "tqdm"]
+
 [project.urls]
 Repository = "https://github.com/Dharun235/easy-mask"
 Issues = "https://github.com/Dharun235/easy-mask/issues"
 
 [project.scripts]
 easy-mask = "easy_mask.cli:main"
-
-[project.optional-dependencies]
-ai = [
-    "onnxruntime>=1.31.1",
-]
 
 [dependency-groups]
 dev = [
@@ -96,6 +116,11 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 warn_return_any = true
 strict_equality = true
+
+[[tool.mypy.overrides]]
+# Optional `video` extra: untyped, and absent in the base install.
+module = ["torch.*", "hydra.*", "omegaconf.*", "sam2.*", "efficient_track_anything.*"]
+ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]

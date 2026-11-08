@@ -29,6 +29,17 @@ def test_cli_starts_gui_with_parsed_settings(monkeypatch, tmp_path):
     assert (seen["s"].labels, seen["s"].flags, seen["s"].autosave) == (["a", "b"], ["x"], True)
 
 
+def test_cli_video_options(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(app, "run", lambda path, settings: seen.update(s=settings) or 0)
+    from easy_mask.cli import main
+
+    args = ["clip.mp4", "--frame-step", "3", "--max-frames", "20"]
+    assert main([*args, "--video-model", "sam2.1_hiera_tiny"]) == 0
+    s = seen["s"]
+    assert (s.frame_step, s.max_frames, s.video_model) == (3, 20, "sam2.1_hiera_tiny")
+
+
 def test_python_dash_m_entry_point(monkeypatch):
     monkeypatch.setattr("sys.argv", ["easy_mask", "--version"])
     with pytest.raises(SystemExit) as exc:

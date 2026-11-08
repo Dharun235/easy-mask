@@ -63,6 +63,10 @@ always works. `slow` and `benchmark` are added explicitly.
   truncated download, offline). The real EfficientSAM model runs in
   `tests/integration/test_efficient_sam_model.py` only when onnxruntime is installed and
   the weights are already cached; it never downloads.
+- **Fake model.** Video propagation is tested with the `fake_propagator` fixture
+  (`tests/conftest.py`), which shifts each prompt mask 2 px per frame: deterministic, fast,
+  no PyTorch. The real model runs only in `tests/integration/test_video_benchmark.py`,
+  which skips unless the `video` extra, its weights and DAVIS 2017 are present.
 
 ## Writing good tests
 
@@ -87,7 +91,7 @@ prove what is tested is checked well. Missing lines are listed so you can see th
 ## Benchmark data
 
 The benchmark tests need GrabCut, Berkeley and DAVIS in `data/benchmarks/` (gitignored;
-~60 MB). They are skipped automatically when the data is missing, e.g. in CI. Dataset
+~60 MB), and DAVIS 2017 (`DAVIS2017/DAVIS`, 833 MB zip) for the video benchmark. They are skipped automatically when the data is missing, e.g. in CI. Dataset
 sources and the metrics we will report are in [benchmarks.md](benchmarks.md).
 
 ## Continuous integration
