@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         self.dirty = False
         self.clipboard: Shape | None = None
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
+        self.last_export: tuple[str, Path] | None = None  # (format, folder), per project
         # Tidy AI / smart-tool masks (specks, pinholes) before storing them; brush is exact.
         self.auto_cleanup = True
         # With an active label, new shapes take it directly instead of opening the dialog.
@@ -267,6 +268,13 @@ class MainWindow(QMainWindow):
         export_menu = m.addMenu("Export Folder As")
         for name in export.EXPORTERS:
             self._action(export_menu, name, lambda _=False, n=name: self.export_dataset(n))
+        self._action(m, "Export Again", self.export_again, "Ctrl+Shift+E")
+        self.export_on_close_action = self._action(
+            m,
+            "Export Again When Closing",
+            lambda _=False: self.session.save_project(),
+            checkable=True,
+        )
         m.addSeparator()
         self._action(m, "Quit", self.close, std.Quit)
 
@@ -812,13 +820,27 @@ class MainWindow(QMainWindow):
         out = QFileDialog.getExistingDirectory(self, f"Export {fmt} to folder")
         if not out:
             return
+        self.last_export = (fmt, Path(out))
+        self.session.save_project()
+        self._export(fmt, Path(out))
+
+    def export_again(self) -> None:
+        """Repeat the last export (format and folder) without asking."""
+        if self.last_export is None:
+            self.statusBar().showMessage("Export once with File > Export Folder As first", 5000)
+            return
+        if self.image_path is not None and self.maybe_save():
+            self._export(*self.last_export)
+
+    def _export(self, fmt: str, out: Path) -> None:
+        assert self.image_path is not None
         items = export.collect(self.image_path.parent, self.settings.output_dir)
         # Predefined labels first, then any seen in the folder, so nothing is dropped and
         # class ids follow the same order as the on-screen colours.
         for item in items:
             for shape in item.annotation.shapes:
                 self._remember_label(shape.label)
-        export.EXPORTERS[fmt](items, Path(out), list(self.known_labels))
+        export.EXPORTERS[fmt](items, out, list(self.known_labels))
         self.statusBar().showMessage(f"Exported {len(items)} images as {fmt} to {out}", 5000)
 
     # ------------------------------------------------------------------ view helpers
@@ -883,6 +905,8 @@ class MainWindow(QMainWindow):
         """Offer to save before quitting."""
         if self.maybe_save():
             self.video.stop(wait=True)
+            if self.export_on_close_action.isChecked() and self.last_export is not None:
+                self._export(*self.last_export)
             self.session.save()
             event.accept()
         else:

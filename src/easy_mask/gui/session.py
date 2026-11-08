@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QMenu
 
+from easy_mask.io import export
 from easy_mask.io import project as project_io
 
 if TYPE_CHECKING:  # the main window imports this module
@@ -130,17 +131,25 @@ class Session:
             w.settings.output_dir = project_io.resolve_dir(project.output_dir, folder)
         if w.active_label is None and project.active_label in w.known_labels:
             w.set_active_label(project.active_label)
+        export_dir = project_io.resolve_dir(project.export_dir, folder)
+        if project.export_format in export.EXPORTERS and export_dir is not None:
+            w.last_export = (project.export_format, export_dir)
+        w.export_on_close_action.setChecked(project.export_on_close)
 
     def save_project(self) -> None:
         """Write the current folder's project file (no-op until a folder is open)."""
         if self.folder is None or not self.folder.is_dir():
             return
         w = self.window
+        export_format, export_dir = w.last_export if w.last_export else (None, None)
         project = project_io.Project(
             labels=list(w.known_labels),
             flags=list(w.settings.flags),
             active_label=w.active_label,
             output_dir=project_io.relative_dir(w.settings.output_dir, self.folder),
+            export_format=export_format,
+            export_dir=project_io.relative_dir(export_dir, self.folder),
+            export_on_close=w.export_on_close_action.isChecked(),
         )
         # A read-only folder just isn't remembered: a convenience, never an error.
         with contextlib.suppress(OSError):
