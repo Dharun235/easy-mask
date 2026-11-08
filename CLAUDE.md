@@ -57,7 +57,7 @@ Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to im
 - **Data classes for data.** `Shape` and `Annotation` are dataclasses; keep behaviour that
   needs Qt out of them.
 - **No speculative abstractions.** Add an interface when the second implementation lands,
-  not before (e.g. the segmenter backend interface arrives with the SAM2 branch).
+  not before (e.g. `ai.segmenter.Segmenter` arrived together with EfficientSAM).
 - **Errors:** fail loudly on programmer error; show a dialog for user error (bad file,
   missing image). Don't swallow exceptions silently.
 - **Tests:** every bug fix gets a regression test that fails before the fix. Every new

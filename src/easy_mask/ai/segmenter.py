@@ -21,6 +21,7 @@ from typing import Any
 import numpy as np
 
 from easy_mask.core.geometry import Point
+from easy_mask.core.masks import keep_regions_containing
 
 Box = tuple[float, float, float, float]  # x0, y0, x1, y1 in image pixels
 Prediction = tuple[np.ndarray, float]  # (H x W bool mask, predicted IoU score)
@@ -149,6 +150,10 @@ class Segmenter(ABC):
         coords, codes = encode_prompts(points, labels, box, self.max_points)
         embedding, size = self._current
         predictions = self._decode(embedding, size, coords, codes)
+        if box is None:  # clicks only: drop blobs away from every positive click
+            clicked = [p for p, label in zip(points, labels, strict=True) if label == POSITIVE]
+            if clicked:
+                predictions = [(keep_regions_containing(m, clicked), s) for m, s in predictions]
         if len(codes) == 1:  # a single click: prefer the whole object (see class docstring)
             return sorted(predictions, key=lambda p: int(p[0].sum()), reverse=True)
         return sorted(predictions, key=lambda p: p[1], reverse=True)

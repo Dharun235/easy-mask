@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QStackedWidget,
     QWidget,
 )
 
@@ -37,8 +38,10 @@ from easy_mask.core.history import History
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.display_dialog import DisplayDialog
+from easy_mask.gui.icons import icon
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
 from easy_mask.gui.session import Session
+from easy_mask.gui.shortcuts import ShortcutsDialog
 from easy_mask.gui.threshold_dialog import ThresholdDialog
 from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
@@ -46,6 +49,7 @@ from easy_mask.gui.tools.brush import BrushTool
 from easy_mask.gui.tools.region import GrabCutTool, MagicWandTool, SuperpixelTool
 from easy_mask.gui.tools.watershed import WatershedTool
 from easy_mask.gui.video_menu import VideoMenu
+from easy_mask.gui.welcome import WelcomePage
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
 from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
@@ -55,23 +59,24 @@ from easy_mask.io.video import extract_frames, is_video
 PREFETCH_AHEAD = 3  # images encoded ahead for AI Segment: the current one and the next two
 DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
-# Toolbar entries: (text, tool, shortcut). A ShapeType draws that shape, None is edit
-# mode, and a string names a pixel tool from MainWindow.pixel_tools.
-TOOLS: list[tuple[str, ShapeType | str | None, str]] = [
-    ("Edit", None, "E"),
-    ("Polygon", ShapeType.POLYGON, "P"),
-    ("Rectangle", ShapeType.RECTANGLE, "R"),
-    ("Circle", ShapeType.CIRCLE, "C"),
-    ("Line", ShapeType.LINE, "L"),
-    ("Line strip", ShapeType.LINESTRIP, "T"),
-    ("Point", ShapeType.POINT, "O"),
-    ("Brush", "brush", "B"),
-    ("Eraser", "eraser", "X"),
-    ("Magic wand", "wand", "W"),
-    ("GrabCut", "grabcut", "G"),
-    ("Superpixels", "superpixel", "S"),
-    ("Watershed", "watershed", "M"),
-    ("AI Segment", "ai", "I"),
+# Toolbar entries: (text, tool, shortcut, icon, group). A ShapeType draws that shape, None is
+# edit mode, and a string names a pixel tool from MainWindow.pixel_tools. A new group starts
+# a new section of the toolbar.
+TOOLS: list[tuple[str, ShapeType | str | None, str, str, str]] = [
+    ("Select / Edit", None, "E", "edit", "select"),
+    ("Polygon", ShapeType.POLYGON, "P", "polygon", "shapes"),
+    ("Rectangle", ShapeType.RECTANGLE, "R", "rectangle", "shapes"),
+    ("Circle", ShapeType.CIRCLE, "C", "circle", "shapes"),
+    ("Line", ShapeType.LINE, "L", "line", "shapes"),
+    ("Line strip", ShapeType.LINESTRIP, "T", "linestrip", "shapes"),
+    ("Point", ShapeType.POINT, "O", "point", "shapes"),
+    ("Brush", "brush", "B", "brush", "paint"),
+    ("Eraser", "eraser", "X", "eraser", "paint"),
+    ("AI Segment", "ai", "I", "ai", "smart"),
+    ("Magic wand", "wand", "W", "wand", "smart"),
+    ("GrabCut", "grabcut", "G", "grabcut", "smart"),
+    ("Superpixels", "superpixel", "S", "superpixel", "smart"),
+    ("Watershed", "watershed", "M", "watershed", "smart"),
 ]
 
 
@@ -138,7 +143,16 @@ class MainWindow(QMainWindow):
         self.display_dialog: DisplayDialog | None = None
         self.canvas.labels = self.known_labels  # same list object: new labels recolour live
         self.session = Session(self)  # remembered layout, tool sizes, recent folders, projects
-        self.setCentralWidget(self.canvas)
+        self.welcome = WelcomePage(
+            self.open_folder_dialog,
+            self.open_image_dialog,
+            lambda: self.video.open_video_dialog(),
+            self.open_path,
+        )
+        self.pages = QStackedWidget()  # welcome page until an image is open, then the canvas
+        self.pages.addWidget(self.welcome)
+        self.pages.addWidget(self.canvas)
+        self.setCentralWidget(self.pages)
         self._build_panels()
         self._build_actions()
         self.video = VideoMenu(self)
@@ -152,6 +166,8 @@ class MainWindow(QMainWindow):
         self._show_active_label()
         self.resize(1280, 800)
         self.session.restore()
+        self.welcome.show_recent(self.session.recent())
+        self.shortcuts_dialog: ShortcutsDialog | None = None
         self._update_title()
 
     # ------------------------------------------------------------------ construction
@@ -226,22 +242,25 @@ class MainWindow(QMainWindow):
 
     def _build_actions(self) -> None:
         bar = self.menuBar()
+        files = self.addToolBar("File")
+        files.setObjectName("File")
         toolbar = self.addToolBar("Tools")
         toolbar.setObjectName("Tools")
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         std = QKeySequence.StandardKey
 
         m = bar.addMenu("&File")
         self._action(m, "Open Image...", self.open_image_dialog, std.Open)
-        self._action(m, "Open Folder...", self.open_folder_dialog, "Ctrl+Shift+O")
+        open_folder = self._action(m, "Open Folder...", self.open_folder_dialog, "Ctrl+Shift+O")
         m.addMenu(self.session.recent_menu)
         self._action(m, "Change Annotation Folder...", self.change_output_dir)
         m.addSeparator()
-        self._action(m, "Save", self.save, std.Save)
+        save = self._action(m, "Save", self.save, std.Save)
         self.autosave_action = self._action(m, "Auto Save", self._toggle_autosave, checkable=True)
         self.autosave_action.setChecked(self.settings.autosave)
         m.addSeparator()
-        self._action(m, "Next Image", self.next_image, "D")
-        self._action(m, "Previous Image", self.prev_image, "A")
+        next_image = self._action(m, "Next Image", self.next_image, "D")
+        prev_image = self._action(m, "Previous Image", self.prev_image, "A")
         m.addSeparator()
         export_menu = m.addMenu("Export Folder As")
         for name in export.EXPORTERS:
@@ -264,11 +283,17 @@ class MainWindow(QMainWindow):
         m = bar.addMenu("&Draw")
         self.tool_group = QActionGroup(self)
         self.tool_actions: dict[ShapeType | str | None, QAction] = {}
-        for text, mode, key in TOOLS:
+        group = None
+        for text, mode, key, icon_name, tool_group in TOOLS:
             action = self._action(
                 m, text, lambda _=False, md=mode: self.set_tool(md), key, checkable=True
             )
+            action.setIcon(icon(icon_name))
+            action.setToolTip(f"{text} ({key})")
             self.tool_group.addAction(action)
+            if group is not None and tool_group != group:
+                toolbar.addSeparator()
+            group = tool_group
             toolbar.addAction(action)
             self.tool_actions[mode] = action
         self.tool_actions[None].setChecked(True)
@@ -313,7 +338,21 @@ class MainWindow(QMainWindow):
         fill.setChecked(True)
         self._action(m, "Adjust Display...", self.open_display)
 
+        style = self.style()
+        for action, pixmap, tip in (
+            (open_folder, style.StandardPixmap.SP_DirOpenIcon, "Open folder (Ctrl+Shift+O)"),
+            (save, style.StandardPixmap.SP_DialogSaveButton, "Save (Ctrl+S)"),
+            (prev_image, style.StandardPixmap.SP_ArrowBack, "Previous image (A)"),
+            (next_image, style.StandardPixmap.SP_ArrowForward, "Next image (D)"),
+        ):
+            action.setIcon(style.standardIcon(pixmap))
+            action.setToolTip(tip)
+            files.addAction(action)
+
         m = bar.addMenu("&Help")
+        self._action(
+            m, "Keyboard Shortcuts", self.show_shortcuts, [QKeySequence("F1"), QKeySequence("?")]
+        )
         self._action(m, "About", self._about)
         self._update_undo_actions()
 
@@ -388,6 +427,7 @@ class MainWindow(QMainWindow):
 
         self.current_index = index
         self.image_size = (pixmap.width(), pixmap.height())
+        self.pages.setCurrentWidget(self.canvas)
         self.canvas.set_image(pixmap)
         self.canvas.set_shapes(shapes)
         self.flag_list.show_flags(flags)
@@ -805,6 +845,13 @@ class MainWindow(QMainWindow):
 
     def _error(self, message: str) -> None:
         QMessageBox.warning(self, "easy-mask", message)
+
+    def show_shortcuts(self) -> None:
+        """Show every keyboard shortcut in a window that can stay open."""
+        if self.shortcuts_dialog is None:
+            self.shortcuts_dialog = ShortcutsDialog(self)
+        self.shortcuts_dialog.show()
+        self.shortcuts_dialog.raise_()
 
     def _about(self) -> None:
         QMessageBox.about(

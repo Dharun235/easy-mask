@@ -211,3 +211,21 @@ rigid or slow motion (blackswan, camel) but fails on articulated motion and occl
    seconds-per-object as the UI changes.
 
 Check each dataset's licence before use; several are research-only.
+
+### AI Segment responsiveness and click filtering (v0.7)
+
+- **Prefetch:** with the model loaded, the current and next two images are encoded in the
+  background. Time from "next image" to AI ready, EfficientSAM ViT-T on GrabCut, Apple M2
+  CPU, mean of 5 steps: **862 ms -> 8 ms**. The encode itself still takes ~0.85 s; it
+  just happens before you get there.
+- **Keep clicked regions:** for click-only prompts, blobs that contain no positive click
+  are dropped. First 20 images per dataset, ViT-T:
+
+  | dataset | NoC@90 before -> after | mIoU@1 | mIoU@5 |
+  |---|---|---|---|
+  | GrabCut | 1.55 -> 1.55 | 0.89 -> 0.90 | 0.97 -> 0.97 |
+  | Berkeley | 5.95 -> 5.70 | 0.77 -> 0.77 | 0.88 -> 0.88 |
+  | DAVIS | 12.45 -> 12.30 | 0.61 -> 0.61 | 0.77 -> 0.79 |
+
+  Neutral on the numbers (DAVIS NoC@85 9.95 -> 10.35: some objects there are in separate
+  parts; click each part), while visibly removing stray regions far from the click.

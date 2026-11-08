@@ -93,6 +93,25 @@ def remove_small(full: np.ndarray, min_area: int) -> np.ndarray:
     return np.asarray(keep[labels], dtype=bool)
 
 
+def keep_regions_containing(full: np.ndarray, points: list[Point]) -> np.ndarray:
+    """Keep only the connected blobs that contain at least one of ``points``.
+
+    Removes stray regions a segmentation model adds far from what the user clicked. If no
+    point lands on the mask, it is returned unchanged rather than emptied.
+    """
+    count, labels = cv2.connectedComponents(full.astype(np.uint8), connectivity=8)
+    if count <= 2:  # background plus at most one blob: nothing to drop
+        return full
+    height, width = full.shape
+    hit = {
+        int(labels[min(max(int(y), 0), height - 1), min(max(int(x), 0), width - 1)])
+        for x, y in points
+    } - {0}
+    if not hit:
+        return full
+    return np.isin(labels, list(hit))
+
+
 def _disc(radius: int) -> np.ndarray:
     return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
 

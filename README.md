@@ -35,7 +35,8 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Pixel tools (no AI) | magic wand, GrabCut from a box, superpixel picking, watershed from scribbles, threshold (manual / Otsu / adaptive) and colour range with live preview |
 | Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
 | Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
-| Labels | label dialog with autocomplete, distinct per-label colours, group id (one object in several parts), description |
+| Labels | **active label** with keys `1`-`9` (no dialog per shape), label dialog with autocomplete, distinct colours, group id, description |
+| Ease of use | start page with recent folders, icon toolbar with shortcut tooltips, `F1` shortcut list, auto-save on, remembers layout / tool sizes / per-folder labels, AI prefetch of upcoming images |
 | Navigation | open image or folder, file list with done-marks, next/prev, zoom at cursor, pan, fit |
 | Image flags | per-image checkboxes for classification or data cleaning (`--flags`) |
 | Saving | one JSON per image next to the image or in `--output`, optional auto-save, crash-safe writes |
@@ -79,15 +80,28 @@ Pick SAM 2.1 (better quality, slower) with `--video-model sam2.1_hiera_tiny`. Bo
 code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/EfficientTAM),
 [SAM 2](https://github.com/facebookresearch/sam2)).
 
+## Quick start: annotate fast
+
+1. `uv run easy-mask` opens a start page: **Open Folder**, or pick a recent folder.
+2. Press **1-9** to pick a label (or click it in the Labels panel). New shapes take it
+   with no dialog; **0** goes back to asking each time.
+3. Press **I** for AI Segment and click an object; **Enter** keeps it. Images ahead are
+   prepared in the background, so the next one is instant.
+4. Press **D** for the next image. Work is saved automatically.
+5. **F1** lists every shortcut.
+
+easy-mask remembers each folder's labels, flags, active label and annotation folder (in
+`.easy-mask.json` next to the images), plus window layout, brush sizes and recent folders.
+
 ## Usage
 
 ```bash
-uv run easy-mask                              # empty window, open from the File menu
+uv run easy-mask                              # start page; open from there or the File menu
 uv run easy-mask photo.jpg                    # annotate one image
 uv run easy-mask images/ --output labels/     # annotate a folder, JSON goes to labels/
 uv run easy-mask images/ --labels cat,dog     # predefine labels (or --labels labels.txt)
 uv run easy-mask images/ --labels cat,dog --strict-labels   # refuse any other label
-uv run easy-mask images/ --flags blurry,occluded --autosave
+uv run easy-mask images/ --flags blurry,occluded --no-autosave   # ask before leaving an image
 
 # export a folder of annotations to a training dataset
 uv run easy-mask export images/ --format coco  --out dataset/
@@ -124,6 +138,8 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
+| `1`-`9` | use label 1-9 for new shapes | `0` | ask for the label each time |
+| `F1` / `?` | list all shortcuts | | |
 | `P` | polygon | `E` | edit (select) mode |
 | `R` | rectangle | `Enter` / double-click | finish polygon / strip |
 | `C` | circle | `Backspace` | remove last point while drawing, else delete shape |

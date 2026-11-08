@@ -37,6 +37,7 @@ src/easy_mask/
     weights.py           download model files to ~/.cache/easy-mask/models, sha256-checked
   io/
     images.py            list images in a folder (natural sort), read size
+    project.py           .easy-mask.json per image folder (labels, flags, active label)
     stats.py             folder statistics and label validation (CLI `stats`, GUI dialog)
     video.py             object identity across frames, auto vs manual shapes, merging results
     interpolate.py       keyframe interpolation: outline correspondence, SDF mask blending
@@ -57,6 +58,10 @@ src/easy_mask/
     app.py               QApplication bootstrap
     main_window.py       menus, docks, open/save/navigate, edit commands, export menu
     canvas.py            view transform, drawing tools, multi-select/move/vertex drag, painting
+    session.py           remembered state: window layout, tool sizes, recent folders, projects
+    welcome.py           start page (open buttons, recent folders)
+    shortcuts.py         Help > Keyboard Shortcuts, built from the menus
+    icons.py, icons/     toolbar SVG icons
     tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
     tools/brush.py       brush and eraser
     tools/region.py      magic wand, GrabCut box, superpixel picker (Shift add / Alt subtract)

@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Changed
+- Auto-save is on by default (`--no-autosave` restores the save prompt).
+- AI Segment keeps only the regions that contain a positive click (click-only prompts), so
+  stray blobs elsewhere in the image are dropped; neutral on the click benchmark.
+
 ### Fixed
 - `shape_to_mask` returned a read-only array.
 - Label colours: index-based golden-ratio palette instead of hash, so labels are clearly distinct; mask PNG palette matches.
@@ -13,6 +18,7 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Ease of use: active label with keys 1-9, start page with recent folders, icon toolbar with shortcut tooltips, Help > Keyboard Shortcuts (F1), remembered window layout / tool sizes / recent folders, per-folder `.easy-mask.json` (labels, flags, active label, annotation folder), AI Segment prefetch of upcoming images.
 - Workflow: COCO RLE export (`--rle`), `easy-mask stats` and a statistics dialog, review mode (`N` / `Shift+N`, `reviewed` flag), copy shapes from previous image, `--strict-labels`; RLE vs polygon benchmark.
 - Classic pixel tools: magic wand (`W`), GrabCut box (`G`), superpixel picker (`S`), watershed from markers (`M`), threshold / colour-range panel with live preview (`Ctrl+T`); Shift adds to and Alt subtracts from the selected mask. Classic-tools benchmark.
 - View > Adjust Display: brightness, contrast, gamma, CLAHE, single-channel view and mask opacity (display only).

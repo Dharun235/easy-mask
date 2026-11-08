@@ -161,3 +161,25 @@ def test_precompute_caches_without_changing_current_image(fake_segmenter):
     assert mask.shape == (10, 12)  # still segmenting the current image
     fake_segmenter.precompute(big, "big")  # already cached: not encoded again
     assert fake_segmenter.encoded.count((20, 30, 3)) == 1
+
+
+def test_click_prompts_drop_blobs_away_from_positive_clicks():
+    import numpy as np
+
+    from easy_mask.ai.segmenter import Segmenter
+
+    class TwoBlobs(Segmenter):
+        def _encode(self, rgb):
+            return None
+
+        def _decode(self, embedding, size, coords, labels):
+            mask = np.zeros(size, bool)
+            mask[0:5, 0:5] = mask[20:25, 20:25] = True
+            return [(mask, 0.9)]
+
+    seg = TwoBlobs()
+    seg.set_image(np.zeros((30, 30, 3), np.uint8))
+    ((clicked, _),) = seg.predict([(2, 2)], [1])
+    assert clicked[2, 2] and not clicked[22, 22]
+    ((boxed, _),) = seg.predict([], [], box=(0, 0, 29, 29))
+    assert boxed[22, 22]  # a box prompt keeps everything the model returns

@@ -122,3 +122,18 @@ def test_shape_polygons_offsets_mask_contours(square):
 def test_iou(a, b, expected):
     assert masks.iou(blob(box=a), blob(box=b)) == pytest.approx(expected)
     assert masks.iou(np.zeros((3, 3), bool), np.zeros((3, 3), bool)) == 1.0
+
+
+def test_keep_regions_containing_drops_stray_blobs():
+    full = blob(box=(5, 5, 15, 15)) | blob(box=(30, 20, 40, 30))
+    kept = masks.keep_regions_containing(full, [(10, 10)])
+    assert kept[10, 10] and not kept[25, 35]
+    both = masks.keep_regions_containing(full, [(10, 10), (35, 25)])
+    assert np.array_equal(both, full)
+
+
+def test_keep_regions_containing_keeps_mask_when_no_point_hits():
+    full = blob(box=(5, 5, 15, 15)) | blob(box=(30, 20, 40, 30))
+    assert np.array_equal(masks.keep_regions_containing(full, [(0, 39)]), full)
+    single = blob(box=(5, 5, 15, 15))
+    assert masks.keep_regions_containing(single, [(0, 0)]) is single  # one blob: untouched
