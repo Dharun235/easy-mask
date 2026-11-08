@@ -624,3 +624,29 @@ def test_points_follow_the_mask_when_propagating(qtbot, window, video, image_dir
     later = saved(image_dir, "img2")
     (centre,) = [s for s in later if is_keypoint(s) and s.description == CENTROID]
     assert centre.points[0][0] == pytest.approx(14.5 + 2, abs=0.6)
+
+
+def test_all_frames_actions_show_progress_and_can_be_cancelled(window, image_dir):
+    from easy_mask.core.keypoints import is_keypoint
+
+    for stem in FRAMES[1:]:
+        save_frame(image_dir, stem, [rect(10)])
+    window.canvas.set_shapes([rect(10)])
+    window._commit()
+    progress = window.progress
+    seen, original_report = [], progress.report
+
+    def report(key, done, *args, **kwargs):
+        seen.append((key, done))
+        original_report(key, done, *args, **kwargs)
+        if done == 1:
+            progress._tasks["frames"].cancel()  # the user presses Cancel after frame 1
+
+    progress.report = report
+    window.add_keypoints_everywhere()
+    assert seen == [("frames", 1)] and not progress.is_running("frames")
+    assert sum(is_keypoint(s) for s in window.canvas.shapes) == 5  # frame 1 done
+    assert not any(is_keypoint(s) for s in saved(image_dir, "img2"))  # stopped before
+    assert "(stopped)" in window.statusBar().currentMessage()
+    window.undo()
+    assert not any(is_keypoint(s) for s in window.canvas.shapes)

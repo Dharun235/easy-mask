@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox
+from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox
 
 from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks
@@ -426,10 +426,7 @@ class VideoMenu:
             rest = [s for s in shapes if object_key(s) != key]
             return cut_region(rest, eraser, height, width)
 
-        self._begin_run()
-        for i in sorted(frames):
-            self._update_frame(i, erase)
-        self._end_run()
+        self.run_over_frames(sorted(frames), erase, "Erasing")
         w.statusBar().showMessage(f"Erased on {len(self.changed)} frame(s)  ·  Undo reverts", 6000)
 
     # ------------------------------------------------------------------ interpolate, clear
@@ -478,10 +475,9 @@ class VideoMenu:
         )
         if count is None:
             return
-        self._begin_run()
-        for index in range(current, current + int(count)):
-            self._update_frame(index, lambda shapes: [])
-        self._end_run()
+        self.run_over_frames(
+            list(range(current, current + int(count))), lambda shapes: [], "Clearing labels"
+        )
         w.statusBar().showMessage(f"Cleared {len(self.changed)} frame(s)  ·  Undo puts them back")
 
     def remove_label(self, label: str) -> None:
@@ -489,14 +485,39 @@ class VideoMenu:
         w = self.window
         if w.current_index is None or self.running:
             return
-        self._begin_run()
-        for index in range(len(w.image_paths)):
-            self._update_frame(index, lambda shapes: [s for s in shapes if s.label != label])
-        self._end_run()
+        self.run_over_frames(
+            list(range(len(w.image_paths))),
+            lambda shapes: [s for s in shapes if s.label != label],
+            f"Deleting “{label}”",
+        )
         w.forget_label(label)
         w.statusBar().showMessage(
             f"Deleted “{label}” from {len(self.changed)} frame(s)  ·  Undo brings it back", 8000
         )
+
+    def run_over_frames(
+        self, indices: list[int], transform: Callable[[list[Shape]], list[Shape]], task: str
+    ) -> bool:
+        """Apply ``transform`` to each frame in ``indices`` as one undo step, with progress.
+
+        The progress bar's Cancel stops after the current frame; the frames done so far
+        stay changed (and still undo together). Returns False if cancelled.
+        """
+        w = self.window
+        cancelled: list[bool] = []
+        w.progress.begin("frames", task, total=len(indices), cancel=lambda: cancelled.append(True))
+        self._begin_run()
+        try:
+            for done, index in enumerate(indices, start=1):
+                if cancelled:
+                    break
+                self._update_frame(index, transform)
+                w.progress.report("frames", done)
+                QApplication.processEvents()  # keep the window and Cancel responsive
+        finally:
+            self._end_run()
+            w.progress.end("frames")
+        return not cancelled
 
     def apply_to_all_frames(
         self, transform: Callable[[list[Shape]], list[Shape]], verb: str
@@ -505,11 +526,11 @@ class VideoMenu:
         w = self.window
         if w.current_index is None or self.running:
             return
-        self._begin_run()
-        for index in range(len(w.image_paths)):
-            self._update_frame(index, transform)
-        self._end_run()
-        w.statusBar().showMessage(f"{verb} {len(self.changed)} frame(s)  ·  Undo reverts", 6000)
+        finished = self.run_over_frames(list(range(len(w.image_paths))), transform, verb)
+        stopped = "" if finished else " (stopped)"
+        w.statusBar().showMessage(
+            f"{verb} {len(self.changed)} frame(s){stopped}  ·  Undo reverts", 6000
+        )
 
     def rename_label(self, old: str, new: str) -> None:
         """Rename ``old`` to ``new`` on every frame of the folder (one undo step)."""
@@ -526,10 +547,7 @@ class VideoMenu:
                 result.append(shape)
             return result
 
-        self._begin_run()
-        for index in range(len(w.image_paths)):
-            self._update_frame(index, rename)
-        self._end_run()
+        self.run_over_frames(list(range(len(w.image_paths))), rename, f"Renaming “{old}”")
         was_active = w.active_label == old
         w._remember_label(new)
         w.forget_label(old)
