@@ -612,3 +612,15 @@ def test_rename_a_label_on_all_frames(window, image_dir):
     assert "car" not in window.known_labels and window.active_label == "auto"
     window.undo()
     assert saved(image_dir, "img2")[0].label == "car"
+
+
+def test_points_follow_the_mask_when_propagating(qtbot, window, video, image_dir):
+    from easy_mask.core.keypoints import CENTROID, is_keypoint
+
+    window.canvas.set_shapes([rect(10)])
+    window._commit()
+    window.add_keypoints_here()
+    propagate(qtbot, video)  # the fake moves the car 2 px per frame
+    later = saved(image_dir, "img2")
+    (centre,) = [s for s in later if is_keypoint(s) and s.description == CENTROID]
+    assert centre.points[0][0] == pytest.approx(14.5 + 2, abs=0.6)

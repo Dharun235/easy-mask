@@ -78,11 +78,11 @@ def build_export_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", required=True, choices=EXPORT_FORMATS, help="dataset format")
     parser.add_argument(
         "--parts",
-        default="masks,cutouts,coordinates,centroid,corners",
+        default="masks,cutouts,coordinates,centroid,corners,points,overlays",
         help="with --format objects: any of masks (binary PNG per object), cutouts (the "
         "object's original pixels, transparent elsewhere), coordinates (box, area, outline), "
-        "centroid (mask centre), corners (straight and rotated box corners); the last three "
-        "go into objects.json + .csv",
+        "centroid (mask centre), corners (straight and rotated box corners), points (key "
+        "points), overlays (frames with masks and points drawn on)",
     )
     parser.add_argument("--out", required=True, type=Path, help="destination folder")
     parser.add_argument(

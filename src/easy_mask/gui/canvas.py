@@ -31,6 +31,7 @@ from PySide6.QtWidgets import QWidget
 
 from easy_mask.core.display import DisplaySettings, adjust
 from easy_mask.core.geometry import Point
+from easy_mask.core.keypoints import CENTROID, CORNERS, is_keypoint
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.gui import theme
@@ -38,6 +39,7 @@ from easy_mask.gui.tools.base import CanvasTool, mask_image, pixmap_to_rgb, rgb_
 
 HIT_TOLERANCE_PX = 6  # how close (in screen pixels) a click must be to grab something
 VERTEX_SIZE_PX = 7
+KEYPOINT_RADIUS_PX = 6  # on-screen radius of a key point
 DRAG_THRESHOLD_PX = 4  # press-drag-release shorter than this counts as a click
 ZOOM_STEP = 1.15
 MIN_SCALE, MAX_SCALE = 0.02, 64.0
@@ -520,6 +522,7 @@ class Canvas(QWidget):
         painter.drawPixmap(0, 0, self._shown)
 
         editing = getattr(self.tool, "hidden_index", None)  # shape a tool is redrawing
+        self._paint_keypoint_boxes(painter)
         for index, shape in enumerate(self.shapes):
             if id(shape) not in self.hidden and index != editing:
                 self._paint_shape(painter, shape, selected=index in self.selection)
@@ -545,6 +548,9 @@ class Canvas(QWidget):
 
         if shape.shape_type == ShapeType.MASK:
             self._paint_mask(painter, shape, (r, g, b), selected)
+            return
+        if is_keypoint(shape):
+            self._paint_keypoint(painter, shape, QColor(r, g, b), selected)
             return
         pts = [QPointF(x, y) for x, y in shape.points]
         match shape.shape_type:
@@ -575,6 +581,34 @@ class Canvas(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             height, width = shape.mask.shape
             painter.drawRect(QRectF(x1, y1, width, height))
+
+    def _paint_keypoint(
+        self, painter: QPainter, shape: Shape, color: QColor, selected: bool
+    ) -> None:
+        """A key point: the centroid as a filled dot, a corner as a ring."""
+        radius = KEYPOINT_RADIUS_PX / self.scale * (1.3 if selected else 1.0)
+        centroid = shape.description == CENTROID
+        pen = QPen(QColor(255, 255, 255) if centroid else color, 2)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
+        painter.setBrush(color if centroid else QColor(255, 255, 255))
+        x, y = shape.points[0]
+        painter.drawEllipse(QPointF(x, y), radius, radius)
+
+    def _paint_keypoint_boxes(self, painter: QPainter) -> None:
+        """Join each object's four corner points, so the rotated box shows."""
+        corners: dict[tuple[str, int | None], dict[str, QPointF]] = {}
+        for shape in self.shapes:
+            if is_keypoint(shape) and shape.description in CORNERS and id(shape) not in self.hidden:
+                key = (shape.label, shape.group_id)
+                corners.setdefault(key, {})[shape.description] = QPointF(*shape.points[0])
+        for (label, _group), points in corners.items():
+            if len(points) == len(CORNERS):
+                pen = QPen(QColor(*label_color(label, self.labels)), 1, Qt.PenStyle.DashLine)
+                pen.setCosmetic(True)
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawPolygon(QPolygonF([points[c] for c in CORNERS]))
 
     def _alpha(self, alpha: int) -> int:
         """Fill opacity scaled by the user's mask-opacity setting."""

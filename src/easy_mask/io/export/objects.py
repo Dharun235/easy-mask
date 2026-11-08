@@ -6,11 +6,12 @@ Output layout (each part optional)::
       masks/<image>_<NN>_<label>.png    full-size binary mask: 255 = object, 0 = background
       cutouts/<image>_<NN>_<label>.png  the object's original pixels, cropped to its box,
                                         transparent outside the object (RGBA)
+      overlays/<image>.png              the frame with its masks and points drawn on
       objects.json                      one record per object (see below)
       objects.csv                       the same, one row per object
 
-``objects.json`` / ``.csv`` are written when any of coordinates, centroid or corners is
-chosen, with the fields of the chosen ones.
+``objects.json`` / ``.csv`` are written when any of coordinates, centroid, corners or points
+is chosen, with the fields of the chosen ones.
 
 An *object* is every shape sharing ``(label, group_id)`` when ``group_id`` is set (one
 object in several parts), otherwise a single shape. ``NN`` numbers objects per image in
@@ -20,6 +21,9 @@ image coordinates; points / lines give their own points) and the mask / cutout f
 *centroid* adds ``centroid`` ``[x, y]``, the mean of the object's pixels. *corners* adds
 ``box_corners`` (the box above as four points) and ``rotated_corners`` (the four corners of
 the smallest rotated rectangle around the object); both start top-left and go clockwise.
+When the object has key points (:mod:`easy_mask.core.keypoints`, possibly moved by hand),
+the centroid and rotated corners are read from them instead of computed. *points* adds
+``points``: ``{role: [x, y]}`` for every key point of the object.
 """
 
 import csv
@@ -28,43 +32,36 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from easy_mask.core import masks
 from easy_mask.core.geometry import Point
+from easy_mask.core.keypoints import (
+    CENTROID,
+    CORNERS,
+    Corners,
+    is_keypoint,
+    object_keypoints,
+    rotated_corners,
+)
+from easy_mask.core.labels import label_color
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape
 from easy_mask.io.export.common import AnnotatedImage, ProgressFn, tracked
 
-PARTS = ("masks", "cutouts", "coordinates", "centroid", "corners")
-TABLE_PARTS = ("coordinates", "centroid", "corners")  # these go into objects.json / .csv
+PARTS = ("masks", "cutouts", "coordinates", "centroid", "corners", "points", "overlays")
+TABLE_PARTS = ("coordinates", "centroid", "corners", "points")  # in objects.json / .csv
+OVERLAY_ALPHA = 0.45  # mask opacity on overlay images
+POINT_RADIUS = 5
 CSV_FIELDS = {
     None: ["image", "object", "label", "group_id"],
     "coordinates": ["x_min", "y_min", "x_max", "y_max", "area", "shape_types", "polygon"],
     "centroid": ["centroid_x", "centroid_y"],
     "corners": ["box_corners", "rotated_corners"],
+    "points": ["points"],
 }
 FILE_FIELDS = ["mask_file", "cutout_file"]
-Corners = list[list[float]]
-
-
-def clockwise_from_top_left(points: np.ndarray) -> Corners:
-    """Four corner points ordered top-left, top-right, bottom-right, bottom-left."""
-    centre = points.mean(axis=0)
-    angles = np.arctan2(points[:, 1] - centre[1], points[:, 0] - centre[0])
-    ordered = points[np.argsort(angles)]  # clockwise on screen (y grows downwards)
-    start = int(np.argmin(ordered.sum(axis=1)))  # top-left: smallest x + y
-    ordered = np.roll(ordered, -start, axis=0)
-    return [[round(float(x), 2), round(float(y), 2)] for x, y in ordered]
-
-
-def rotated_corners(full: np.ndarray) -> Corners:
-    """Corners of the smallest rotated rectangle around a mask's pixels."""
-    contours, _ = cv2.findContours(full.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    points = np.concatenate([c.reshape(-1, 2) for c in contours]).astype(np.float32)
-    return clockwise_from_top_left(cv2.boxPoints(cv2.minAreaRect(points)))
 
 
 @dataclass
@@ -75,10 +72,16 @@ class _Object:
 
 
 def group_objects(shapes: list[Shape]) -> list[_Object]:
-    """Objects in drawing order: shapes sharing ``(label, group_id)`` merge into one."""
+    """Objects in drawing order: shapes sharing ``(label, group_id)`` merge into one.
+
+    Key points join the object they belong to (same label and group id) instead of
+    being objects of their own; key points without such an object are dropped.
+    """
     objects: list[_Object] = []
     by_key: dict[tuple[str, int], _Object] = {}
     for shape in shapes:
+        if is_keypoint(shape):
+            continue
         if shape.group_id is None:
             objects.append(_Object(shape.label, None, [shape]))
             continue
@@ -87,6 +90,14 @@ def group_objects(shapes: list[Shape]) -> list[_Object]:
             by_key[key] = _Object(shape.label, shape.group_id, [])
             objects.append(by_key[key])
         by_key[key].shapes.append(shape)
+    for shape in shapes:
+        if is_keypoint(shape):
+            owner = next(
+                (o for o in objects if (o.label, o.group_id) == (shape.label, shape.group_id)),
+                None,
+            )
+            if owner is not None:
+                owner.shapes.append(shape)
     return objects
 
 
@@ -113,10 +124,9 @@ def export_objects(
     Args:
         items: Annotated images from :func:`easy_mask.io.export.collect`.
         out_dir: Destination folder (created if missing).
-        labels: Unused (every label is exported); accepted so every exporter has the same
-            signature.
+        labels: The label list, for the overlay colours (every label is exported).
         progress: Called with ``(images done, total)`` after each image.
-        parts: Any of ``"masks"``, ``"cutouts"``, ``"coordinates"``.
+        parts: Any of :data:`PARTS`.
 
     Raises:
         ValueError: If ``parts`` is empty or names an unknown part.
@@ -124,7 +134,7 @@ def export_objects(
     unknown = set(parts) - set(PARTS)
     if not parts or unknown:
         raise ValueError(f"parts must be a non-empty subset of {PARTS}, got {parts}")
-    for part in ("masks", "cutouts"):
+    for part in ("masks", "cutouts", "overlays"):
         if part in parts:
             (out_dir / part).mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -134,12 +144,15 @@ def export_objects(
         ann = item.annotation
         height, width = ann.image_height, ann.image_width
         rgb = None
-        if "cutouts" in parts:
+        if "cutouts" in parts or "overlays" in parts:
             with Image.open(item.image_path) as image:
                 rgb = np.asarray(image.convert("RGB"))
+        drawn: list[tuple[str, np.ndarray, dict[str, tuple[float, float]]]] = []
         for number, obj in enumerate(group_objects(ann.shapes), start=1):
+            own = [s for s in obj.shapes if not is_keypoint(s)]
+            points = object_keypoints(obj.shapes)
             full = np.zeros((height, width), dtype=bool)
-            for shape in obj.shapes:
+            for shape in own:
                 full |= shape_to_mask(shape, height, width)
             ys, xs = np.nonzero(full)
             if len(xs) == 0:
@@ -153,34 +166,78 @@ def export_objects(
                 "group_id": obj.group_id,
             }
             if "coordinates" in parts:
-                record["shape_types"] = sorted({str(s.shape_type) for s in obj.shapes})
+                record["shape_types"] = sorted({str(s.shape_type) for s in own})
                 record["bbox"] = [x0, y0, x1, y1]
                 record["area"] = int(full.sum())
                 record["polygons"] = [
                     [[round(x, 2), round(y, 2)] for x, y in polygon]
-                    for shape in obj.shapes
+                    for shape in own
                     for polygon in _polygons(shape)
                 ]
             if "centroid" in parts:
-                record["centroid"] = [round(float(xs.mean()), 2), round(float(ys.mean()), 2)]
+                cx, cy = points.get(CENTROID, (float(xs.mean()), float(ys.mean())))
+                record["centroid"] = [round(cx, 2), round(cy, 2)]
             if "corners" in parts:
                 record["box_corners"] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-                record["rotated_corners"] = rotated_corners(full)
+                if all(role in points for role in CORNERS):
+                    record["rotated_corners"] = [
+                        [round(points[r][0], 2), round(points[r][1], 2)] for r in CORNERS
+                    ]
+                else:
+                    record["rotated_corners"] = rotated_corners(full)
+            if "points" in parts:
+                record["points"] = {
+                    role: [round(x, 2), round(y, 2)] for role, (x, y) in points.items()
+                }
+            drawn.append((obj.label, full, points))
             record["mask_file"] = record["cutout_file"] = ""
             if "masks" in parts:
                 record["mask_file"] = f"masks/{name}"
                 Image.fromarray(full.astype(np.uint8) * 255).save(out_dir / record["mask_file"])
-            if rgb is not None:
+            if rgb is not None and "cutouts" in parts:
                 record["cutout_file"] = f"cutouts/{name}"
                 crop = np.zeros((y1 - y0 + 1, x1 - x0 + 1, 4), dtype=np.uint8)
                 crop[..., :3] = rgb[y0 : y1 + 1, x0 : x1 + 1]
                 crop[..., 3] = full[y0 : y1 + 1, x0 : x1 + 1] * 255
                 Image.fromarray(crop, mode="RGBA").save(out_dir / record["cutout_file"])
             records.append(record)
+        if rgb is not None and "overlays" in parts:
+            overlay = draw_overlay(rgb, drawn, labels or [])
+            overlay.save(out_dir / "overlays" / f"{item.image_path.stem}.png")
 
     tables = [part for part in TABLE_PARTS if part in parts]
     if tables:
         _write_tables(records, out_dir, tables)
+
+
+def draw_overlay(
+    rgb: np.ndarray,
+    objects: list[tuple[str, np.ndarray, dict[str, tuple[float, float]]]],
+    labels: list[str],
+) -> Image.Image:
+    """The frame with each object's mask tinted in its label colour and its points drawn.
+
+    The centroid is a filled dot; corners are rings joined by the rotated box's outline.
+    """
+    canvas = rgb.astype(np.float32)
+    for label, full, _points in objects:
+        tint = np.array(label_color(label, labels), dtype=np.float32)
+        canvas[full] = canvas[full] * (1 - OVERLAY_ALPHA) + tint * OVERLAY_ALPHA
+    image = Image.fromarray(canvas.astype(np.uint8))
+    draw = ImageDraw.Draw(image)
+    r = POINT_RADIUS
+    for label, _full, points in objects:
+        colour = label_color(label, labels)
+        corners = [points[c] for c in CORNERS if c in points]
+        if len(corners) == len(CORNERS):
+            draw.line([*corners, corners[0]], fill=colour, width=2)
+        for role, (x, y) in points.items():
+            box = (x - r, y - r, x + r, y + r)
+            if role == CENTROID:
+                draw.ellipse(box, fill=colour, outline=(255, 255, 255), width=2)
+            else:
+                draw.ellipse(box, fill=(255, 255, 255), outline=colour, width=3)
+    return image
 
 
 def _points(points: Corners) -> str:
@@ -214,4 +271,6 @@ def _write_tables(records: list[dict], out_dir: Path, tables: list[str]) -> None
             if "corners" in tables:
                 row["box_corners"] = _points(r["box_corners"])
                 row["rotated_corners"] = _points(r["rotated_corners"])
+            if "points" in tables:
+                row["points"] = " ".join(f"{k}:{x},{y}" for k, (x, y) in r["points"].items())
             writer.writerow(row)

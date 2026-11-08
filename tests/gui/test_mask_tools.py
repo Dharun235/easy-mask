@@ -209,3 +209,37 @@ def test_paint_starting_on_a_mask_extends_it_without_selecting(window, ui):
     ui.drag((20, 20), (60, 20))
     (shape,) = window.canvas.shapes
     assert shape.shape_type == ShapeType.MASK and full(window)[20, 55]
+
+
+def test_points_button_adds_moves_and_removes_keypoints(window, ui):
+    from easy_mask.core.keypoints import is_keypoint
+
+    draw_rect(window, ui, (10, 10), (40, 30))
+    actions = [a.text() for a in window.toolbar.actions()]
+    assert actions[actions.index("Rectangle") + 1] == "Points"  # right after Box
+    window.canvas.select(None)
+    window.points_action.trigger()
+    points = [s for s in window.canvas.shapes if is_keypoint(s)]
+    assert len(points) == 5 and "Points added" in window.statusBar().currentMessage()
+    window.remove_keypoints_here()
+    assert not any(is_keypoint(s) for s in window.canvas.shapes)
+    window.undo()
+    assert sum(is_keypoint(s) for s in window.canvas.shapes) == 5
+
+
+def test_points_on_all_frames_is_one_undo_step(window, image_dir):
+    from easy_mask.core import annotation as ann_io
+    from easy_mask.core.annotation import Annotation
+    from easy_mask.core.keypoints import is_keypoint
+    from easy_mask.core.shapes import Shape
+
+    box = Shape("cat", ShapeType.RECTANGLE, [(10, 10), (30, 30)])
+    ann_io.save(Annotation("img2.png", 100, 80, [box]), image_dir / "img2.json")
+    window.canvas.set_shapes([box.copy()])
+    window._commit()
+    window.add_keypoints_everywhere()
+    later = ann_io.load(image_dir / "img2.json").shapes
+    assert sum(is_keypoint(s) for s in later) == 5
+    assert "Added points on 2 frame(s)" in window.statusBar().currentMessage()
+    window.undo()
+    assert ann_io.load(image_dir / "img2.json").shapes == [box]

@@ -33,6 +33,8 @@ PART_NAMES = {
     "coordinates": "Coordinates  (box, area and outline points)",
     "centroid": "Centroid  (the centre point of each mask)",
     "corners": "Corners  (the 4 corners of each mask's box, straight and rotated)",
+    "points": "Points  (each mask's key points as placed or moved by hand)",
+    "overlays": "Frames with overlays  (each frame with its masks and points drawn on)",
 }
 
 
@@ -81,7 +83,7 @@ class ExportDialog(QDialog):
         for spin, value in ((self.first_spin, choice.first), (self.last_spin, choice.last)):
             spin.setRange(1, frame_count)
             spin.setValue(min(value, frame_count - 1) + 1)
-            spin.valueChanged.connect(lambda _v: self.range_frames.setChecked(True))
+            spin.valueChanged.connect(self._use_range)
         group = QButtonGroup(self)
         for button in (self.all_frames, self.this_frame, self.range_frames):
             group.addButton(button)
@@ -147,6 +149,9 @@ class ExportDialog(QDialog):
             on_close=self.on_close.isChecked(),
         )
 
+    def _use_range(self, _value: int) -> None:
+        self.range_frames.setChecked(True)  # typing a frame number means "these frames"
+
     def _refresh(self) -> None:
         objects = self.format_box.currentData() == "objects"
         self.form.setRowVisible(1, objects)  # the parts only apply to Objects
@@ -166,6 +171,9 @@ def ask_export(
 ) -> ExportChoice | None:
     """Show the Export window modally; the choices, or None if cancelled."""
     dialog = ExportDialog(choice, frame_count, current, parent)
-    if dialog.exec() == QDialog.DialogCode.Accepted:
-        return dialog.choice()
-    return None
+    try:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return dialog.choice()
+        return None
+    finally:
+        dialog.deleteLater()  # freed by Qt, never by Python's garbage collector at exit

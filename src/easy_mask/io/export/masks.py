@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from easy_mask.core.keypoints import without_keypoints
 from easy_mask.core.labels import palette_color
 from easy_mask.core.rasterize import instance_mask, semantic_mask
 from easy_mask.io.export.common import (
@@ -67,9 +68,10 @@ def export_masks(
         ann, stem = item.annotation, item.image_path.stem
         h, w = ann.image_height, ann.image_width
 
-        semantic = Image.fromarray(semantic_mask(ann.shapes, h, w, class_ids), mode="P")
+        shapes = without_keypoints(ann.shapes)  # points are not pixels of the object
+        semantic = Image.fromarray(semantic_mask(shapes, h, w, class_ids), mode="P")
         semantic.putpalette(palette)
         semantic.save(out_dir / "semantic" / f"{stem}.png")
 
-        instances, _ = instance_mask(ann.shapes, h, w)
+        instances, _ = instance_mask(shapes, h, w)
         Image.fromarray(instances.astype(np.uint16)).save(out_dir / "instance" / f"{stem}.png")

@@ -127,3 +127,36 @@ def test_rotated_corners_follow_a_tilted_object():
     sides = np.linalg.norm(corners - np.roll(corners, -1, axis=0), axis=1)
     assert sorted(sides.round()) == pytest.approx([19, 19, 59, 59], abs=2)  # tight, tilted
     assert corners[0].sum() == corners.sum(axis=1).min()  # starts top-left
+
+
+def test_export_uses_hand_adjusted_points_and_draws_overlays(image_dir, tmp_path):
+    from easy_mask.core.keypoints import CENTROID, with_keypoints
+
+    cat = np.zeros((80, 100), bool)
+    cat[10:20, 10:30] = True
+    Image.fromarray(np.full((80, 100, 3), 100, np.uint8)).save(image_dir / "img1.png")
+    shapes = with_keypoints([masks.to_shape("cat", cat)], 80, 100)
+    centre = next(s for s in shapes if s.description == CENTROID)
+    centre.points = [(12.0, 13.0)]  # moved by hand
+    ann_io.save(Annotation("img1.png", 100, 80, shapes), image_dir / "img1.json")
+    items = export.collect(image_dir)
+    out = tmp_path / "out"
+    export.export_objects(items, out, ["cat"], parts=("centroid", "points", "overlays", "masks"))
+    (record,) = json.loads((out / "objects.json").read_text())  # points join their object
+    assert record["centroid"] == [12.0, 13.0]
+    assert set(record["points"]) == {"centroid", "corner 1", "corner 2", "corner 3", "corner 4"}
+    mask = np.array(Image.open(out / "masks" / "img1_01_cat.png")) > 0
+    assert mask.sum() == cat.sum()  # points add no pixels to the mask
+    overlay = np.array(Image.open(out / "overlays" / "img1.png"))
+    assert (overlay[15, 20] != 100).any() and (overlay[70, 90] == 100).all()  # tinted mask only
+
+
+def test_semantic_masks_ignore_keypoints(image_dir, tmp_path):
+    from easy_mask.core.keypoints import with_keypoints
+
+    shapes = with_keypoints([Shape("cat", ShapeType.RECTANGLE, [(10, 10), (12, 12)])], 80, 100)
+    ann_io.save(Annotation("img1.png", 100, 80, shapes), image_dir / "img1.json")
+    out = tmp_path / "out"
+    export.export_masks(export.collect(image_dir), out, ["cat"])
+    semantic = np.array(Image.open(out / "semantic" / "img1.png"))
+    assert semantic[40, 50] == 0 and (semantic > 0).sum() <= 16

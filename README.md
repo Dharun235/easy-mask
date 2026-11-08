@@ -102,11 +102,15 @@ Select, AI, Polygon, Box, Paint, Eraser, Export**.
      ones, if any), and **Propagate** carries the cut through the next frames; or
    - give the shape any label, **Propagate** it, then right-click it > **Erase With This**:
      it cuts the masks under it on every frame it reached, then goes.
-6. **Undo / Redo** work across the whole folder: each edit, on any frame, is one step,
+6. **Points** (next to Box): each mask's **centroid** (dot) and **4 corners** of its tight
+   rotated box (rings) become points on the frame; drag them to adjust, Delete removes,
+   the Point tool (O) adds. The arrow adds them on all frames or removes them. Propagate
+   keeps them on the moving masks. Exports use the points as you left them.
+7. **Undo / Redo** work across the whole folder: each edit, on any frame, is one step,
    and a Propagate (or erase, clear) run is one step over all its frames. Undoing an edit
    made on another frame goes back to that frame.
-7. **Export** opens one window: format, what to save (for Objects: binary masks, cutouts,
-   coordinates, centroid, corners), which frames (all, this one, or a range) and the
+8. **Export** opens one window: format, what to save (for Objects: binary masks, cutouts,
+   coordinates, centroid, corners, points, frames with overlays), which frames (all, this one, or a range) and the
    folder, filled in with your last choices. File > Export Again repeats it without asking.
 
 The bottom bar says how to use the tool you picked; hover any button to see what it does.

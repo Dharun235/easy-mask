@@ -37,6 +37,7 @@ from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks, operations
 from easy_mask.core.annotation import Annotation
 from easy_mask.core.history import FrameState, History
+from easy_mask.core.keypoints import with_keypoints, without_keypoints
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.core.video import ERASE_LABEL, ObjectKey, cut_region, free_group_id, object_key
@@ -218,6 +219,7 @@ class MainWindow(QMainWindow):
         self._build_actions()
         self.video = VideoMenu(self)
         self._add_video_buttons()
+        self._add_points_button()
         self._show_panels(False)  # the start page stands alone; panels appear with an image
         self._connect_canvas()
         self.workflow = Workflow(self)  # review mode, copy previous, statistics
@@ -1298,6 +1300,75 @@ class MainWindow(QMainWindow):
         if isinstance(button, QToolButton):
             button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
 
+    def _add_points_button(self) -> None:
+        """Points, right after Box: each mask's centroid and four corners as points."""
+        menu = QMenu("Points", self)
+        self.points_menu = menu
+        here = self._action(menu, "Add to This Frame", self.add_keypoints_here)
+        all_frames = self._action(menu, "Add to All Frames", self.add_keypoints_everywhere)
+        menu.addSeparator()
+        remove = self._action(menu, "Remove From This Frame", self.remove_keypoints_here)
+        remove_all = self._action(menu, "Remove From All Frames", self.remove_keypoints_everywhere)
+        for action, tip in (
+            (here, "Centroid and 4 corners for the selected (or all) masks on this frame"),
+            (all_frames, "Centroid and 4 corners for every mask on every frame"),
+            (remove, "Delete the key points on this frame"),
+            (remove_all, "Delete the key points on every frame"),
+        ):
+            action.setStatusTip(tip)
+        points = QAction(icon("point"), "Points", self)
+        points.setIconText("Points")
+        points.setToolTip(
+            "Points: add each mask's centroid and 4 corners as points you can drag, delete or "
+            "add to (Point tool, O). Arrow: all frames, or remove them"
+        )
+        points.setStatusTip(points.toolTip())
+        points.triggered.connect(lambda _=False: self.add_keypoints_here())
+        points.setMenu(menu)
+        self.points_action = points
+        box = self.tool_actions[ShapeType.RECTANGLE]
+        actions = self.toolbar.actions()
+        self.toolbar.insertAction(actions[actions.index(box) + 1], points)
+        button = self.toolbar.widgetForAction(points)
+        if isinstance(button, QToolButton):
+            button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+
+    def _keypoint_keys(self) -> set[ObjectKey] | None:
+        """The selected masks' objects, or None for every object."""
+        chosen = [self.canvas.shapes[i] for i in self.canvas.selection]
+        keys = {object_key(s) for s in chosen if s.shape_type.is_area}
+        return keys or None
+
+    def add_keypoints_here(self) -> None:
+        """Centroid and corners (as editable points) for the selected or all masks here."""
+        if self.current_index is None:
+            return
+        shapes = with_keypoints(self.canvas.shapes, *self._size, self._keypoint_keys())
+        if shapes == self.canvas.shapes:
+            self.statusBar().showMessage("No mask on this frame to put points on", 4000)
+            return
+        self._replace_shapes(shapes)
+        self.statusBar().showMessage(
+            "Points added: centroid and 4 corners  ·  drag to adjust, Delete removes", 8000
+        )
+
+    def add_keypoints_everywhere(self) -> None:
+        """Centroid and corners for every mask on every frame (one undo step)."""
+        height, width = self._size
+        self.video.apply_to_all_frames(
+            lambda shapes: with_keypoints(shapes, height, width), "Added points on"
+        )
+
+    def remove_keypoints_here(self) -> None:
+        """Delete the key points on this frame."""
+        kept = without_keypoints(self.canvas.shapes)
+        if len(kept) != len(self.canvas.shapes):
+            self._replace_shapes(kept)
+
+    def remove_keypoints_everywhere(self) -> None:
+        """Delete the key points on every frame (one undo step)."""
+        self.video.apply_to_all_frames(without_keypoints, "Removed points on")
+
     def _show_panels(self, visible: bool) -> None:
         """Show the side panels (the Flags panel only when there are flags).
 
@@ -1308,6 +1379,7 @@ class MainWindow(QMainWindow):
             *self.tool_actions.values(),
             *self.nav_actions,
             self.propagate_button_action,
+            self.points_action,
             self._export_action,
         ]:
             action.setEnabled(visible)

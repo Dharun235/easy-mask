@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from easy_mask.core.keypoints import is_keypoint
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
 from easy_mask.core.video import is_auto
@@ -156,7 +157,8 @@ class ShapeList(QListWidget):
         self.blockSignals(True)
         self.clear()
         for shape in shapes:
-            text = f"{shape.label}  [{shape.shape_type}]"
+            kind = shape.description if is_keypoint(shape) else shape.shape_type
+            text = f"{shape.label}  [{kind}]"
             if shape.group_id is not None:
                 text += f"  g{shape.group_id}"
             if is_auto(shape):  # interpolated or propagated, not yet checked by hand

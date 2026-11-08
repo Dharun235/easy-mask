@@ -22,6 +22,7 @@ src/easy_mask/
     geometry.py          distances, point-in-polygon, area, bbox, circle -> polygon
     shapes.py            ShapeType enum + Shape dataclass (hit-testing, outline, (de)serialize)
     annotation.py        Annotation dataclass, labelme-compatible JSON load/save, file paths
+    keypoints.py         a mask's centroid + rotated-box corners as editable point shapes
     history.py           undo/redo across every frame of a folder (snapshots per step)
     labels.py            stable per-label colours, parsing --labels / --flags
     rasterize.py         Shape -> boolean mask; semantic and instance masks

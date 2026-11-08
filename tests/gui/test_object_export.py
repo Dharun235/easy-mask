@@ -21,7 +21,15 @@ def test_parts_include_centroid_and_corners_as_separate_choices(qtbot, tmp_path)
     from PySide6.QtWidgets import QDialogButtonBox
 
     dialog = dialog_for(qtbot, tmp_path)
-    assert list(dialog.part_checks) == ["masks", "cutouts", "coordinates", "centroid", "corners"]
+    assert list(dialog.part_checks) == [
+        "masks",
+        "cutouts",
+        "coordinates",
+        "centroid",
+        "corners",
+        "points",
+        "overlays",
+    ]
     dialog.part_checks["centroid"].setChecked(True)
     assert dialog.choice().parts == ["masks", "coordinates", "centroid"]
     ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)

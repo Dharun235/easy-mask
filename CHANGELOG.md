@@ -36,6 +36,7 @@ All notable changes to this project are documented here. Format follows
   stray blobs elsewhere in the image are dropped; neutral on the click benchmark.
 
 ### Fixed
+- macOS / Windows CI crashed at interpreter exit (exit 139): a parentless Export window was kept alive by a lambda connection and freed after Qt shut down.
 - Labels, flags, the active label and the export target of one folder (or video) no longer carry over into the next folder opened, nor get written into its project file.
 - `shape_to_mask` returned a read-only array.
 - Label colours: index-based golden-ratio palette instead of hash, so labels are clearly distinct; mask PNG palette matches.
@@ -43,6 +44,7 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Points (toolbar, next to Box): each mask's centroid and the 4 corners of its tight rotated box as editable point shapes (drag, delete, add), on this frame or all frames, kept on moving masks by Propagate. The Objects export reads centroid and corners from them as adjusted, adds a `points` part, and a *Frames with overlays* part writes each frame with its masks, points and boxes drawn on.
 - Export window (the Export button, File > Export...): format, what to save, which frames (all, this one, or a range), folder and export-on-close in one place, filled in with the last choices; File > Export Again repeats without asking.
 - Objects export: **centroid** (mean of the mask's pixels) and **corners** (straight box corners and the tight rotated box's corners, clockwise from top-left) as two separate choices, in `objects.json` / `.csv` and `--parts centroid,corners`.
 - The status bar explains the active tool (how to place, finish, resize or cancel) while it is in use, and hovering any toolbar button or Propagate option explains what it does.

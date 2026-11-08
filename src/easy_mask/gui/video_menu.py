@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox
 from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks
 from easy_mask.core.interpolate import interpolate_frames
+from easy_mask.core.keypoints import is_keypoint, with_keypoints
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape
 from easy_mask.core.video import (
@@ -254,6 +255,10 @@ class VideoMenu:
         frame_shapes = [self._frame_shapes(i) for i in indices]
         frame_shapes[0] = [s for s in carry.shapes if object_key(s) in carry.objects]
         cut = carry.cut
+        # Objects with key points get fresh ones on every frame the run reaches.
+        pointed = {
+            object_key(s) for s in carry.shapes if is_keypoint(s) and object_key(s) in carry.objects
+        }
         if cut is not None:
             region = masks.to_shape(REGION_LABEL, cut.part)
             if region is not None:
@@ -278,6 +283,8 @@ class VideoMenu:
                 shapes = merge_auto(shapes, carry.objects, objects)
                 if cut is not None and moved.any():
                     shapes = cut_region(shapes, moved, height, width, cut.keys)
+                if pointed:
+                    shapes = with_keypoints(shapes, height, width, pointed)
                 return shapes
 
             self._update_frame(index, transform)
@@ -490,6 +497,19 @@ class VideoMenu:
         w.statusBar().showMessage(
             f"Deleted “{label}” from {len(self.changed)} frame(s)  ·  Undo brings it back", 8000
         )
+
+    def apply_to_all_frames(
+        self, transform: Callable[[list[Shape]], list[Shape]], verb: str
+    ) -> None:
+        """Run ``transform`` on every frame's shapes as one undo step; report the count."""
+        w = self.window
+        if w.current_index is None or self.running:
+            return
+        self._begin_run()
+        for index in range(len(w.image_paths)):
+            self._update_frame(index, transform)
+        self._end_run()
+        w.statusBar().showMessage(f"{verb} {len(self.changed)} frame(s)  ·  Undo reverts", 6000)
 
     def rename_label(self, old: str, new: str) -> None:
         """Rename ``old`` to ``new`` on every frame of the folder (one undo step)."""
