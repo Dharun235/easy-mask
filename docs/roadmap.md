@@ -27,10 +27,10 @@ Manual tools on par with classic annotators.
 - [ ] View adjustments: brightness / contrast / gamma, CLAHE, channel view, mask opacity
 
 ## v0.4 — AI click-to-segment on CPU (`feat/ai-segment`)
-- [ ] `Segmenter` interface with EfficientSAM (ONNX, CPU) as first backend
-- [ ] Positive / negative clicks and box prompts, live preview, result is a mask shape
-- [ ] Weights downloaded on first use into a user cache dir; encoding off the UI thread
-- [ ] Click benchmark: NoC@85/90 and mIoU@k on GrabCut / Berkeley / DAVIS
+- [x] `Segmenter` interface with EfficientSAM (ONNX, CPU) as first backend
+- [x] Positive / negative clicks and box prompts, live preview, result is a mask shape
+- [x] Weights downloaded on first use into a user cache dir; encoding off the UI thread
+- [x] Click benchmark: NoC@85/90 and mIoU@k on GrabCut / Berkeley / DAVIS
 
 ## v0.5 — video (`feat/video`)
 - [ ] Open a video file or frame folder

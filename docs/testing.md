@@ -55,6 +55,12 @@ always works. `slow` and `benchmark` are added explicitly.
   would block forever, so `tests/gui/conftest.py` replaces message boxes with the scriptable
   `dialogs` fixture and the label dialog with `window.ask_label`. Use the `ui` driver to
   click in *image* coordinates: `ui.click(10, 20)`, `ui.drag((0, 0), (30, 30))`.
+- **Fake model.** AI Segment logic is tested with `FakeSegmenter` (`fake_segmenter`
+  fixture, `tests/conftest.py`): deterministic discs around clicks, no onnxruntime needed.
+  Weight downloads are tested against an HTTP server on `127.0.0.1` (checksum mismatch,
+  truncated download, offline). The real EfficientSAM model runs in
+  `tests/integration/test_efficient_sam_model.py` only when onnxruntime is installed and
+  the weights are already cached; it never downloads.
 
 ## Writing good tests
 
