@@ -98,7 +98,9 @@ def make_window(qtbot):
 @pytest.fixture
 def window(make_window, image_dir):
     """A window with labels cat/dog and flag 'blurry', opened on ``image_dir``."""
-    win = make_window(Settings(labels=["cat", "dog"], flags=["blurry"]), LabelInfo("cat"))
+    win = make_window(
+        Settings(labels=["cat", "dog"], flags=["blurry"], autosave=False), LabelInfo("cat")
+    )
     win.open_path(image_dir)
     return win
 

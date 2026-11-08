@@ -52,17 +52,38 @@ class FileList(QListWidget):
 
 
 class LabelList(QListWidget):
-    """Every known label with its colour and how many shapes on this image use it."""
+    """Every known label with its colour, number key and count on this image.
 
-    def show_labels(self, labels: list[str], shapes: list[Shape]) -> None:
-        """Replace the list with ``labels`` and per-label shape counts."""
+    The active label (used for new shapes without asking) is shown in bold.
+
+    Signals:
+        label_clicked(str): The user clicked a label.
+    """
+
+    label_clicked = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setToolTip("Click a label to use it for new shapes (keys 1-9); click again to ask")
+        self.itemClicked.connect(
+            lambda item: self.label_clicked.emit(item.data(Qt.ItemDataRole.UserRole))
+        )
+
+    def show_labels(
+        self, labels: list[str], shapes: list[Shape], active: str | None = None
+    ) -> None:
+        """Replace the list with ``labels``, per-label counts and the active label."""
         self.clear()
-        for label in labels:
+        for number, label in enumerate(labels, start=1):
             count = sum(1 for s in shapes if s.label == label)
-            item = QListWidgetItem(
-                color_icon(label, labels), f"{label}  ({count})" if count else label
-            )
+            key = f"{number}  " if number <= 9 else "    "
+            text = f"{key}{label}  ({count})" if count else f"{key}{label}"
+            item = QListWidgetItem(color_icon(label, labels), text)
             item.setData(Qt.ItemDataRole.UserRole, label)
+            if label == active:
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
             self.addItem(item)
 
 

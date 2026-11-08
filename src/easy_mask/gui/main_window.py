@@ -88,7 +88,7 @@ class Settings:
     output_dir: Path | None = None
     labels: list[str] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
-    autosave: bool = False
+    autosave: bool = True  # on by default: edits are undoable and saves are atomic
     strict_labels: bool = False  # only labels from ``labels`` are accepted
     ai_model: str = efficient_sam.DEFAULT_MODEL
     frame_step: int = 1  # when opening a video: keep every n-th frame
@@ -110,6 +110,8 @@ class MainWindow(QMainWindow):
         self.dirty = False
         self.clipboard: Shape | None = None
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
+        # With an active label, new shapes take it directly instead of opening the dialog.
+        self.active_label: str | None = None
         # Swappable so tests can answer the label dialog without a human.
         self.ask_label: Callable[[list[str], LabelInfo, QWidget | None], LabelInfo | None] = (
             partial(LabelDialog.ask, allowed=self._allowed_labels())
@@ -139,8 +141,11 @@ class MainWindow(QMainWindow):
         self._connect_canvas()
         self.workflow = Workflow(self)  # review mode, copy previous, statistics
 
+        self.active_label_status = QLabel()
+        self.statusBar().addPermanentWidget(self.active_label_status)
         self.status_label = QLabel()
         self.statusBar().addPermanentWidget(self.status_label)
+        self._show_active_label()
         self.resize(1280, 800)
         self._update_title()
 
@@ -171,6 +176,7 @@ class MainWindow(QMainWindow):
         right = Qt.DockWidgetArea.RightDockWidgetArea
         self.flag_list = FlagList()
         self.label_list = LabelList()
+        self.label_list.label_clicked.connect(self._on_label_clicked)
         self.shape_list = ShapeList()
         self.file_list = FileList()
         self.flags_dock = self._dock("Flags", self.flag_list, right)
@@ -269,6 +275,16 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._action(m, "Convert to Mask", self.convert_to_masks)
         self._action(m, "Convert to Polygons...", self.convert_to_polygons)
+
+        m = bar.addMenu("&Labels")
+        for number in range(1, 10):
+            self._action(
+                m,
+                f"Use Label {number}",
+                lambda _=False, n=number: self.set_active_label_number(n),
+                str(number),
+            )
+        self._action(m, "Ask for Label Every Time", lambda: self.set_active_label(None), "0")
 
         m = bar.addMenu("&View")
         self._action(
@@ -504,8 +520,40 @@ class MainWindow(QMainWindow):
             return None
         return info
 
+    # ------------------------------------------------------------------ active label
+
+    def set_active_label(self, label: str | None) -> None:
+        """Label new shapes with ``label`` without asking, or ask every time with None."""
+        if label is not None:
+            self._remember_label(label)
+        self.active_label = label
+        self._show_active_label()
+        self.label_list.show_labels(self.known_labels, self.canvas.shapes, self.active_label)
+
+    def set_active_label_number(self, number: int) -> None:
+        """Make the ``number``-th known label (1-based) active; ignored if there is none."""
+        if 1 <= number <= len(self.known_labels):
+            self.set_active_label(self.known_labels[number - 1])
+
+    def _on_label_clicked(self, label: str) -> None:
+        """Clicking a label activates it; clicking the active label switches back to asking."""
+        self.set_active_label(None if label == self.active_label else label)
+
+    def _show_active_label(self) -> None:
+        if self.active_label is None:
+            text = "Label: ask each time (1-9 to pick)"
+        else:
+            text = f"Label: {self.active_label}  (0 = ask)"
+        self.active_label_status.setText(text)
+
+    def _label_for_new_shape(self) -> LabelInfo | None:
+        """The active label, or ask the user (None if they cancel)."""
+        if self.active_label is not None:
+            return LabelInfo(label=self.active_label)
+        return self._ask_label(LabelInfo(label=self.last_label))
+
     def _on_shape_drawn(self, shape: Shape) -> None:
-        info = self._ask_label(LabelInfo(label=self.last_label))
+        info = self._label_for_new_shape()
         if info is None:
             return
         shape.label, shape.group_id, shape.description = info.label, info.group_id, info.description
@@ -530,8 +578,8 @@ class MainWindow(QMainWindow):
     def _apply_stroke(self, full: np.ndarray, index: int | None) -> None:
         """Store a finished brush/eraser stroke (called by the brush tool)."""
         shapes = list(self.canvas.shapes)
-        if index is None:  # a new mask: ask for its label
-            info = self._ask_label(LabelInfo(label=self.last_label))
+        if index is None:  # a new mask: active label, or ask for one
+            info = self._label_for_new_shape()
             new = None
             if info is not None:
                 new = masks.to_shape(
@@ -712,7 +760,7 @@ class MainWindow(QMainWindow):
             self.known_labels.append(label)
 
     def _refresh_panels(self) -> None:
-        self.label_list.show_labels(self.known_labels, self.canvas.shapes)
+        self.label_list.show_labels(self.known_labels, self.canvas.shapes, self.active_label)
         self.shape_list.show_shapes(self.canvas.shapes, self.canvas.hidden, self.known_labels)
         self.shape_list.select_rows(self.canvas.selection)
         self._update_undo_actions()

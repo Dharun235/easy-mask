@@ -2,7 +2,7 @@
 
 Three forms::
 
-    easy-mask [PATH] [--output DIR] [--labels ...] [--strict-labels] [--flags ...] [--autosave]
+    easy-mask [PATH] [--output DIR] [--labels ...] [--strict-labels] [--flags ...] [--no-autosave]
               [--ai-model M] [--video-model M] [--frame-step N] [--max-frames N]
     easy-mask export IMAGE_DIR --format {masks,coco,yolo,davis} [--rle] --out DIR   # headless
     easy-mask stats IMAGE_DIR [--labels ...] [--json]                                # statistics
@@ -40,7 +40,10 @@ def build_gui_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--flags", help="image-level flags: comma-separated or a text file")
     parser.add_argument(
-        "--autosave", action="store_true", help="save automatically when switching images"
+        "--autosave",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="save automatically when switching images (default: on; --no-autosave to ask)",
     )
     parser.add_argument(
         "--ai-model",
