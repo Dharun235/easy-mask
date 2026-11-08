@@ -64,11 +64,16 @@ class AiSegmentTool(QObject, CanvasTool):
         status(str): Progress and hints for the status bar.
         error(str): Loading or encoding failed (e.g. onnxruntime missing, offline).
         encoded(): The shown image is ready (a good moment to prefetch the next ones).
+        busy(str, int, int): Background work for the shown image: text, done, total
+            (total 0 = unknown); drives the progress bar.
+        idle(): That work finished or failed.
     """
 
     status = Signal(str)
     error = Signal(str)
     encoded = Signal()
+    busy = Signal(str, int, int)
+    idle = Signal()
     right_button = True
 
     def __init__(
@@ -118,11 +123,17 @@ class AiSegmentTool(QObject, CanvasTool):
         key = self.image_key() or f"pixmap-{canvas.pixmap.cacheKey()}"
         job = EncodeJob(self.lazy, pixmap_to_rgb(canvas.pixmap), key, self._generation)
         job.signals.progress.connect(self.status.emit)
+        job.signals.download.connect(
+            lambda name, done, total: self.busy.emit(f"Downloading AI model ({name})", done, total)
+        )
         job.signals.done.connect(self._on_encoded)
         job.signals.failed.connect(lambda message, g=self._generation: self._on_failed(g, message))
         self._jobs[self._generation] = job
         if self.lazy.segmenter is None:
             self.status.emit("AI Segment: loading model...")
+            self.busy.emit("Loading AI model", 0, 0)
+        elif not self.lazy.segmenter.is_cached(key):
+            self.busy.emit("Preparing image for AI", 0, 0)
         self._pool.start(job, VISIBLE_PRIORITY)  # ahead of any queued prefetch
 
     def prefetch(self, paths: list[str]) -> None:
@@ -141,6 +152,7 @@ class AiSegmentTool(QObject, CanvasTool):
         self._jobs.pop(generation, None)
         if generation != self._generation:
             return  # an older image; a newer job is queued behind it
+        self.idle.emit()
         self.ready = True
         self.status.emit(READY_HINT)
         self._predict()
@@ -149,6 +161,7 @@ class AiSegmentTool(QObject, CanvasTool):
     def _on_failed(self, generation: int, message: str) -> None:
         self._jobs.pop(generation, None)
         if generation == self._generation:
+            self.idle.emit()
             self.error.emit(message)
 
     def wait(self, timeout_ms: int = -1) -> bool:

@@ -23,7 +23,13 @@ from easy_mask.core import geometry, masks, rle
 from easy_mask.core.geometry import Point
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape, ShapeType
-from easy_mask.io.export.common import AnnotatedImage, copy_images, resolve_labels
+from easy_mask.io.export.common import (
+    AnnotatedImage,
+    ProgressFn,
+    copy_images,
+    resolve_labels,
+    tracked,
+)
 
 
 def _area(shape: Shape, outlines: list[list[Point]]) -> float:
@@ -89,6 +95,7 @@ def export_coco(
     out_dir: Path,
     labels: list[str] | None = None,
     rle: bool = False,
+    progress: ProgressFn | None = None,
 ) -> None:
     """Write ``annotations.json`` in COCO format plus an ``images/`` folder.
 
@@ -97,6 +104,7 @@ def export_coco(
         out_dir: Destination folder (created if missing).
         labels: Category order; defaults to all labels seen, sorted.
         rle: Write objects containing a mask shape as exact COCO RLE instead of polygons.
+        progress: Called with ``(images done, total)`` after each image.
     """
     class_names = resolve_labels(items, labels)
     category_ids = {name: i + 1 for i, name in enumerate(class_names)}
@@ -107,7 +115,7 @@ def export_coco(
         "categories": [{"id": i, "name": n, "supercategory": ""} for n, i in category_ids.items()],
     }
 
-    for image_id, item in enumerate(items, start=1):
+    for image_id, item in enumerate(tracked(items, progress), start=1):
         ann = item.annotation
         coco["images"].append(
             {
@@ -140,7 +148,10 @@ def export_coco(
 
 
 def export_coco_rle(
-    items: list[AnnotatedImage], out_dir: Path, labels: list[str] | None = None
+    items: list[AnnotatedImage],
+    out_dir: Path,
+    labels: list[str] | None = None,
+    progress: ProgressFn | None = None,
 ) -> None:
     """COCO export with mask shapes as RLE; see :func:`export_coco` (``rle=True``)."""
-    export_coco(items, out_dir, labels, rle=True)
+    export_coco(items, out_dir, labels, rle=True, progress=progress)

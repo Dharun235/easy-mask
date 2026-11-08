@@ -19,7 +19,7 @@ from PIL import Image
 
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.video import ObjectKey, object_key
-from easy_mask.io.export.common import AnnotatedImage, copy_images
+from easy_mask.io.export.common import AnnotatedImage, ProgressFn, copy_images, tracked
 
 MAX_OBJECTS = 255
 
@@ -52,7 +52,10 @@ def object_ids(items: list[AnnotatedImage]) -> dict[ObjectKey, int]:
 
 
 def export_davis(
-    items: list[AnnotatedImage], out_dir: Path, labels: list[str] | None = None
+    items: list[AnnotatedImage],
+    out_dir: Path,
+    labels: list[str] | None = None,
+    progress: ProgressFn | None = None,
 ) -> None:
     """Write DAVIS-style indexed PNGs for every annotated frame.
 
@@ -61,6 +64,7 @@ def export_davis(
         out_dir: Destination folder (created if missing).
         labels: Unused (object ids come from the frames); accepted so every exporter has
             the same signature.
+        progress: Called with ``(images done, total)`` after each image.
     """
     if not items:
         return
@@ -77,7 +81,7 @@ def export_davis(
     (out_dir / "objects.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     palette = davis_palette()
-    for item in items:
+    for item in tracked(items, progress):
         ann = item.annotation
         frame = np.zeros((ann.image_height, ann.image_width), dtype=np.uint8)
         for shape in ann.shapes:  # later shapes paint on top, as on the canvas

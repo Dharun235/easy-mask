@@ -92,6 +92,8 @@ def export_once(win, out, monkeypatch, fmt="coco"):
 
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(out))
     win.export_dataset(fmt)
+    win.export_worker.wait()  # exports run in the background
+    win._on_export_finished()
 
 
 def annotate(win, driver):
@@ -102,7 +104,7 @@ def annotate(win, driver):
 
 
 def test_export_again_reuses_format_and_folder(
-    make_window, image_dir, tmp_path, monkeypatch, driver
+    make_window, image_dir, tmp_path, monkeypatch, driver, wait_export
 ):
     win = make_window(Settings())
     win.open_path(image_dir)
@@ -117,6 +119,7 @@ def test_export_again_reuses_format_and_folder(
 
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", must_not_ask)
     win.export_again()
+    wait_export(win)
     assert (out / "annotations.json").exists()
 
 

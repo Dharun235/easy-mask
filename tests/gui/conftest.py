@@ -115,3 +115,13 @@ def ui(qtbot, window) -> Driver:
 def driver(qtbot):
     """Build a Driver for any window: ``driver(win)``."""
     return lambda win: Driver(qtbot, win)
+
+
+@pytest.fixture
+def wait_export(qtbot):
+    """Block until a window's background export has finished: ``wait_export(win)``."""
+
+    def wait(win: MainWindow) -> None:
+        qtbot.waitUntil(lambda: win.export_worker is None, timeout=10_000)
+
+    return wait

@@ -14,11 +14,20 @@ several blobs gives one line per blob.
 from pathlib import Path
 
 from easy_mask.core import masks
-from easy_mask.io.export.common import AnnotatedImage, copy_images, resolve_labels
+from easy_mask.io.export.common import (
+    AnnotatedImage,
+    ProgressFn,
+    copy_images,
+    resolve_labels,
+    tracked,
+)
 
 
 def export_yolo(
-    items: list[AnnotatedImage], out_dir: Path, labels: list[str] | None = None
+    items: list[AnnotatedImage],
+    out_dir: Path,
+    labels: list[str] | None = None,
+    progress: ProgressFn | None = None,
 ) -> None:
     """Write YOLO-seg label files and ``data.yaml``.
 
@@ -26,6 +35,7 @@ def export_yolo(
         items: Annotated images from :func:`easy_mask.io.export.collect`.
         out_dir: Destination folder (created if missing).
         labels: Class order; defaults to all labels seen, sorted.
+        progress: Called with ``(images done, total)`` after each image.
     """
     class_names = resolve_labels(items, labels)
     class_ids = {name: i for i, name in enumerate(class_names)}
@@ -33,7 +43,7 @@ def export_yolo(
     (out_dir / "labels").mkdir(parents=True, exist_ok=True)
     copy_images(items, out_dir / "images")
 
-    for item in items:
+    for item in tracked(items, progress):
         ann = item.annotation
         w, h = ann.image_width, ann.image_height
         lines = []

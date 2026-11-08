@@ -45,6 +45,7 @@ class EncodeSignals(QObject):
     """
 
     progress = Signal(str)
+    download = Signal(str, int, int)  # file name, bytes done, bytes total
     done = Signal(int)
     failed = Signal(str)
 
@@ -74,6 +75,7 @@ class EncodeJob(QRunnable):
 
     def _report_download(self, name: str, done: int, total: int) -> None:
         self.signals.progress.emit(f"AI Segment: downloading {name} ({100 * done // total}%)")
+        self.signals.download.emit(name, done, total)
 
 
 class PrefetchJob(QRunnable):

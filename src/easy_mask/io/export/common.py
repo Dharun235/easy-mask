@@ -1,8 +1,10 @@
 """Shared input handling for all exporters."""
 
 import shutil
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from easy_mask.core import annotation as ann_io
 from easy_mask.core.annotation import Annotation
@@ -37,6 +39,31 @@ def resolve_labels(items: list[AnnotatedImage], labels: list[str] | None) -> lis
     if labels:
         return list(labels)
     return sorted({shape.label for item in items for shape in item.annotation.shapes})
+
+
+ProgressFn = Callable[[int, int], None]  # (images done, images total)
+
+
+class Exporter(Protocol):
+    """What every exporter in ``EXPORTERS`` accepts."""
+
+    def __call__(
+        self,
+        items: list[AnnotatedImage],
+        out_dir: Path,
+        labels: list[str] | None = None,
+        *,
+        progress: ProgressFn | None = None,
+    ) -> None:
+        """Write ``items`` as a dataset into ``out_dir``."""
+
+
+def tracked(items: list[AnnotatedImage], progress: ProgressFn | None) -> Iterator[AnnotatedImage]:
+    """Iterate ``items``, reporting ``progress(done, total)`` after each one."""
+    for done, item in enumerate(items, start=1):
+        yield item
+        if progress is not None:
+            progress(done, len(items))
 
 
 def copy_images(items: list[AnnotatedImage], images_dir: Path) -> None:

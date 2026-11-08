@@ -161,7 +161,9 @@ def test_double_click_relabels_unselected_shape(ui, qtbot, window):
     assert shape.points[0] == pytest.approx((10, 10), abs=1)  # not dragged
 
 
-def test_gui_export_keeps_labels_added_in_session(ui, qtbot, window, tmp_path, monkeypatch):
+def test_gui_export_keeps_labels_added_in_session(
+    ui, qtbot, window, tmp_path, monkeypatch, wait_export
+):
     from PySide6.QtWidgets import QFileDialog
 
     window.ask_label = lambda known, initial, parent: LabelInfo("zebra")  # not in --labels
@@ -171,4 +173,5 @@ def test_gui_export_keeps_labels_added_in_session(ui, qtbot, window, tmp_path, m
     out = tmp_path / "exp"
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(out))
     window.export_dataset("masks")
+    wait_export(window)
     assert (out / "class_names.txt").read_text().split() == ["_background_", "cat", "dog", "zebra"]

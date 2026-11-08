@@ -242,6 +242,7 @@ class VideoMenu:
             w.statusBar().showMessage(f"{note}Copying masks...")
         else:
             w.statusBar().showMessage("Propagating... (first run loads the model)")
+        w.progress.begin("propagate", "Propagating", total=count, cancel=self.stop)
         worker.start()
 
     def _on_frame_done(
@@ -252,6 +253,7 @@ class VideoMenu:
         new: list[Shape],
     ) -> None:
         self._store(indices[position], objects, new)
+        self.window.progress.report("propagate", position)
         self.window.statusBar().showMessage(
             f"Propagated {position}/{len(indices) - 1} frames (Video > Stop to cancel)"
         )
@@ -272,4 +274,5 @@ class VideoMenu:
             self.worker.deleteLater()
         self.worker = None
         self.stop_action.setEnabled(False)
+        self.window.progress.end("propagate")
         self.window.statusBar().showMessage("Propagation finished", 5000)

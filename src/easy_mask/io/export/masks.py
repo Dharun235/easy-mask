@@ -16,7 +16,13 @@ from PIL import Image
 
 from easy_mask.core.labels import palette_color
 from easy_mask.core.rasterize import instance_mask, semantic_mask
-from easy_mask.io.export.common import AnnotatedImage, copy_images, resolve_labels
+from easy_mask.io.export.common import (
+    AnnotatedImage,
+    ProgressFn,
+    copy_images,
+    resolve_labels,
+    tracked,
+)
 
 BACKGROUND = "_background_"
 
@@ -33,7 +39,10 @@ def _palette(class_names: list[str]) -> list[int]:
 
 
 def export_masks(
-    items: list[AnnotatedImage], out_dir: Path, labels: list[str] | None = None
+    items: list[AnnotatedImage],
+    out_dir: Path,
+    labels: list[str] | None = None,
+    progress: ProgressFn | None = None,
 ) -> None:
     """Write semantic and instance mask PNGs for every annotated image.
 
@@ -41,6 +50,7 @@ def export_masks(
         items: Annotated images from :func:`easy_mask.io.export.collect`.
         out_dir: Destination folder (created if missing).
         labels: Class order; defaults to all labels seen, sorted. At most 255 classes.
+        progress: Called with ``(images done, total)`` after each image.
     """
     class_names = [BACKGROUND, *resolve_labels(items, labels)]
     if len(class_names) > 256:
@@ -53,7 +63,7 @@ def export_masks(
     (out_dir / "class_names.txt").write_text("\n".join(class_names) + "\n", encoding="utf-8")
 
     palette = _palette(class_names)
-    for item in items:
+    for item in tracked(items, progress):
         ann, stem = item.annotation, item.image_path.stem
         h, w = ann.image_height, ann.image_width
 

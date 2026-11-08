@@ -38,8 +38,10 @@ from easy_mask.core.history import History
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.display_dialog import DisplayDialog
+from easy_mask.gui.export_worker import ExportWorker
 from easy_mask.gui.icons import icon
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
+from easy_mask.gui.progress import ProgressPanel
 from easy_mask.gui.session import Session
 from easy_mask.gui.shortcuts import ShortcutsDialog
 from easy_mask.gui.threshold_dialog import ThresholdDialog
@@ -118,6 +120,7 @@ class MainWindow(QMainWindow):
         self.clipboard: Shape | None = None
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
         self.last_export: tuple[str, Path] | None = None  # (format, folder), per project
+        self.export_worker: ExportWorker | None = None
         # Tidy AI / smart-tool masks (specks, pinholes) before storing them; brush is exact.
         self.auto_cleanup = True
         # With an active label, new shapes take it directly instead of opening the dialog.
@@ -162,6 +165,8 @@ class MainWindow(QMainWindow):
         self._connect_canvas()
         self.workflow = Workflow(self)  # review mode, copy previous, statistics
 
+        self.progress = ProgressPanel()
+        self.statusBar().addPermanentWidget(self.progress)
         self.active_label_status = QLabel()
         self.statusBar().addPermanentWidget(self.active_label_status)
         self.status_label = QLabel()
@@ -184,7 +189,15 @@ class MainWindow(QMainWindow):
         tool.status.connect(lambda text: self.statusBar().showMessage(text))
         tool.error.connect(self._on_ai_error)
         tool.encoded.connect(self._prefetch_ahead)
+        tool.busy.connect(self._on_ai_busy)
+        tool.idle.connect(lambda: self.progress.end("ai"))
         return tool
+
+    def _on_ai_busy(self, text: str, done: int, total: int) -> None:
+        if self.progress.is_running("ai"):
+            self.progress.report("ai", done, total, text)
+        else:
+            self.progress.begin("ai", text, total)
 
     def _prefetch_ahead(self) -> None:
         """Head start for AI Segment on this and the next images (once the model is up)."""
@@ -832,16 +845,37 @@ class MainWindow(QMainWindow):
         if self.image_path is not None and self.maybe_save():
             self._export(*self.last_export)
 
-    def _export(self, fmt: str, out: Path) -> None:
+    def _export(self, fmt: str, out: Path, wait: bool = False) -> None:
+        """Export the open folder in the background; ``wait`` blocks until done (on close)."""
         assert self.image_path is not None
+        if self.export_worker is not None:
+            self.statusBar().showMessage("An export is already running", 4000)
+            return
         items = export.collect(self.image_path.parent, self.settings.output_dir)
         # Predefined labels first, then any seen in the folder, so nothing is dropped and
         # class ids follow the same order as the on-screen colours.
         for item in items:
             for shape in item.annotation.shapes:
                 self._remember_label(shape.label)
-        export.EXPORTERS[fmt](items, out, list(self.known_labels))
-        self.statusBar().showMessage(f"Exported {len(items)} images as {fmt} to {out}", 5000)
+        worker = ExportWorker(items, fmt, out, list(self.known_labels))
+        self.progress.begin("export", f"Exporting {fmt}", total=len(items), cancel=worker.cancel)
+        worker.progress.connect(lambda done, total: self.progress.report("export", done, total))
+        worker.failed.connect(self._error)
+        worker.exported.connect(
+            lambda n: self.statusBar().showMessage(f"Exported {n} images as {fmt} to {out}", 5000)
+        )
+        worker.finished.connect(self._on_export_finished)
+        self.export_worker = worker
+        worker.start()
+        if wait:
+            worker.wait()
+            self._on_export_finished()
+
+    def _on_export_finished(self) -> None:
+        if self.export_worker is not None:
+            self.export_worker.deleteLater()
+        self.export_worker = None
+        self.progress.end("export")
 
     # ------------------------------------------------------------------ view helpers
 
@@ -906,7 +940,7 @@ class MainWindow(QMainWindow):
         if self.maybe_save():
             self.video.stop(wait=True)
             if self.export_on_close_action.isChecked() and self.last_export is not None:
-                self._export(*self.last_export)
+                self._export(*self.last_export, wait=True)
             self.session.save()
             event.accept()
         else:
