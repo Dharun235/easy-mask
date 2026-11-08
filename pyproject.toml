@@ -29,6 +29,11 @@ Issues = "https://github.com/Dharun235/easy-mask/issues"
 [project.scripts]
 easy-mask = "easy_mask.cli:main"
 
+[project.optional-dependencies]
+ai = [
+    "onnxruntime>=1.31.1",
+]
+
 [dependency-groups]
 dev = [
     "hypothesis>=6.170.15",

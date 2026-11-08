@@ -26,6 +26,9 @@ from PySide6.QtWidgets import (
 )
 
 from easy_mask import __version__
+from easy_mask.ai import efficient_sam
+from easy_mask.ai.segmenter import Segmenter
+from easy_mask.ai.weights import ProgressFn
 from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks, operations
 from easy_mask.core.annotation import Annotation
@@ -33,6 +36,7 @@ from easy_mask.core.history import History
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
+from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
@@ -53,6 +57,7 @@ TOOLS: list[tuple[str, ShapeType | str | None, str]] = [
     ("Point", ShapeType.POINT, "O"),
     ("Brush", "brush", "B"),
     ("Eraser", "eraser", "X"),
+    ("AI Segment", "ai", "I"),
 ]
 
 
@@ -72,6 +77,7 @@ class Settings:
     labels: list[str] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
     autosave: bool = False
+    ai_model: str = efficient_sam.DEFAULT_MODEL
 
 
 class MainWindow(QMainWindow):
@@ -91,11 +97,15 @@ class MainWindow(QMainWindow):
         # Swappable so tests can answer the label dialog without a human.
         self.ask_label = LabelDialog.ask
         self.ask_number = ask_number
+        self.load_segmenter: Callable[[ProgressFn], Segmenter] = lambda progress: (
+            efficient_sam.load(self.settings.ai_model, progress)
+        )
 
         self.canvas = Canvas(self)
         self.pixel_tools: dict[str, CanvasTool] = {
             "brush": BrushTool(self._apply_stroke),
             "eraser": BrushTool(self._apply_stroke, erase=True),
+            "ai": self._make_ai_tool(),
         }
         self.canvas.labels = self.known_labels  # same list object: new labels recolour live
         self.setCentralWidget(self.canvas)
@@ -109,6 +119,20 @@ class MainWindow(QMainWindow):
         self._update_title()
 
     # ------------------------------------------------------------------ construction
+
+    def _make_ai_tool(self) -> AiSegmentTool:
+        tool = AiSegmentTool(
+            self._apply_stroke,
+            lambda progress: self.load_segmenter(progress),  # late-bound: tests swap it
+            lambda: str(self.image_path) if self.image_path else None,
+        )
+        tool.status.connect(lambda text: self.statusBar().showMessage(text))
+        tool.error.connect(self._on_ai_error)
+        return tool
+
+    def _on_ai_error(self, message: str) -> None:
+        self.set_tool(None)
+        self._error(message)
 
     def _dock(self, title: str, widget: QWidget, area: Qt.DockWidgetArea) -> QDockWidget:
         dock = QDockWidget(title, self)

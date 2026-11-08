@@ -96,6 +96,8 @@ class Canvas(QWidget):
         self.pixmap = pixmap
         self.cancel_draft()
         self.fit_to_window()
+        if self.tool is not None:
+            self.tool.activate(self)
 
     def set_shapes(self, shapes: list[Shape]) -> None:
         """Replace all shapes (e.g. after loading or undo). Clears selection."""
@@ -120,6 +122,7 @@ class Canvas(QWidget):
         self.mode = None
         self.tool = tool
         self.setCursor(tool.cursor)
+        tool.activate(self)
         self.update()
 
     def _drop_tool(self) -> None:
@@ -236,7 +239,7 @@ class Canvas(QWidget):
         if event.button() == Qt.MouseButton.MiddleButton:
             self._pan_last = pos
             return
-        if event.button() != Qt.MouseButton.LeftButton:
+        if not self._forwards(event):
             return
         p = self._clamp(self.to_image(pos))
         if self.tool is not None:
@@ -307,6 +310,13 @@ class Canvas(QWidget):
                 order.insert(0, index)
         return order
 
+    def _forwards(self, event: QMouseEvent) -> bool:
+        """Whether a press/release is handled: left always, right only for tools that ask."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            return True
+        right = event.button() == Qt.MouseButton.RightButton
+        return right and self.tool is not None and self.tool.right_button
+
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Pan, drag the grabbed shape/vertex, or update the draft preview."""
         if self.pixmap.isNull():
@@ -340,7 +350,7 @@ class Canvas(QWidget):
         if event.button() == Qt.MouseButton.MiddleButton:
             self._pan_last = None
             return
-        if event.button() != Qt.MouseButton.LeftButton:
+        if not self._forwards(event):
             return
         if self.tool is not None:
             self.tool.release(self, self._clamp(self.to_image(event.position())), event)
@@ -362,7 +372,10 @@ class Canvas(QWidget):
         """Finish a polygon / line strip, or request a label edit in edit mode."""
         if event.button() != Qt.MouseButton.LeftButton:
             return
-        if self.mode in (ShapeType.POLYGON, ShapeType.LINESTRIP):
+        if self.tool is not None and not self.pixmap.isNull():
+            self.tool.double_click(self, self._clamp(self.to_image(event.position())), event)
+            self.update()
+        elif self.mode in (ShapeType.POLYGON, ShapeType.LINESTRIP):
             self.finish_draft()
         elif self.mode is None and not self.pixmap.isNull():
             self._press_edit(self._clamp(self.to_image(event.position())))

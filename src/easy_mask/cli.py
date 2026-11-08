@@ -2,7 +2,7 @@
 
 Two forms::
 
-    easy-mask [PATH] [--output DIR] [--labels ...] [--flags ...] [--autosave]   # open the GUI
+    easy-mask [PATH] [--output DIR] [--labels ...] [--flags ...] [--autosave] [--ai-model M]
     easy-mask export IMAGE_DIR --format {masks,coco,yolo} --out DIR             # headless export
 """
 
@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from easy_mask import __version__
+from easy_mask.ai import efficient_sam
 from easy_mask.core.labels import parse_name_list
 
 EXPORT_FORMATS = ("masks", "coco", "yolo")
@@ -31,6 +32,12 @@ def build_gui_parser() -> argparse.ArgumentParser:
     parser.add_argument("--flags", help="image-level flags: comma-separated or a text file")
     parser.add_argument(
         "--autosave", action="store_true", help="save automatically when switching images"
+    )
+    parser.add_argument(
+        "--ai-model",
+        default=efficient_sam.DEFAULT_MODEL,
+        choices=sorted(efficient_sam.MODELS),
+        help="model for the AI Segment tool (vits: slower, more accurate)",
     )
     return parser
 
@@ -81,5 +88,6 @@ def main(argv: list[str] | None = None) -> int:
         labels=parse_name_list(args.labels),
         flags=parse_name_list(args.flags),
         autosave=args.autosave,
+        ai_model=args.ai_model,
     )
     return run(args.path, settings)

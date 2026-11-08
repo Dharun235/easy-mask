@@ -19,6 +19,10 @@ class CanvasTool:
     """
 
     cursor = Qt.CursorShape.CrossCursor
+    right_button = False  # True: the canvas also forwards right-button press/release
+
+    def activate(self, canvas: "Canvas") -> None:
+        """The tool was switched on, or a new image was shown while it is on."""
 
     def press(self, canvas: "Canvas", p: Point, event: QInputEvent) -> None:
         """Left mouse button pressed."""
@@ -28,6 +32,9 @@ class CanvasTool:
 
     def release(self, canvas: "Canvas", p: Point, event: QInputEvent) -> None:
         """Left mouse button released."""
+
+    def double_click(self, canvas: "Canvas", p: Point, event: QInputEvent) -> None:
+        """Left button double-clicked (after the press/release of the first click)."""
 
     def key(self, canvas: "Canvas", event: QKeyEvent) -> bool:
         """Key pressed. Return True if handled (the canvas then ignores it)."""
