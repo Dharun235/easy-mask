@@ -234,3 +234,20 @@ def test_labels_without_strict_allow_anything(make_window, image_dir, driver):
     window.set_tool(ShapeType.POINT)
     driver(window).click(20, 20)
     assert [s.label for s in window.canvas.shapes] == ["zebra"]
+
+
+def test_review_visits_automatic_shapes_first(win):
+    from easy_mask.core.video import PROPAGATED_FLAG
+
+    def box(x, **flags):
+        return Shape("cat", ShapeType.RECTANGLE, [(x, 10), (x + 5, 15)], flags=flags)
+
+    win.canvas.set_shapes([box(5), box(30, **{PROPAGATED_FLAG: True}), box(60)])
+    assert win.workflow.review_order() == [1, 0, 2]
+    win.workflow.next_object()
+    assert win.canvas.selected == 1
+    assert "auto: check it" in win.statusBar().currentMessage()
+    win.workflow.next_object()
+    assert win.canvas.selected == 0 and "auto" not in win.statusBar().currentMessage()
+    win.workflow.prev_object()
+    assert win.canvas.selected == 1

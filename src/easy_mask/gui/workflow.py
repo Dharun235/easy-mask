@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox, QPlainTextEdit, QVBoxLa
 
 from easy_mask.core import annotation as ann_io
 from easy_mask.core.annotation import REVIEWED_FLAG
+from easy_mask.core.video import is_auto
 from easy_mask.io import stats
 
 if TYPE_CHECKING:
@@ -62,10 +63,10 @@ class Workflow:
         win = self.window
         if win.current_index is None:
             return
-        selected = win.canvas.selected
-        target = 0 if selected is None else selected + 1
-        if target < len(win.canvas.shapes):
-            self.focus(target)
+        order = self.review_order()
+        position = order.index(win.canvas.selected) if win.canvas.selected in order else -1
+        if position + 1 < len(order):
+            self.focus(order[position + 1])
             return
         self.mark_reviewed()
         if not win.save():
@@ -74,26 +75,37 @@ class Workflow:
             win.statusBar().showMessage("Last image reviewed", 5000)
             return
         win.next_image()
-        self._focus_first_or_announce(0)
+        self._focus_first_or_announce(first=True)
 
     def prev_object(self) -> None:
         """Focus the previous object; before the first one, go to the previous image's last."""
         win = self.window
         if win.current_index is None:
             return
-        selected = win.canvas.selected
-        target = len(win.canvas.shapes) - 1 if selected is None else selected - 1
-        if target >= 0:
-            self.focus(target)
+        order = self.review_order()
+        position = order.index(win.canvas.selected) if win.canvas.selected in order else len(order)
+        if position - 1 >= 0:
+            self.focus(order[position - 1])
             return
         before = win.current_index
         win.prev_image()
         if win.current_index != before:
-            self._focus_first_or_announce(len(win.canvas.shapes) - 1)
+            self._focus_first_or_announce(first=False)
 
-    def _focus_first_or_announce(self, index: int) -> None:
-        if self.window.canvas.shapes:
-            self.focus(index)
+    def review_order(self) -> list[int]:
+        """Shape indices in review order: automatic shapes first, then hand-drawn ones.
+
+        Propagated / interpolated shapes were made by a model or an interpolation, so they
+        are the ones most worth checking.
+        """
+        shapes = self.window.canvas.shapes
+        auto = [i for i, s in enumerate(shapes) if is_auto(s)]
+        return auto + [i for i in range(len(shapes)) if i not in auto]
+
+    def _focus_first_or_announce(self, first: bool) -> None:
+        order = self.review_order()
+        if order:
+            self.focus(order[0] if first else order[-1])
         else:
             self.window.statusBar().showMessage("No objects on this image: N to move on", 5000)
 
@@ -104,8 +116,10 @@ class Workflow:
         win.canvas.select(index)
         win.canvas.zoom_to_box(shape.bounding_box())
         image = (win.current_index or 0) + 1
+        step = self.review_order().index(index) + 1
+        made_by = "  (auto: check it)" if is_auto(shape) else ""
         win.statusBar().showMessage(
-            f"Object {index + 1}/{len(win.canvas.shapes)}: {shape.label}   "
+            f"Object {step}/{len(win.canvas.shapes)}: {shape.label}{made_by}   "
             f"(image {image}/{len(win.image_paths)})"
         )
 
