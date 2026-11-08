@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -29,11 +30,23 @@ class LabelInfo:
 
 
 class LabelDialog(QDialog):
-    """Pick or type a label. Known labels autocomplete and are listed for one-click use."""
+    """Pick or type a label. Known labels autocomplete and are listed for one-click use.
 
-    def __init__(self, known_labels: list[str], initial: LabelInfo, parent: QWidget | None = None):
+    With ``allowed`` (``--strict-labels``) only those labels are offered and accepted.
+    """
+
+    def __init__(
+        self,
+        known_labels: list[str],
+        initial: LabelInfo,
+        parent: QWidget | None = None,
+        allowed: list[str] | None = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Label")
+        self.allowed = allowed
+        if allowed is not None:
+            known_labels = allowed
 
         self.label_edit = QLineEdit(initial.label)
         self.label_edit.setPlaceholderText("label, e.g. cat")
@@ -54,6 +67,10 @@ class LabelDialog(QDialog):
         self.label_list.itemClicked.connect(lambda item: self.label_edit.setText(item.text()))
         self.label_list.itemDoubleClicked.connect(lambda item: self._accept_label(item.text()))
 
+        self.error_label = QLabel()
+        self.error_label.setStyleSheet("color: #d33")
+        self.error_label.hide()
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -67,6 +84,7 @@ class LabelDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(self.label_list)
+        layout.addWidget(self.error_label)
         layout.addWidget(buttons)
 
         self.label_edit.selectAll()
@@ -86,15 +104,24 @@ class LabelDialog(QDialog):
         self._accept_if_valid()
 
     def _accept_if_valid(self) -> None:
-        if self.label_edit.text().strip():
-            self.accept()
+        label = self.label_edit.text().strip()
+        if not label:
+            return
+        if self.allowed is not None and label not in self.allowed:
+            self.error_label.setText(f"'{label}' is not in the label list")
+            self.error_label.show()
+            return
+        self.accept()
 
     @staticmethod
     def ask(
-        known_labels: list[str], initial: LabelInfo, parent: QWidget | None = None
+        known_labels: list[str],
+        initial: LabelInfo,
+        parent: QWidget | None = None,
+        allowed: list[str] | None = None,
     ) -> LabelInfo | None:
         """Show the dialog modally. Returns the entered info, or None if cancelled."""
-        dialog = LabelDialog(known_labels, initial, parent)
+        dialog = LabelDialog(known_labels, initial, parent, allowed)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             return dialog.result_info()
         return None

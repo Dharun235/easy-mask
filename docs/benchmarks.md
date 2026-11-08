@@ -61,6 +61,25 @@ dataset above in the format RITM introduced
 Mask shapes keep every pixel. Polygons lose 1-9% IoU (holes and thin parts), more on
 DAVIS's detailed objects: prefer masks when edges matter, polygons when files must be small.
 
+### COCO export: RLE vs polygons (v0.6)
+
+`uv run python -m benchmarks.coco_rle`: each ground-truth mask is stored as a mask shape,
+exported with `easy-mask export --format coco` (polygons traced at 1 px) and with `--rle`,
+then decoded back to pixels (2026-11-08). "Compact" is the JSON without indentation.
+
+| dataset | n | format | mean pixel IoU | exact | KB / object | KB / object (compact) |
+|---|---|---|---|---|---|---|
+| GrabCut | 50 | polygon | 0.9801 | 0% | 3.3 | 1.4 |
+| GrabCut | 50 | RLE | 1.0000 | 100% | 1.3 | 1.2 |
+| Berkeley | 100 | polygon | 0.9778 | 0% | 3.2 | 1.3 |
+| Berkeley | 100 | RLE | 1.0000 | 100% | 1.2 | 1.1 |
+| DAVIS | 345 | polygon | 0.9503 | 0% | 4.8 | 2.0 |
+| DAVIS | 345 | RLE | 1.0000 | 100% | 2.0 | 1.9 |
+
+RLE round-trips every mask exactly and is also smaller than polygons on all three
+datasets, so `--rle` is the better choice for mask annotations whenever the training
+code reads COCO RLE (anything built on pycocotools, e.g. Detectron2 and MMDetection).
+
 ## Plan
 
 1. **v0.1 (now):** unit and GUI tests on synthetic images (fast, no downloads, run in CI).

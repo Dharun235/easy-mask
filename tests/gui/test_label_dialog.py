@@ -55,6 +55,22 @@ def test_completer_matches_substring_case_insensitive(qtbot):
     assert completer.caseSensitivity() == Qt.CaseSensitivity.CaseInsensitive
 
 
+def test_strict_dialog_offers_and_accepts_only_allowed_labels(qtbot):
+    dialog = LabelDialog(["cat", "zebra"], LabelInfo(""), allowed=["cat", "dog"])
+    qtbot.addWidget(dialog)
+    assert [dialog.label_list.item(i).text() for i in range(dialog.label_list.count())] == [
+        "cat",
+        "dog",
+    ]
+    qtbot.keyClicks(dialog.label_edit, "zebra")
+    dialog._accept_if_valid()
+    assert dialog.result() != dialog.DialogCode.Accepted
+    assert "not in the label list" in dialog.error_label.text()
+    dialog.label_edit.setText("dog")
+    with qtbot.waitSignal(dialog.accepted):
+        dialog._accept_if_valid()
+
+
 def test_ask_returns_none_when_cancelled(qtbot, monkeypatch):
     monkeypatch.setattr(LabelDialog, "exec", lambda self: LabelDialog.DialogCode.Rejected)
     assert LabelDialog.ask(["cat"], LabelInfo("cat")) is None

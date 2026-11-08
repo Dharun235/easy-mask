@@ -39,12 +39,15 @@ Manual tools on par with classic annotators.
 - [ ] Export DAVIS-style mask sequences
 
 ## v0.6 — workflow (`feat/workflow`)
-- [ ] Review mode, per-label statistics, COCO RLE export
+- [x] COCO RLE export (`--rle`, pure numpy, byte-identical to pycocotools)
+- [x] Folder statistics (`easy-mask stats`, Workflow > Statistics): per-label objects, shapes, area
+- [x] Review mode: step through every object (`N` / `Shift+N`), zoom and select, `reviewed` flag
+- [x] Copy shapes from the previous image (undoable)
+- [x] Label validation: `--strict-labels`, unknown-label report in stats
+- [x] RLE vs polygon export benchmark
 
 ## Later / ideas
 - Text-prompted detection (e.g. Grounding-DINO / SAM3-style) to pre-label
 - Brightness / contrast adjustment for dark images
-- Keep previous frame's annotations when moving to next image
-- Dataset statistics panel, label validation against a fixed list
 - Pascal VOC export, import from COCO
 - Standalone app bundles (PyInstaller)

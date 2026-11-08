@@ -13,6 +13,9 @@ from typing import Any
 from easy_mask import __version__
 from easy_mask.core.shapes import Shape
 
+# Image-level flag set by review mode once every object on the image has been checked.
+REVIEWED_FLAG = "reviewed"
+
 
 @dataclass
 class Annotation:
