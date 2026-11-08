@@ -19,8 +19,8 @@
 
 Draw polygons, rectangles, circles, lines and points around the objects *you* care about,
 then export pixel masks and datasets ready for training. Everything runs on your machine:
-no cloud upload, no account, no telemetry. Click-to-segment with
-[SAM2](https://github.com/facebookresearch/sam2) is the next milestone.
+no cloud upload, no account, no telemetry. **AI Segment** outlines an object from a click
+or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CPU.
 
 > **Status: early alpha (v0.1).** The on-disk format is labelme-compatible, so you can move
 > annotations between the two tools.
@@ -30,6 +30,7 @@ no cloud upload, no account, no telemetry. Click-to-segment with
 | Area | What you get |
 | --- | --- |
 | Shapes | polygon, rectangle, circle, line, line strip, point, pixel **mask** |
+| AI Segment | click an object (right/Alt-click = background, drag = box), live preview, Enter to keep; EfficientSAM on CPU, offline after a one-time download |
 | Mask editing | brush and eraser, union / subtract / intersect, fill holes, remove specks, grow / shrink, smooth, mask <-> polygon |
 | Pixel tools (no AI) | magic wand, GrabCut from a box, superpixel picking, watershed from scribbles, threshold (manual / Otsu / adaptive) and colour range with live preview |
 | Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
@@ -50,7 +51,12 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+ (uv fetches Python fo
 git clone https://github.com/Dharun235/easy-mask.git
 cd easy-mask
 uv sync
+uv sync --extra ai     # optional: AI Segment (adds onnxruntime, ~75 MB)
 ```
+
+The first time you use AI Segment it downloads the EfficientSAM ViT-T model (41 MB) to
+`~/.cache/easy-mask/models` (override with `EASY_MASK_MODELS`), checks its sha256, and
+then works offline. `--ai-model efficientsam-vits` picks the larger, slower model (106 MB).
 
 ## Usage
 
@@ -92,8 +98,12 @@ uv run easy-mask stats images/ --labels cat,dog    # exit 1 if other labels are 
 | `Ctrl+T` | threshold / colour-range panel | View > Adjust Display | brightness, CLAHE, channel, mask opacity |
 | `N` / `Shift+N` | review next / previous object | `Ctrl+Shift+V` | copy shapes from previous image |
 | `Ctrl+I` | folder statistics | | |
+| `I` | AI Segment | click / right-click / drag | object point / background point / box |
+| `Enter` / double-click (AI) | keep the AI mask | `Esc` / `Backspace` (AI) | clear prompts / undo last prompt |
 
-Rectangles, circles and lines can be drawn by dragging or by two clicks.
+Rectangles, circles and lines can be drawn by dragging or by two clicks. AI Segment adds the
+mask to the selected shape if one is selected, otherwise it creates a new mask and asks
+for its label.
 
 ### Annotation format
 
@@ -121,8 +131,8 @@ Full plan with milestones: [docs/roadmap.md](docs/roadmap.md).
 
 - [x] **v0.1 Core annotation:** all manual shape tools, editing, undo/redo, labelme JSON, mask/COCO/YOLO export
 - [x] **v0.2 Mask shapes:** pixel masks, brush/eraser, boolean combine, clean-up, mask <-> polygon
-- [ ] **v0.2 SAM2 click-to-segment:** positive/negative clicks and box prompts, runs locally on CUDA / Apple MPS / CPU
-- [ ] **v0.2 Benchmarks:** NoC@85/90 and mIoU on GrabCut, Berkeley, DAVIS ([docs/benchmarks.md](docs/benchmarks.md))
+- [x] **v0.4 AI click-to-segment on CPU:** EfficientSAM, positive/negative clicks and box prompts, live preview
+- [x] **v0.4 Click benchmark:** NoC@85/90 and mIoU on GrabCut, Berkeley, DAVIS ([docs/benchmarks.md](docs/benchmarks.md))
 - [ ] **v0.4 Video:** SAM2 propagation across frames, object tracks
 - [ ] Text-prompted pre-labelling (SAM3 / Grounding-DINO style)
 - [ ] Brightness / contrast, keep previous annotations, COCO import, Pascal VOC export
@@ -134,8 +144,8 @@ Have an idea? [Open a feature request](https://github.com/Dharun235/easy-mask/is
 
 Quality is measured on the standard interactive-segmentation suite (GrabCut, Berkeley,
 DAVIS, SBD, Pascal VOC, COCO-MVal) with NoC@85/90 and mIoU@k, plus timed real-world
-sessions on COCO val. Results land with the SAM2 milestone; datasets, metrics and protocol
-are described in [docs/benchmarks.md](docs/benchmarks.md).
+sessions on COCO val. Click-to-segment results (NoC@85/90, mIoU@k, CPU timing) for
+EfficientSAM, plus datasets, metrics and protocol, are in [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Related projects
 
@@ -150,7 +160,8 @@ doesn't do yet, one of them probably does.
 | [Label Studio](https://github.com/HumanSignal/label-studio) | Multi-modal web labelling platform (Apache-2.0) | Broader scope; easy-mask focuses on image masks |
 | [LabelImg](https://github.com/HumanSignal/labelImg) | Bounding-box annotator, now archived (MIT) | Boxes only; easy-mask covers boxes and masks |
 | [Segment Anything (SAM)](https://github.com/facebookresearch/segment-anything) | Promptable segmentation model (Apache-2.0) | Model family behind click-to-segment |
-| [SAM 2](https://github.com/facebookresearch/sam2) | SAM for images and video (Apache-2.0) | Planned v0.2 backend |
+| [EfficientSAM](https://github.com/yformer/EfficientSAM) | Lightweight SAM (Apache-2.0); ONNX export by the labelme project | AI Segment backend |
+| [SAM 2](https://github.com/facebookresearch/sam2) | SAM for images and video (Apache-2.0) | Candidate video backend |
 | [SAM 3](https://github.com/facebookresearch/sam3) | Text/concept-prompted segmentation | Candidate for text pre-labelling |
 | [SimpleClick](https://github.com/uncbiag/SimpleClick) | Interactive segmentation research code (MIT) | Benchmark datasets and evaluation protocol |
 | [FiftyOne](https://github.com/voxel51/fiftyone) | Dataset curation and visualisation (Apache-2.0) | Good companion for inspecting exported datasets |
@@ -197,3 +208,7 @@ cite the models you used through it (e.g. SAM 2).
 ## License
 
 [Apache-2.0](LICENSE) © easy-mask contributors.
+
+Model weights are not part of easy-mask: AI Segment downloads EfficientSAM (Xiong et al.,
+2024, Apache-2.0) from the [labelmeai/efficient-sam](https://github.com/labelmeai/efficient-sam)
+ONNX release. Cite EfficientSAM if you use it in research.

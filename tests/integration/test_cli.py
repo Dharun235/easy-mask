@@ -6,7 +6,7 @@ import pytest
 from pycocotools.coco import COCO
 
 from easy_mask import __version__
-from easy_mask.cli import main
+from easy_mask.cli import build_gui_parser, main
 from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks
 from easy_mask.core.annotation import Annotation
@@ -95,3 +95,11 @@ def test_strict_labels_needs_labels(capsys):
         main(["--strict-labels"])
     assert exc.value.code == 2
     assert "--strict-labels needs --labels" in capsys.readouterr().err
+
+
+def test_ai_model_option():
+    parser = build_gui_parser()
+    assert parser.parse_args([]).ai_model == "efficientsam-vitt"
+    assert parser.parse_args(["--ai-model", "efficientsam-vits"]).ai_model == "efficientsam-vits"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--ai-model", "nope"])

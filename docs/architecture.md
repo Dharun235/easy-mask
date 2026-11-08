@@ -6,6 +6,7 @@ easy-mask is split into three layers with a one-way dependency: `gui -> io -> co
 | --- | --- | --- |
 | `core/` | numpy, Pillow, OpenCV (headless), stdlib | Qt, `io`, `gui` |
 | `io/` | `core`, numpy, Pillow | Qt, `gui` |
+| `ai/` | `core`, numpy, onnxruntime (optional extra) | Qt, `io`, `gui` |
 | `gui/` | everything | — |
 
 Keeping Qt out of `core` and `io` means the annotation logic (geometry, file format,
@@ -29,6 +30,10 @@ src/easy_mask/
     pixel_ops.py         classic segmentation: threshold, magic wand, colour range, GrabCut,
                          watershed, superpixels (image -> full-size bool mask)
     display.py           display-only adjustments (brightness, gamma, CLAHE, channel, opacity)
+  ai/
+    segmenter.py         Segmenter interface: cached image embedding + click/box prompts -> masks
+    efficient_sam.py     EfficientSAM ONNX backend (onnxruntime, CPU), model table, load()
+    weights.py           download model files to ~/.cache/easy-mask/models, sha256-checked
   io/
     images.py            list images in a folder (natural sort), read size
     stats.py             folder statistics and label validation (CLI `stats`, GUI dialog)
@@ -47,6 +52,8 @@ src/easy_mask/
     tools/watershed.py   watershed from object / background marker scribbles
     threshold_dialog.py  threshold / colour-range panel with live canvas preview
     display_dialog.py    View > Adjust Display panel
+    tools/ai_segment.py  AI Segment: prompts, mask preview, accept into a mask shape
+    tools/ai_worker.py   QThreadPool job that loads the model and encodes images
     label_dialog.py      label / group id / description dialog with autocomplete
     widgets.py           list widgets for files, labels, shapes, flags
     workflow.py          Workflow menu: review mode, copy previous image, statistics dialog
@@ -81,8 +88,24 @@ The algorithms live in `core/pixel_ops.py` and read the original pixels from
 `Canvas.image_rgb()`; display adjustments (`core/display.py`) only change what the canvas
 draws, so tools, saving and export never see them.
 
-## Where SAM2 will plug in
+## AI Segment
 
-The `feat/sam2` branch adds a `segmenters/` package (behind an interface introduced with its
-first real backend), a click-prompt tool in `Canvas`, and a background worker so image
-encoding never blocks the UI. Masks it produces flow through the same `_commit()` path.
+```
+activate (tool on / new image) --EncodeJob (worker thread)--> Segmenter.set_image(rgb, path)
+                                                      done --> tool.ready, predict waiting clicks
+click / right-click / drag box --> Segmenter.predict(points, labels, box) --> preview mask
+Enter / double-click ----------> MainWindow._apply_stroke(full_mask, index_or_None)
+```
+
+* `Segmenter` (in `ai/`, no Qt) caches embeddings per image path (LRU, 8 images), so
+  going back to an image is instant. `predict` takes at most 6 points (a box uses two),
+  keeping the most recent clicks, and ranks the model's candidate masks: by predicted IoU,
+  except for a lone click, where the largest (whole object) wins.
+* EfficientSAM ignores negative labels in practice, so `EfficientSam.predict` segments
+  with the positive prompts and cuts out what a click on each negative point selects
+  (see docs/benchmarks.md for the effect).
+* Encoding runs in a one-thread `QThreadPool`; each request gets a generation number and
+  only the newest result is used, so fast image switching cannot show a stale mask.
+  Prediction (~50-100 ms) runs on the UI thread.
+* A backend for another model (e.g. SAM 2 for video) subclasses `Segmenter` and
+  implements `_encode(rgb)` and `_decode(embedding, size, coords, labels)`.

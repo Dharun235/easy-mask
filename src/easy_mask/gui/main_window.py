@@ -27,6 +27,9 @@ from PySide6.QtWidgets import (
 )
 
 from easy_mask import __version__
+from easy_mask.ai import efficient_sam
+from easy_mask.ai.segmenter import Segmenter
+from easy_mask.ai.weights import ProgressFn
 from easy_mask.core import annotation as ann_io
 from easy_mask.core import masks, operations
 from easy_mask.core.annotation import Annotation
@@ -36,6 +39,7 @@ from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.display_dialog import DisplayDialog
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
 from easy_mask.gui.threshold_dialog import ThresholdDialog
+from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
 from easy_mask.gui.tools.region import GrabCutTool, MagicWandTool, SuperpixelTool
@@ -63,6 +67,7 @@ TOOLS: list[tuple[str, ShapeType | str | None, str]] = [
     ("GrabCut", "grabcut", "G"),
     ("Superpixels", "superpixel", "S"),
     ("Watershed", "watershed", "M"),
+    ("AI Segment", "ai", "I"),
 ]
 
 
@@ -83,6 +88,7 @@ class Settings:
     flags: list[str] = field(default_factory=list)
     autosave: bool = False
     strict_labels: bool = False  # only labels from ``labels`` are accepted
+    ai_model: str = efficient_sam.DEFAULT_MODEL
 
 
 class MainWindow(QMainWindow):
@@ -104,6 +110,9 @@ class MainWindow(QMainWindow):
             partial(LabelDialog.ask, allowed=self._allowed_labels())
         )
         self.ask_number = ask_number
+        self.load_segmenter: Callable[[ProgressFn], Segmenter] = lambda progress: (
+            efficient_sam.load(self.settings.ai_model, progress)
+        )
 
         self.canvas = Canvas(self)
         self.pixel_tools: dict[str, CanvasTool] = {
@@ -113,6 +122,7 @@ class MainWindow(QMainWindow):
             "grabcut": GrabCutTool(self._apply_stroke),
             "superpixel": SuperpixelTool(self._apply_stroke),
             "watershed": WatershedTool(self._apply_stroke),
+            "ai": self._make_ai_tool(),
         }
         self.threshold_dialog: ThresholdDialog | None = None
         self.display_dialog: DisplayDialog | None = None
@@ -129,6 +139,20 @@ class MainWindow(QMainWindow):
         self._update_title()
 
     # ------------------------------------------------------------------ construction
+
+    def _make_ai_tool(self) -> AiSegmentTool:
+        tool = AiSegmentTool(
+            self._apply_stroke,
+            lambda progress: self.load_segmenter(progress),  # late-bound: tests swap it
+            lambda: str(self.image_path) if self.image_path else None,
+        )
+        tool.status.connect(lambda text: self.statusBar().showMessage(text))
+        tool.error.connect(self._on_ai_error)
+        return tool
+
+    def _on_ai_error(self, message: str) -> None:
+        self.set_tool(None)
+        self._error(message)
 
     def _dock(self, title: str, widget: QWidget, area: Qt.DockWidgetArea) -> QDockWidget:
         dock = QDockWidget(title, self)

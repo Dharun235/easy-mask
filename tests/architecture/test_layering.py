@@ -1,6 +1,6 @@
 """Architecture tests: keep the layering in docs/architecture.md true as the code grows.
 
-``core`` and ``io`` must never import Qt or ``gui``; ``core`` must not import ``io``.
+``core``, ``io`` and ``ai`` must never import Qt or ``gui``; ``core`` must not import ``io``.
 Violations make logic untestable without a display, so we fail the build instead.
 """
 
@@ -16,6 +16,7 @@ PACKAGE = Path(__file__).parents[2] / "src" / "easy_mask"
 FORBIDDEN = {
     "core": ("PySide6", "easy_mask.gui", "easy_mask.io"),
     "io": ("PySide6", "easy_mask.gui"),
+    "ai": ("PySide6", "easy_mask.gui", "easy_mask.io"),
 }
 
 
