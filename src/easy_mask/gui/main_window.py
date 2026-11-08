@@ -9,6 +9,7 @@ Data flow for one edit::
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -36,6 +37,7 @@ from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
+from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
 from easy_mask.io.images import is_image, list_images
 
@@ -72,6 +74,7 @@ class Settings:
     labels: list[str] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
     autosave: bool = False
+    strict_labels: bool = False  # only labels from ``labels`` are accepted
 
 
 class MainWindow(QMainWindow):
@@ -89,7 +92,9 @@ class MainWindow(QMainWindow):
         self.clipboard: Shape | None = None
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
         # Swappable so tests can answer the label dialog without a human.
-        self.ask_label = LabelDialog.ask
+        self.ask_label: Callable[[list[str], LabelInfo, QWidget | None], LabelInfo | None] = (
+            partial(LabelDialog.ask, allowed=self._allowed_labels())
+        )
         self.ask_number = ask_number
 
         self.canvas = Canvas(self)
@@ -102,6 +107,7 @@ class MainWindow(QMainWindow):
         self._build_panels()
         self._build_actions()
         self._connect_canvas()
+        self.workflow = Workflow(self)  # review mode, copy previous, statistics
 
         self.status_label = QLabel()
         self.statusBar().addPermanentWidget(self.status_label)
@@ -430,8 +436,21 @@ class MainWindow(QMainWindow):
             self.canvas.set_mode(tool)
         self.tool_actions[tool].setChecked(True)
 
+    def _allowed_labels(self) -> list[str] | None:
+        """The only labels accepted with ``--strict-labels``, else None (anything goes)."""
+        return list(self.settings.labels) if self.settings.strict_labels else None
+
+    def _ask_label(self, initial: LabelInfo) -> LabelInfo | None:
+        """Ask for a label; with strict labels, refuse any outside the label list."""
+        info = self.ask_label(self.known_labels, initial, self)
+        allowed = self._allowed_labels()
+        if info is not None and allowed is not None and info.label not in allowed:
+            self.statusBar().showMessage(f"'{info.label}' is not in the label list", 5000)
+            return None
+        return info
+
     def _on_shape_drawn(self, shape: Shape) -> None:
-        info = self.ask_label(self.known_labels, LabelInfo(label=self.last_label), self)
+        info = self._ask_label(LabelInfo(label=self.last_label))
         if info is None:
             return
         shape.label, shape.group_id, shape.description = info.label, info.group_id, info.description
@@ -457,7 +476,7 @@ class MainWindow(QMainWindow):
         """Store a finished brush/eraser stroke (called by the brush tool)."""
         shapes = list(self.canvas.shapes)
         if index is None:  # a new mask: ask for its label
-            info = self.ask_label(self.known_labels, LabelInfo(label=self.last_label), self)
+            info = self._ask_label(LabelInfo(label=self.last_label))
             new = None
             if info is not None:
                 new = masks.to_shape(
@@ -531,9 +550,7 @@ class MainWindow(QMainWindow):
         if index is None:
             return
         shape = self.canvas.shapes[index]
-        info = self.ask_label(
-            self.known_labels, LabelInfo(shape.label, shape.group_id, shape.description), self
-        )
+        info = self._ask_label(LabelInfo(shape.label, shape.group_id, shape.description))
         if info is None:
             return
         shape.label, shape.group_id, shape.description = info.label, info.group_id, info.description

@@ -38,6 +38,7 @@ VERTEX_SIZE_PX = 7
 DRAG_THRESHOLD_PX = 4  # press-drag-release shorter than this counts as a click
 ZOOM_STEP = 1.15
 MIN_SCALE, MAX_SCALE = 0.02, 64.0
+MIN_FOCUS_PX = 32.0  # smallest image area zoom_to_box shows, so points aren't zoomed to 64x
 DRAFT_RGB = (0, 200, 255)
 BACKGROUND = QColor(40, 40, 44)
 
@@ -201,6 +202,27 @@ class Canvas(QWidget):
         ix, iy = self.to_image(anchor)
         self.scale = min(max(self.scale * factor, MIN_SCALE), MAX_SCALE)
         self.offset = QPointF(anchor.x() - ix * self.scale, anchor.y() - iy * self.scale)
+        self._auto_fit = False
+        self._emit_status()
+        self.update()
+
+    def zoom_to_box(self, box: tuple[float, float, float, float], margin: float = 0.3) -> None:
+        """Centre and zoom on an image-space box ``(x0, y0, x1, y1)``.
+
+        ``margin`` adds that fraction of the box size on every side so the object's
+        surroundings stay visible; tiny boxes (points) get at least ``MIN_FOCUS_PX``.
+        """
+        if self.pixmap.isNull():
+            return
+        x0, y0, x1, y1 = box
+        box_w = max(x1 - x0, MIN_FOCUS_PX) * (1 + 2 * margin)
+        box_h = max(y1 - y0, MIN_FOCUS_PX) * (1 + 2 * margin)
+        scale = min(self.width() / box_w, self.height() / box_h)
+        self.scale = min(max(scale, MIN_SCALE), MAX_SCALE)
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        self.offset = QPointF(
+            self.width() / 2 - cx * self.scale, self.height() / 2 - cy * self.scale
+        )
         self._auto_fit = False
         self._emit_status()
         self.update()
