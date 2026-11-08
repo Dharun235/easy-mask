@@ -38,35 +38,35 @@ def test_number_beyond_known_labels_is_ignored(window):
 
 
 def test_clicking_label_toggles_it(window):
-    item = window.label_list.item(1)  # row 0 is Erase
+    item = window.label_list.item(0)
     window.label_list.itemClicked.emit(item)
     assert window.active_label == "cat"
-    assert window.label_list.item(1).font().bold()
-    window.label_list.itemClicked.emit(window.label_list.item(1))
+    assert window.label_list.item(0).font().bold()
+    window.label_list.itemClicked.emit(window.label_list.item(0))
     assert window.active_label is None
 
 
-def test_labels_panel_starts_with_erase(window):
+def test_labels_panel_lists_only_labels(window):
     texts = [window.label_list.item(i).text() for i in range(window.label_list.count())]
-    assert texts[0].startswith("✂") and texts[1:] == ["cat", "dog"]
+    assert texts == ["cat", "dog"]
 
 
 def test_polygon_with_erase_label_cuts_instead_of_being_kept(window, ui):
     from easy_mask.core.rasterize import shape_to_mask
     from easy_mask.core.shapes import Shape
     from easy_mask.core.video import ERASE_LABEL
+    from easy_mask.gui.label_dialog import LabelInfo
 
     window.canvas.set_shapes([Shape("dog", ShapeType.RECTANGLE, [(10, 10), (60, 60)])])
     window._commit()
-    window.set_active_label(ERASE_LABEL)
-    assert "Erase" in window.active_label_status.text()
-    assert ERASE_LABEL not in window.known_labels
+    window.ask_label = lambda known, initial, parent: LabelInfo(ERASE_LABEL)  # Erase With It
     window.set_tool(ShapeType.RECTANGLE)
     ui.drag((40, 5), (70, 70))
     (dog,) = window.canvas.shapes
     full = shape_to_mask(dog, 80, 100)
     assert full[30, 20] and not full[30, 50]
     assert window.video.last_cut is not None  # Propagate will carry it
+    assert ERASE_LABEL not in window.known_labels
 
 
 def test_label_dialog_erase_button(qtbot):

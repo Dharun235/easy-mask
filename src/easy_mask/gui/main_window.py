@@ -770,7 +770,7 @@ class MainWindow(QMainWindow):
 
     def set_active_label(self, label: str | None) -> None:
         """Label new shapes with ``label`` without asking, or ask every time with None."""
-        if label is not None and label != ERASE_LABEL:
+        if label is not None:
             self._remember_label(label)
         self.active_label = label
         self.session.save_project()
@@ -864,8 +864,6 @@ class MainWindow(QMainWindow):
     def _show_active_label(self) -> None:
         if self.active_label is None:
             text = "Label: ask each time (click a label to use it)"
-        elif self.active_label == ERASE_LABEL:
-            text = "Erase: shapes you draw cut the masks under them"
         else:
             text = f"Label: {self.active_label}  (click it again to ask)"
         self.active_label_status.setText(text)

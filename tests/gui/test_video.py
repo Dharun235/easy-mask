@@ -599,10 +599,6 @@ def test_right_click_a_label_offers_delete_everywhere(window):
     window.show_menu = lambda menu, pos: shown.append([a.text() for a in menu.actions()])
     window.label_list.label_menu_requested.emit("cat", QPoint(0, 0))
     assert "Delete “cat” From All Frames" in shown[0]
-    window.label_list._request_menu(
-        window.label_list.visualItemRect(window.label_list.item(0)).center()
-    )
-    assert len(shown) == 1  # the Erase row has no such menu
 
 
 def test_rename_a_label_on_all_frames(window, image_dir):

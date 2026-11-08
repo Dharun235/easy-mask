@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
-from easy_mask.core.video import ERASE_LABEL, is_auto
+from easy_mask.core.video import is_auto
 
 
 def color_icon(label: str, labels: list[str], size: int = 12) -> QIcon:
@@ -60,7 +60,7 @@ class FileList(QListWidget):
 
 
 class LabelList(QListWidget):
-    """Erase, then every known label with its colour and count on this image.
+    """Every known label with its colour and count on this image.
 
     The active label (used for new shapes without asking) is shown in bold.
 
@@ -86,22 +86,14 @@ class LabelList(QListWidget):
     def _request_menu(self, pos: QPoint) -> None:
         item = self.itemAt(pos)
         label = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
-        if label and label != ERASE_LABEL:
+        if label:
             self.label_menu_requested.emit(label, self.viewport().mapToGlobal(pos))
 
     def show_labels(
         self, labels: list[str], shapes: list[Shape], active: str | None = None
     ) -> None:
-        """Replace the list with ``labels``, per-label counts and the active label.
-
-        The first row is always Erase: shapes drawn with it cut the masks underneath.
-        """
+        """Replace the list with ``labels``, per-label counts and the active label."""
         self.clear()
-        erase = QListWidgetItem("✂  Erase (cut out of masks)")
-        erase.setData(Qt.ItemDataRole.UserRole, ERASE_LABEL)
-        erase.setToolTip("Shapes drawn with Erase are cut out of the masks under them")
-        self._bold_if(erase, active == ERASE_LABEL)
-        self.addItem(erase)
         for label in labels:
             count = sum(1 for s in shapes if s.label == label)
             text = f"{label}  ({count})" if count else label
