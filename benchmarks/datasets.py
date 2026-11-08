@@ -65,6 +65,18 @@ def load_ground_truth(mask_path: Path) -> np.ndarray:
     return mask > 128 if mask.max() == 255 else mask > 0
 
 
+def load_ignore_region(mask_path: Path) -> np.ndarray:
+    """Pixels the ground truth marks as uncertain, scored as neither object nor background.
+
+    Only GrabCut has them: its 128-valued band along the object boundary (RITM ignores it
+    the same way). Elsewhere the result is all False.
+    """
+    mask = np.array(Image.open(mask_path))
+    if mask.ndim == 3:
+        mask = mask[..., 0]
+    return mask == 128 if mask.max() == 255 else np.zeros(mask.shape, dtype=bool)
+
+
 def available(root: Path = ROOT) -> list[Dataset]:
     """Datasets that are present on disk."""
     return [d for d in DATASETS if d.is_available(root)]
