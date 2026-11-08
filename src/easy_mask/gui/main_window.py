@@ -471,7 +471,10 @@ class MainWindow(QMainWindow):
             return
         target = self.current_index + delta
         if 0 <= target < len(self.image_paths) and self.maybe_save():
+            carry = self.video.capture_for_tracking() if delta == 1 else None
             self._load(target)
+            if carry is not None and self.current_index == target:
+                self.video.track(carry)
 
     def open_image_dialog(self) -> None:
         """Ask for an image file and open it."""

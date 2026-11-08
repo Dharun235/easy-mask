@@ -63,8 +63,44 @@ class VideoMenu:
         menu.addSeparator()
         window._action(menu, "Propagate Forward...", lambda: self.propagate(+1), "Ctrl+Shift+Right")
         window._action(menu, "Propagate Backward...", lambda: self.propagate(-1), "Ctrl+Shift+Left")
+        self.track_action = window._action(
+            menu, "Track Objects into Next Frame", self._toggle_tracking, "Ctrl+Shift+T", True
+        )
         self.stop_action = window._action(menu, "Stop Propagation", self.stop, "Ctrl+.")
         self.stop_action.setEnabled(False)
+
+    # ------------------------------------------------------------------ tracking
+
+    @property
+    def tracking(self) -> bool:
+        """True if moving to the next frame carries the objects along."""
+        return self.track_action.isChecked()
+
+    def _toggle_tracking(self, checked: bool) -> None:
+        self.window.statusBar().showMessage(
+            "Tracking on: Next Image (D) carries the selected (or all) objects forward"
+            if checked
+            else "Tracking off",
+            5000,
+        )
+
+    def capture_for_tracking(self) -> tuple[int, list[Shape], set[ObjectKey]] | None:
+        """Before leaving a frame: what to carry into the next one (None if nothing)."""
+        w = self.window
+        if not self.tracking or w.current_index is None:
+            return None
+        shapes = list(w.canvas.shapes)
+        chosen = [shapes[i] for i in w.canvas.selection] or shapes
+        objects = {object_key(s) for s in chosen if s.shape_type.is_area}
+        return (w.current_index, shapes, objects) if objects else None
+
+    def track(self, carry: tuple[int, list[Shape], set[ObjectKey]]) -> None:
+        """After arriving on the next frame: propagate the captured objects into it."""
+        start, shapes, objects = carry
+        if self.running:
+            self.window.statusBar().showMessage("Still tracking the previous frame...", 3000)
+            return
+        self._run(start, +1, 1, objects, shapes)
 
     @property
     def running(self) -> bool:
@@ -165,20 +201,35 @@ class VideoMenu:
         )
         if count is None:
             return
+        if shapes != w.canvas.shapes:
+            w._replace_shapes(shapes)
+        self._run(current, direction, int(count), objects, shapes)
+
+    def _ensure_propagator(self) -> Propagator:
         if self.propagator is None:
             try:
                 self.propagator = self.make_propagator()
             except ImportError:
                 self.propagator = CopyPropagator()
-        if shapes != w.canvas.shapes:
-            w._replace_shapes(shapes)
+        return self.propagator
 
-        indices = [current + direction * step for step in range(int(count) + 1)]
+    def _run(
+        self,
+        current: int,
+        direction: int,
+        count: int,
+        objects: set[ObjectKey],
+        shapes: list[Shape],
+    ) -> None:
+        """Propagate ``objects`` from frame ``current`` over ``count`` frames in the background."""
+        w = self.window
+        propagator = self._ensure_propagator()
+        indices = [current + direction * step for step in range(count + 1)]
         frames = [w.image_paths[i] for i in indices]
         frame_shapes = [self._frame_shapes(i) for i in indices]
         frame_shapes[0] = [s for s in shapes if object_key(s) in objects]  # only chosen objects
         size = (w.image_size[1], w.image_size[0])
-        worker = PropagationWorker(self.propagator, frames, frame_shapes, size)
+        worker = PropagationWorker(propagator, frames, frame_shapes, size)
         worker.frame_done.connect(
             lambda position, new: self._on_frame_done(indices, position, objects, new)
         )
@@ -186,7 +237,7 @@ class VideoMenu:
         worker.finished.connect(self._on_finished)
         self.worker = worker
         self.stop_action.setEnabled(True)
-        if isinstance(self.propagator, CopyPropagator):
+        if isinstance(propagator, CopyPropagator):
             note = "" if w.settings.video_model == COPY_MODEL else f"{FALLBACK_NOTE}. "
             w.statusBar().showMessage(f"{note}Copying masks...")
         else:

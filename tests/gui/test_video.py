@@ -296,3 +296,61 @@ def test_default_backend_without_video_extra_copies_instead(qtbot, window, image
     assert "--extra video" in window.statusBar().currentMessage()
     qtbot.waitUntil(lambda: not window.video.running, timeout=5000)
     assert saved(image_dir, "img2")[0].points == [(10, 10), (19, 19)]
+
+
+# ---------------------------------------------------------------------- track while navigating
+
+
+def test_tracking_carries_objects_into_next_frame(qtbot, window, video, image_dir):
+    window.settings.autosave = True
+    window.canvas.set_shapes([rect(10), rect(40, label="bike")])
+    window.video.track_action.setChecked(True)
+    window.next_image()
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    assert window.image_path.name == "img2.png"
+    labels = sorted(s.label for s in window.canvas.shapes)
+    assert labels == ["bike", "car"]
+    assert all(s.flags == {PROPAGATED_FLAG: True} for s in window.canvas.shapes)
+    car = next(s for s in window.canvas.shapes if s.label == "car")
+    assert car.points[0] == (12, 10)  # the fake model moved it 2 px
+
+
+def test_tracking_only_selected_objects(qtbot, window, video):
+    window.settings.autosave = True
+    window.canvas.set_shapes([rect(10), rect(40, label="bike")])
+    window.canvas.select(1)
+    window.video.track_action.setChecked(True)
+    window.next_image()
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    assert [s.label for s in window.canvas.shapes] == ["bike"]
+
+
+def test_tracking_off_or_going_back_does_nothing(qtbot, window, video, fake_propagator):
+    window.settings.autosave = True
+    window.canvas.set_shapes([rect(10)])
+    window.next_image()  # tracking is off by default
+    assert window.canvas.shapes == [] and fake_propagator.calls == []
+    window.video.track_action.setChecked(True)
+    window.canvas.set_shapes([rect(10)])
+    window.prev_image()  # only Next Image tracks
+    assert fake_propagator.calls == []
+
+
+def test_tracking_never_overwrites_hand_drawn_shapes(qtbot, window, video, image_dir):
+    save_frame(image_dir, "img2", [rect(60)])  # the user already drew the car on img2
+    window.settings.autosave = True
+    window.canvas.set_shapes([rect(10)])
+    window.video.track_action.setChecked(True)
+    window.next_image()
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    (car,) = window.canvas.shapes
+    assert car.points[0] == (60, 10) and not is_auto(car)
+
+
+def test_tracking_toggle_is_remembered(make_window):
+    from easy_mask.gui.main_window import Settings
+
+    first = make_window(Settings())
+    first.video.track_action.setChecked(True)
+    first.session.save()
+    assert make_window(Settings()).video.tracking

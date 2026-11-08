@@ -59,6 +59,8 @@ class Session:
         state = self.store.value("window/state")
         if state is not None:
             w.restoreState(state)
+        if str(self.store.value("track_next", "false")).lower() == "true":
+            w.video.track_action.setChecked(True)
         cleanup = self.store.value("auto_cleanup")
         if cleanup is not None:
             w.auto_cleanup = str(cleanup).lower() == "true"
@@ -75,6 +77,7 @@ class Session:
         self.store.setValue("window/geometry", w.saveGeometry())
         self.store.setValue("window/state", w.saveState())
         self.store.setValue("auto_cleanup", w.auto_cleanup)
+        self.store.setValue("track_next", w.video.tracking)
         for name, tool in w.pixel_tools.items():
             for attr in TOOL_SIZE_ATTRS:
                 if hasattr(tool, attr):
