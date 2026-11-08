@@ -34,9 +34,7 @@ checkpoints/
 /exports/
 
 # ---------------------------------------------------------------- Editors / OS
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
+.vscode/
 .idea/
 *.swp
 .DS_Store
