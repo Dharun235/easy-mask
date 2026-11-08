@@ -32,7 +32,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Shapes | polygon, rectangle, circle, line, line strip, point, pixel **mask** |
 | AI Segment | click an object (right/Alt-click = background, drag = box), live preview, Enter to keep; EfficientSAM on CPU, offline after a one-time download |
 | Mask editing | brush and eraser, union / subtract / intersect, fill holes, remove specks, grow / shrink, smooth, mask <-> polygon |
-| Pixel tools (no AI) | magic wand, GrabCut from a box, superpixel picking, watershed from scribbles, threshold (manual / Otsu / adaptive) and colour range with live preview |
+| Pixel tools (no AI) | magic wand, threshold (manual / Otsu / adaptive) and colour range with live preview |
 | Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
 | Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
 | Labels | **active label** with keys `1`-`9` (no dialog per shape), label dialog with autocomplete, distinct colours, group id, description |
@@ -43,7 +43,8 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Image flags | per-image checkboxes for classification or data cleaning (`--flags`) |
 | Saving | one JSON per image next to the image or in `--output`, optional auto-save, crash-safe writes |
 | Export | semantic mask PNG, instance mask PNG, COCO instance JSON (polygons or exact RLE), YOLO-seg TXT, DAVIS-style video masks (GUI or CLI) |
-| Workflow | review mode (step and zoom through every object, `reviewed` flag), copy shapes from previous image, folder statistics, strict label list |
+| Per-object export | **binary mask** PNG, **cutout** (the object's original pixels on transparency) and **coordinates** (box, area, outline points in `objects.json` / `objects.csv`) for every object; pick any of the three |
+| Workflow | review mode (step and zoom through every object, `reviewed` flag), folder statistics, strict label list |
 | Video | open mp4/avi/mov (frames extracted, `--frame-step`, `--max-frames`) or a frame folder; keyframe interpolation; mask propagation with memory (EfficientTAM / SAM 2.1, optional extra) |
 | Privacy | 100% offline; images never leave your disk |
 
@@ -120,6 +121,7 @@ uv run easy-mask images/ --flags blurry,occluded --no-autosave   # ask before le
 uv run easy-mask export images/ --format coco  --out dataset/
 uv run easy-mask export images/ --format masks --out dataset/   # semantic + instance PNGs
 uv run easy-mask export images/ --format yolo  --out dataset/
+uv run easy-mask export images/ --format objects --parts masks,cutouts,coordinates --out objects/
 uv run easy-mask export images/ --format coco --rle --out dataset/  # masks as exact COCO RLE
 
 # progress and label check: per-label objects/area, annotated/reviewed counts
@@ -163,11 +165,10 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
 | `D` / `A` | next / previous image | `Ctrl+S` | save |
 | `Ctrl+wheel` | zoom at cursor | wheel / middle-drag | pan |
 | `F` | fit image to window | `Ctrl+C` / `Ctrl+V` | copy / paste shape |
-| `B` / `X` | brush / eraser | `[` / `]` | smaller / bigger brush (or wand tolerance, superpixel / marker size) |
-| `W` | magic wand (Shift add, Alt subtract) | `G` | GrabCut: drag a box (Shift add, Alt subtract) |
-| `S` | superpixels: click / drag to pick | `M` | watershed: drag object markers, Alt+drag background, `Enter` runs |
+| `B` / `X` | brush / eraser | `[` / `]` | smaller / bigger brush (or wand tolerance) |
+| `W` | magic wand (Shift add, Alt subtract) | `L` / `T` / `O` | line / line strip / point (Draw menu) |
 | `Ctrl+T` | threshold / colour-range panel | View > Adjust Display | brightness, CLAHE, channel, mask opacity |
-| `N` / `Shift+N` | review next / previous object | `Ctrl+Shift+V` | copy shapes from previous image |
+| `N` / `Shift+N` | review next / previous object | `Ctrl+Alt+Right` | copy masks to next frames |
 | `Ctrl+I` | folder statistics | | |
 | `I` | AI Segment | click / right-click / drag | object point / background point / box |
 | `Enter` / double-click (AI) | keep the AI mask | `Esc` / `Backspace` (AI) | clear prompts / undo last prompt |

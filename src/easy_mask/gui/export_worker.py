@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
 from easy_mask.io import export
-from easy_mask.io.export import AnnotatedImage
+from easy_mask.io.export import PARTS, AnnotatedImage
 
 
 class ExportCancelledError(Exception):
@@ -25,8 +25,16 @@ class ExportWorker(QThread):
     failed = Signal(str)
     exported = Signal(int)
 
-    def __init__(self, items: list[AnnotatedImage], fmt: str, out: Path, labels: list[str]):
+    def __init__(
+        self,
+        items: list[AnnotatedImage],
+        fmt: str,
+        out: Path,
+        labels: list[str],
+        parts: tuple[str, ...] = PARTS,
+    ):
         super().__init__()
+        self.parts = parts  # what the Objects export writes; ignored by other formats
         self.items = items
         self.fmt = fmt
         self.out = out
@@ -40,7 +48,12 @@ class ExportWorker(QThread):
     def run(self) -> None:
         """Runs on the worker thread."""
         try:
-            export.EXPORTERS[self.fmt](self.items, self.out, self.labels, progress=self._report)
+            if self.fmt == "objects":
+                export.export_objects(
+                    self.items, self.out, self.labels, progress=self._report, parts=self.parts
+                )
+            else:
+                export.EXPORTERS[self.fmt](self.items, self.out, self.labels, progress=self._report)
         except ExportCancelledError:
             return
         except Exception as exc:  # shown to the user, not swallowed

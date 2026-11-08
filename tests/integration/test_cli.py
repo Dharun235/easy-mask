@@ -110,3 +110,27 @@ def test_export_davis_command(image_dir, square, tmp_path):
     out = tmp_path / "davis"
     assert main(["export", str(image_dir), "--format", "davis", "--out", str(out)]) == 0
     assert (out / "Annotations" / image_dir.name / "img1.png").exists()
+
+
+def test_export_objects_with_parts(image_dir, square, tmp_path):
+    ann_io.save(Annotation("img1.png", 100, 80, [square]), image_dir / "img1.json")
+    out = tmp_path / "objs"
+    args = ["export", str(image_dir), "--format", "objects", "--parts", "masks", "--out", str(out)]
+    assert main(args) == 0
+    assert (out / "masks" / "img1_01_cat.png").exists() and not (out / "cutouts").exists()
+
+
+def test_export_objects_bad_parts(image_dir, square, tmp_path, capsys):
+    ann_io.save(Annotation("img1.png", 100, 80, [square]), image_dir / "img1.json")
+    args = [
+        "export",
+        str(image_dir),
+        "--format",
+        "objects",
+        "--parts",
+        "pixels",
+        "--out",
+        str(tmp_path),
+    ]
+    assert main(args) == 2
+    assert "--parts must be" in capsys.readouterr().err

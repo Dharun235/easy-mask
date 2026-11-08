@@ -4,7 +4,8 @@ Three forms::
 
     easy-mask [PATH] [--output DIR] [--labels ...] [--strict-labels] [--flags ...] [--no-autosave]
               [--ai-model M] [--video-model M] [--frame-step N] [--max-frames N]
-    easy-mask export IMAGE_DIR --format {masks,coco,yolo,davis} [--rle] --out DIR   # headless
+    easy-mask export IMAGE_DIR --format {masks,coco,yolo,davis,objects} [--rle] [--parts ...]
+              --out DIR                                                          # headless
     easy-mask stats IMAGE_DIR [--labels ...] [--json]                                # statistics
 """
 
@@ -17,7 +18,7 @@ from easy_mask import __version__
 from easy_mask.ai import efficient_sam
 from easy_mask.core.labels import parse_name_list
 
-EXPORT_FORMATS = ("masks", "coco", "yolo", "davis")
+EXPORT_FORMATS = ("masks", "coco", "yolo", "davis", "objects")
 
 
 def build_gui_parser() -> argparse.ArgumentParser:
@@ -75,6 +76,12 @@ def build_export_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("image_dir", type=Path, help="folder of annotated images")
     parser.add_argument("--format", required=True, choices=EXPORT_FORMATS, help="dataset format")
+    parser.add_argument(
+        "--parts",
+        default="masks,cutouts,coordinates",
+        help="with --format objects: any of masks (binary PNG per object), cutouts (the "
+        "object's original pixels, transparent elsewhere), coordinates (objects.json + .csv)",
+    )
     parser.add_argument("--out", required=True, type=Path, help="destination folder")
     parser.add_argument(
         "--annotations", type=Path, help="folder of JSON files (default: image_dir)"
@@ -129,12 +136,23 @@ def run_export(args: argparse.Namespace) -> int:
     if args.rle and args.format != "coco":
         print("--rle only applies to --format coco", file=sys.stderr)
         return 2
+    parts = tuple(parse_name_list(args.parts))
+    if args.format == "objects" and (not parts or set(parts) - set(export.PARTS)):
+        print(
+            f"--parts must be a comma-separated subset of {', '.join(export.PARTS)}",
+            file=sys.stderr,
+        )
+        return 2
     items = export.collect(args.image_dir, args.annotations)
     if not items:
         print(f"No annotated images found in {args.image_dir}", file=sys.stderr)
         return 1
     fmt = "coco-rle" if args.rle else args.format
-    export.EXPORTERS[fmt](items, args.out, parse_name_list(args.labels) or None)
+    labels = parse_name_list(args.labels) or None
+    if fmt == "objects":
+        export.export_objects(items, args.out, labels, parts=parts)
+    else:
+        export.EXPORTERS[fmt](items, args.out, labels)
     print(f"Exported {len(items)} images as {fmt} to {args.out}")
     return 0
 

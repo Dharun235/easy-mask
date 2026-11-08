@@ -42,6 +42,7 @@ from easy_mask.gui.display_dialog import DisplayDialog
 from easy_mask.gui.export_worker import ExportWorker
 from easy_mask.gui.icons import icon
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
+from easy_mask.gui.object_export_dialog import ask_object_parts
 from easy_mask.gui.progress import ProgressPanel
 from easy_mask.gui.session import Session
 from easy_mask.gui.shortcuts import ShortcutsDialog
@@ -127,6 +128,8 @@ class MainWindow(QMainWindow):
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
         self.last_export: tuple[str, Path] | None = None  # (format, folder), per project
         self.export_worker: ExportWorker | None = None
+        self.object_parts: list[str] = list(export.PARTS)  # what Objects exports, per project
+        self.ask_object_parts = ask_object_parts  # swappable in tests
         self.video_worker: VideoImportWorker | None = None
         self.ask_video_import = VideoImportDialog.ask  # swappable in tests
         # Tidy AI / smart-tool masks (specks, pinholes) before storing them; brush is exact.
@@ -292,8 +295,8 @@ class MainWindow(QMainWindow):
         prev_image = self._action(m, "Previous Image", self.prev_image, "A")
         m.addSeparator()
         export_menu = m.addMenu("Export Folder As")
-        for name in export.EXPORTERS:
-            self._action(export_menu, name, lambda _=False, n=name: self.export_dataset(n))
+        for fmt, name in export.EXPORT_NAMES.items():
+            self._action(export_menu, name, lambda _=False, f=fmt: self.export_dataset(f))
         self._export_again_action = self._action(
             m, "Export Again", self.export_again, "Ctrl+Shift+E"
         )
@@ -929,6 +932,11 @@ class MainWindow(QMainWindow):
             return
         if not self.maybe_save():
             return
+        if fmt == "objects":
+            parts = self.ask_object_parts(self.object_parts, self)
+            if parts is None:
+                return
+            self.object_parts = parts
         out = QFileDialog.getExistingDirectory(self, f"Export {fmt} to folder")
         if not out:
             return
@@ -956,7 +964,7 @@ class MainWindow(QMainWindow):
         for item in items:
             for shape in item.annotation.shapes:
                 self._remember_label(shape.label)
-        worker = ExportWorker(items, fmt, out, list(self.known_labels))
+        worker = ExportWorker(items, fmt, out, list(self.known_labels), tuple(self.object_parts))
         self.progress.begin("export", f"Exporting {fmt}", total=len(items), cancel=worker.cancel)
         worker.progress.connect(lambda done, total: self.progress.report("export", done, total))
         worker.failed.connect(self._error)

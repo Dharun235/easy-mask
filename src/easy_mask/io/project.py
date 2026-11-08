@@ -24,6 +24,7 @@ class Project:
         export_format: Format of the last export (a key of ``io.export.EXPORTERS``).
         export_dir: Folder of the last export, relative to the image folder when possible.
         export_on_close: Repeat the last export when easy-mask closes.
+        object_parts: What the Objects export writes (masks / cutouts / coordinates).
     """
 
     labels: list[str] = field(default_factory=list)
@@ -33,6 +34,7 @@ class Project:
     export_format: str | None = None
     export_dir: str | None = None
     export_on_close: bool = False
+    object_parts: list[str] | None = None
 
 
 def load(folder: Path) -> Project | None:

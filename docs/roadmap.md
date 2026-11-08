@@ -23,7 +23,7 @@ Manual tools on par with classic annotators.
 
 ## v0.3 — classic pixel tools (`feat/pixel-tools`)
 - [x] Threshold (manual / Otsu / adaptive), colour range, magic wand
-- [x] GrabCut from a box, watershed from markers, superpixel picking
+- [x] ~~GrabCut box, watershed, superpixels~~ (removed in v0.9: AI Segment's box prompt and the brush cover them)
 - [x] View adjustments: brightness / contrast / gamma, CLAHE, channel view, mask opacity
 - [x] Classic-tools benchmark on GrabCut / Berkeley / DAVIS
 

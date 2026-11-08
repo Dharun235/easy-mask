@@ -18,6 +18,7 @@ from PIL import Image
 from PySide6.QtGui import QImage
 
 from easy_mask.core import annotation as ann_io
+from easy_mask.core import masks as masks_mod
 from easy_mask.core.annotation import Annotation
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.io import export
@@ -118,3 +119,30 @@ def test_mask_storage_is_lossless_and_polygons_close(dataset):
     results = [evaluate(gt) for _, gt in dataset.samples()]
     assert all(r["lossless"] == 1.0 for r in results)
     assert np.mean([r["iou@1.0"] for r in results]) > 0.9
+
+
+def test_objects_export_is_pixel_exact_on_real_images(dataset, tmp_path):
+    """Binary masks equal the ground truth; cutouts carry the image's own pixels."""
+    images = list_images(ROOT / dataset.images)[:5]
+    ann_dir = tmp_path / "labels"
+    gts = {}
+    for path in images:
+        gt = foreground(ROOT / dataset.masks / (path.stem + dataset.mask_suffix))
+        gts[path.stem] = gt
+        shape = masks_mod.to_shape("object", gt)
+        height, width = gt.shape
+        ann_io.save(Annotation(path.name, width, height, [shape]), ann_dir / f"{path.stem}.json")
+    items = export.collect(ROOT / dataset.images, ann_dir)
+    export.export_objects(items, tmp_path / "out")
+    for path in images:
+        gt = gts[path.stem]
+        mask = np.array(Image.open(tmp_path / "out" / "masks" / f"{path.stem}_01_object.png"))
+        assert np.array_equal(mask == 255, gt)
+        cutout = np.array(Image.open(tmp_path / "out" / "cutouts" / f"{path.stem}_01_object.png"))
+        ys, xs = np.nonzero(gt)
+        with Image.open(path) as image:
+            rgb = np.asarray(image.convert("RGB"))
+        crop = rgb[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+        inside = cutout[..., 3] == 255
+        assert np.array_equal(cutout[..., :3][inside], crop[inside])
+        assert np.array_equal(inside, gt[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1])

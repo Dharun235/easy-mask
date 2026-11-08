@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Removed
+- GrabCut, Watershed and Superpixels tools (AI Segment's box prompt, the wand and the brush cover them; core GrabCut stays as a benchmark baseline).
+- Workflow > Copy Shapes from Previous Image (same as Copy to Next Frames / Track).
+- Line, line strip and point left the toolbar (still in the Draw menu with L / T / O).
+
 ### Changed
 - onnxruntime is a regular dependency: AI Segment works without `--extra ai` (kept as an empty alias).
 - Auto-save is on by default (`--no-autosave` restores the save prompt).
@@ -19,6 +24,7 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Objects export (File > Export Folder As > Objects, or `--format objects --parts ...`): per object a binary mask PNG, a cutout of the original pixels (RGBA, cropped) and/or coordinates (`objects.json` / `objects.csv` with box, area and outline points); the choice is remembered per folder.
 - AI Propagate vs Copy: separate actions and toolbar buttons. AI Propagate gives the frame's masks (from any area shape) to EfficientTAM / SAM 2.1; Copy repeats them unchanged. Without the video add-on, AI Propagate explains how to install it and offers copying instead.
 - Progress feedback: a status-bar progress panel with Cancel for AI model download / image preparation, propagation, export and video import; exports and video imports run in the background.
 - File > Import Video Frames: choose output folder, PNG / JPEG / WebP and quality, every n-th frame and a frame limit; opening a not-yet-imported video shows this dialog.
