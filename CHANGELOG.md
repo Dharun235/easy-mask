@@ -41,6 +41,7 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Right-click a label in the Labels panel > Delete From All Frames: removes every shape with that label in the folder (one undo step).
 - Erase as a label: finish any shape with *Erase With It* (label dialog) or the ✂ Erase row (Labels panel) and it cuts the masks under it instead of being kept; Propagate carries the cut. Or propagate a shape first and right-click > *Erase With This*: it cuts the other masks on this frame and every frame it was propagated to, then goes (one Undo reverts).
 - Eraser removes what you paint from every mask under it (only the selected shapes, if any), and Propagate carries the erased part through the next frames like another object (copy without the video add-on).
 - Clear Labels From Here (Propagate's dropdown): delete every shape on this and the next frames.

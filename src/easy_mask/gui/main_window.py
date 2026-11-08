@@ -253,6 +253,7 @@ class MainWindow(QMainWindow):
         self.flag_list = FlagList()
         self.label_list = LabelList()
         self.label_list.label_clicked.connect(self._on_label_clicked)
+        self.label_list.label_menu_requested.connect(self._show_label_menu)
         self.shape_list = ShapeList()
         self.file_list = FileList()
         self.flags_dock = self._dock("Flags", self.flag_list, right)
@@ -766,6 +767,28 @@ class MainWindow(QMainWindow):
         """Clicking a label activates it; clicking the active label switches back to asking."""
         self.set_active_label(None if label == self.active_label else label)
 
+    def _show_label_menu(self, label: str, position: QPoint) -> None:
+        """Right-click on a label: what can be done with it in the whole folder."""
+        menu = QMenu(self)
+        menu.addAction(f"Use “{label}” for New Shapes", lambda: self.set_active_label(label))
+        menu.addSeparator()
+        menu.addAction(
+            icon("eraser"),
+            f"Delete “{label}” From All Frames",
+            lambda: self.video.remove_label(label),
+        )
+        self.show_menu(menu, position)
+
+    def forget_label(self, label: str) -> None:
+        """Drop ``label`` from the label list (unless it was given on the command line)."""
+        if label in self.known_labels and label not in self._startup.labels:
+            self.known_labels.remove(label)
+        if self.active_label == label:
+            self.active_label = None
+            self._show_active_label()
+        self.session.save_project()
+        self._refresh_panels()
+
     def _show_active_label(self) -> None:
         if self.active_label is None:
             text = "Label: ask each time (click a label to use it)"
@@ -1020,6 +1043,8 @@ class MainWindow(QMainWindow):
                 self.canvas.set_shapes(shapes or [])
                 self._baseline = None if shapes is None else [s.copy() for s in shapes]
                 self._mark_dirty()
+            for shape in shapes or []:
+                self._remember_label(shape.label)  # e.g. a label deleted everywhere is back
             else:
                 self.write_frame(index, shapes)
         self._refresh_panels()

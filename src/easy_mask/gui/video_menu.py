@@ -467,6 +467,20 @@ class VideoMenu:
         self._end_run()
         w.statusBar().showMessage(f"Cleared {len(self.changed)} frame(s)  ·  Undo puts them back")
 
+    def remove_label(self, label: str) -> None:
+        """Delete every shape with ``label`` on every frame of the folder (one undo step)."""
+        w = self.window
+        if w.current_index is None or self.running:
+            return
+        self._begin_run()
+        for index in range(len(w.image_paths)):
+            self._update_frame(index, lambda shapes: [s for s in shapes if s.label != label])
+        self._end_run()
+        w.forget_label(label)
+        w.statusBar().showMessage(
+            f"Deleted “{label}” from {len(self.changed)} frame(s)  ·  Undo brings it back", 8000
+        )
+
     # ------------------------------------------------------------------ one undo step per run
 
     def _begin_run(self) -> None:

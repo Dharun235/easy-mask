@@ -107,7 +107,7 @@ Select, AI, Polygon, Box, Brush, Eraser, Export**.
 7. **Export**: the first click asks the format and folder; later clicks repeat it.
 
 Right-click a shape for its actions (edit label, delete, propagate, erase with it, mask
-operations). Keys are optional: Help > Keyboard Shortcuts.
+operations). Right-click a label in the Labels panel to delete it from every frame. Keys are optional: Help > Keyboard Shortcuts.
 
 AI and smart-tool masks are tidied automatically (specks and pinholes removed). AI Segment needs no extra install: the model downloads on first use.
 

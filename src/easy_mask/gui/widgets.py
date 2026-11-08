@@ -6,7 +6,7 @@ The main window decides what the data is.
 
 from pathlib import Path
 
-from PySide6.QtCore import QItemSelectionModel, Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QAbstractItemView, QListWidget, QListWidgetItem, QWidget
 
@@ -59,16 +59,28 @@ class LabelList(QListWidget):
 
     Signals:
         label_clicked(str): The user clicked a label.
+        label_menu_requested(str, QPoint): The user right-clicked a label (global position).
     """
 
     label_clicked = Signal(str)
+    label_menu_requested = Signal(str, QPoint)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setToolTip("Click a label to use it for new shapes; click it again to be asked")
+        self.setToolTip(
+            "Click a label to use it for new shapes (again to be asked); right-click for more"
+        )
         self.itemClicked.connect(
             lambda item: self.label_clicked.emit(item.data(Qt.ItemDataRole.UserRole))
         )
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._request_menu)
+
+    def _request_menu(self, pos: QPoint) -> None:
+        item = self.itemAt(pos)
+        label = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if label and label != ERASE_LABEL:
+            self.label_menu_requested.emit(label, self.viewport().mapToGlobal(pos))
 
     def show_labels(
         self, labels: list[str], shapes: list[Shape], active: str | None = None

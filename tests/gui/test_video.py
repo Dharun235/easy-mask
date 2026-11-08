@@ -574,3 +574,32 @@ def test_right_click_offers_erase_with_this(window, ui):
     ui.click(12, 12, Qt.MouseButton.RightButton)
     (erase,) = [a for a in shown[0].actions() if a.text() == "Erase With This"]
     assert erase.isEnabled()
+
+
+def test_delete_a_label_from_all_frames_and_undo(window, image_dir):
+    save_frame(image_dir, "img2", [rect(10), rect(40, label="tree")])
+    save_frame(image_dir, "img10", [rect(20)])
+    window.canvas.set_shapes([rect(30), rect(60, label="tree")])
+    window._commit()
+    window.video.remove_label("car")
+    assert [s.label for s in window.canvas.shapes] == ["tree"]
+    assert [s.label for s in saved(image_dir, "img2")] == ["tree"]
+    assert saved(image_dir, "img10") == []
+    assert "car" not in window.known_labels
+    assert "Deleted “car” from 3 frame(s)" in window.statusBar().currentMessage()
+    window.undo()  # one step: every frame back, and the label too
+    assert len(window.canvas.shapes) == 2 and saved(image_dir, "img10") == [rect(20)]
+    assert "car" in window.known_labels
+
+
+def test_right_click_a_label_offers_delete_everywhere(window):
+    from PySide6.QtCore import QPoint
+
+    shown = []
+    window.show_menu = lambda menu, pos: shown.append([a.text() for a in menu.actions()])
+    window.label_list.label_menu_requested.emit("cat", QPoint(0, 0))
+    assert "Delete “cat” From All Frames" in shown[0]
+    window.label_list._request_menu(
+        window.label_list.visualItemRect(window.label_list.item(0)).center()
+    )
+    assert len(shown) == 1  # the Erase row has no such menu
