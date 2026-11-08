@@ -22,9 +22,10 @@ Manual tools on par with classic annotators.
 - [x] Mask-fidelity benchmark on GrabCut / Berkeley / DAVIS
 
 ## v0.3 — classic pixel tools (`feat/pixel-tools`)
-- [ ] Threshold (manual / Otsu / adaptive), colour range, magic wand
-- [ ] GrabCut from a box, watershed from markers, superpixel picking
-- [ ] View adjustments: brightness / contrast / gamma, CLAHE, channel view, mask opacity
+- [x] Threshold (manual / Otsu / adaptive), colour range, magic wand
+- [x] GrabCut from a box, watershed from markers, superpixel picking
+- [x] View adjustments: brightness / contrast / gamma, CLAHE, channel view, mask opacity
+- [x] Classic-tools benchmark on GrabCut / Berkeley / DAVIS
 
 ## v0.4 — AI click-to-segment on CPU (`feat/ai-segment`)
 - [ ] `Segmenter` interface with EfficientSAM (ONNX, CPU) as first backend
@@ -43,7 +44,6 @@ Manual tools on par with classic annotators.
 
 ## Later / ideas
 - Text-prompted detection (e.g. Grounding-DINO / SAM3-style) to pre-label
-- Brightness / contrast adjustment for dark images
 - Keep previous frame's annotations when moving to next image
 - Dataset statistics panel, label validation against a fixed list
 - Pascal VOC export, import from COCO

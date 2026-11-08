@@ -31,6 +31,8 @@ no cloud upload, no account, no telemetry. Click-to-segment with
 | --- | --- |
 | Shapes | polygon, rectangle, circle, line, line strip, point, pixel **mask** |
 | Mask editing | brush and eraser, union / subtract / intersect, fill holes, remove specks, grow / shrink, smooth, mask <-> polygon |
+| Pixel tools (no AI) | magic wand, GrabCut from a box, superpixel picking, watershed from scribbles, threshold (manual / Otsu / adaptive) and colour range with live preview |
+| Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
 | Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
 | Labels | label dialog with autocomplete, distinct per-label colours, group id (one object in several parts), description |
 | Navigation | open image or folder, file list with done-marks, next/prev, zoom at cursor, pan, fit |
@@ -77,7 +79,10 @@ uv run easy-mask export images/ --format yolo  --out dataset/
 | `D` / `A` | next / previous image | `Ctrl+S` | save |
 | `Ctrl+wheel` | zoom at cursor | wheel / middle-drag | pan |
 | `F` | fit image to window | `Ctrl+C` / `Ctrl+V` | copy / paste shape |
-| `B` / `X` | brush / eraser | `[` / `]` | smaller / bigger brush |
+| `B` / `X` | brush / eraser | `[` / `]` | smaller / bigger brush (or wand tolerance, superpixel / marker size) |
+| `W` | magic wand (Shift add, Alt subtract) | `G` | GrabCut: drag a box (Shift add, Alt subtract) |
+| `S` | superpixels: click / drag to pick | `M` | watershed: drag object markers, Alt+drag background, `Enter` runs |
+| `Ctrl+T` | threshold / colour-range panel | View > Adjust Display | brightness, CLAHE, channel, mask opacity |
 
 Rectangles, circles and lines can be drawn by dragging or by two clicks.
 

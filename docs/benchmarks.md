@@ -61,6 +61,25 @@ dataset above in the format RITM introduced
 Mask shapes keep every pixel. Polygons lose 1-9% IoU (holes and thin parts), more on
 DAVIS's detailed objects: prefer masks when edges matter, polygons when files must be small.
 
+### Classic pixel tools (v0.3)
+
+`uv run python -m benchmarks.classic_tools` (2026-11-08, Apple Silicon laptop, single
+thread). Each tool gets one prompt derived from the ground truth: GrabCut the tight
+bounding box, Otsu (gray) the same box (the class owning less of the box border is the
+object), magic wand (tolerance 32) one click at the interior point farthest from the edge.
+Cells are mean IoU / milliseconds per image.
+
+| dataset | n | GrabCut (box) | Otsu (box) | Magic wand (click) |
+|---|---|---|---|---|
+| GrabCut | 50 | 0.848 / 1491 | 0.543 / 4 | 0.254 / 3 |
+| Berkeley | 100 | 0.756 / 1741 | 0.432 / 2 | 0.239 / 2 |
+| DAVIS | 345 | 0.661 / 2307 | 0.374 / 4 | 0.168 / 3 |
+
+GrabCut from a box is a usable first pass (refine with brush / eraser or Shift/Alt boxes);
+one-shot threshold and wand clicks are only good on high-contrast or flat-coloured objects
+and are meant to be combined with Shift+click / Alt+click and clean-up. These are the
+baselines the AI click tool (v0.4) has to beat.
+
 ## Plan
 
 1. **v0.1 (now):** unit and GUI tests on synthetic images (fast, no downloads, run in CI).
