@@ -5,10 +5,12 @@ milliseconds, so both run in a :class:`QThreadPool` with one thread. Jobs theref
 in the order they were started, and results come back to the UI thread as Qt signals.
 """
 
+import contextlib
 import threading
 from collections.abc import Callable
 
 import numpy as np
+from PIL import Image
 from PySide6.QtCore import QObject, QRunnable, Signal
 
 from easy_mask.ai.segmenter import Segmenter
@@ -72,3 +74,20 @@ class EncodeJob(QRunnable):
 
     def _report_download(self, name: str, done: int, total: int) -> None:
         self.signals.progress.emit(f"AI Segment: downloading {name} ({100 * done // total}%)")
+
+
+class PrefetchJob(QRunnable):
+    """Encode an image file into the cache ahead of time (never loads the model)."""
+
+    def __init__(self, segmenter: Segmenter, path: str):
+        super().__init__()
+        self.segmenter = segmenter
+        self.path = path
+
+    def run(self) -> None:
+        """Runs on the worker thread; failures only mean no head start."""
+        # Best effort: on any failure the image is simply encoded on demand later.
+        with contextlib.suppress(Exception):
+            with Image.open(self.path) as image:
+                rgb = np.asarray(image.convert("RGB"))
+            self.segmenter.precompute(rgb, self.path)

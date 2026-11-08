@@ -160,9 +160,41 @@ def test_ui_stays_responsive_while_encoding(make_window, image_dir, driver, qtbo
 def test_images_are_encoded_once_and_reused(window, ui, ai, fake_segmenter, qtbot):
     window.next_image()
     qtbot.waitUntil(lambda: ai.ready)
+    ai.wait()
+    encoded = len(fake_segmenter.encoded)
     window.prev_image()
     qtbot.waitUntil(lambda: ai.ready)
-    assert len(fake_segmenter.encoded) == 2
+    ai.wait()
+    assert len(fake_segmenter.encoded) == encoded  # going back reuses the cached embedding
+
+
+def test_next_images_are_prefetched_once_model_is_loaded(window, ai, fake_segmenter, qtbot):
+    ai.wait()
+    for path in window.image_paths:  # img1 shown; img2 and img10 prepared in the background
+        assert fake_segmenter.is_cached(str(path))
+    encoded = len(fake_segmenter.encoded)
+    window.next_image()
+    assert ai.ready or qtbot.waitUntil(lambda: ai.ready, timeout=1000) is None
+    ai.wait()
+    assert len(fake_segmenter.encoded) == encoded  # instant: nothing new to encode
+
+
+def test_no_prefetch_or_download_before_ai_is_used(make_window, image_dir, fake_segmenter):
+    loads = []
+    win = make_window()
+    win.load_segmenter = lambda progress: loads.append(1) or fake_segmenter
+    win.open_path(image_dir)
+    win.next_image()
+    win.pixel_tools["ai"].wait()
+    assert loads == [] and fake_segmenter.encoded == []
+
+
+def test_prefetch_survives_unreadable_files(window, ai, fake_segmenter, image_dir):
+    broken = image_dir / "broken.png"
+    broken.write_bytes(b"not an image")
+    ai.prefetch([str(broken)])
+    ai.wait()
+    assert not fake_segmenter.is_cached(str(broken))
 
 
 def test_download_progress_is_shown(make_window, image_dir, qtbot, fake_segmenter):

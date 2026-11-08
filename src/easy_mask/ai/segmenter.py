@@ -106,6 +106,20 @@ class Segmenter(ABC):
                     self._cache.popitem(last=False)  # least recently used
             self._current = entry
 
+    def precompute(self, rgb: np.ndarray, key: str) -> None:
+        """Encode ``rgb`` into the cache under ``key`` without making it the current image.
+
+        Used to prepare the next images in the background so switching to them is instant.
+        """
+        if self.is_cached(key):
+            return
+        entry = (self._encode(rgb), (rgb.shape[0], rgb.shape[1]))
+        with self._lock:
+            self._cache[key] = entry
+            self._cache.move_to_end(key, last=False)  # evict prefetched images first
+            while len(self._cache) > self._cache_size:
+                self._cache.popitem(last=False)
+
     def is_cached(self, key: str) -> bool:
         """True if an embedding for ``key`` is cached (``set_image`` will be instant)."""
         with self._lock:

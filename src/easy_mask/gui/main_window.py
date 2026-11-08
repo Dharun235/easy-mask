@@ -52,6 +52,7 @@ from easy_mask.io import export
 from easy_mask.io.images import is_image, list_images
 from easy_mask.io.video import extract_frames, is_video
 
+PREFETCH_AHEAD = 3  # images encoded ahead for AI Segment: the current one and the next two
 DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
 # Toolbar entries: (text, tool, shortcut). A ShapeType draws that shape, None is edit
@@ -123,6 +124,7 @@ class MainWindow(QMainWindow):
         )
 
         self.canvas = Canvas(self)
+        self.ai_tool = self._make_ai_tool()
         self.pixel_tools: dict[str, CanvasTool] = {
             "brush": BrushTool(self._apply_stroke),
             "eraser": BrushTool(self._apply_stroke, erase=True),
@@ -130,7 +132,7 @@ class MainWindow(QMainWindow):
             "grabcut": GrabCutTool(self._apply_stroke),
             "superpixel": SuperpixelTool(self._apply_stroke),
             "watershed": WatershedTool(self._apply_stroke),
-            "ai": self._make_ai_tool(),
+            "ai": self.ai_tool,
         }
         self.threshold_dialog: ThresholdDialog | None = None
         self.display_dialog: DisplayDialog | None = None
@@ -162,7 +164,14 @@ class MainWindow(QMainWindow):
         )
         tool.status.connect(lambda text: self.statusBar().showMessage(text))
         tool.error.connect(self._on_ai_error)
+        tool.encoded.connect(self._prefetch_ahead)
         return tool
+
+    def _prefetch_ahead(self) -> None:
+        """Head start for AI Segment on this and the next images (once the model is up)."""
+        if self.current_index is not None:
+            ahead = self.image_paths[self.current_index : self.current_index + PREFETCH_AHEAD]
+            self.ai_tool.prefetch([str(p) for p in ahead])
 
     def _on_ai_error(self, message: str) -> None:
         self.set_tool(None)
@@ -392,6 +401,7 @@ class MainWindow(QMainWindow):
         self._refresh_panels()
         self._update_title()
         self.canvas.setFocus()
+        self._prefetch_ahead()
 
     def _on_file_row_changed(self, row: int) -> None:
         if row < 0 or row == self.current_index:

@@ -147,3 +147,17 @@ def test_set_image_can_run_on_another_thread(fake_segmenter):
     worker.join()
     assert fake_segmenter.is_cached("a")
     assert fake_segmenter.predict([(5, 5)], [POSITIVE])
+
+
+def test_precompute_caches_without_changing_current_image(fake_segmenter):
+    import numpy as np
+
+    small = np.zeros((10, 12, 3), np.uint8)
+    big = np.zeros((20, 30, 3), np.uint8)
+    fake_segmenter.set_image(small, "small")
+    fake_segmenter.precompute(big, "big")
+    assert fake_segmenter.is_cached("big")
+    (mask, _), *_ = fake_segmenter.predict([(5, 5)], [1])
+    assert mask.shape == (10, 12)  # still segmenting the current image
+    fake_segmenter.precompute(big, "big")  # already cached: not encoded again
+    assert fake_segmenter.encoded.count((20, 30, 3)) == 1

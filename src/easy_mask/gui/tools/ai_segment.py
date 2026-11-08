@@ -29,7 +29,7 @@ from PySide6.QtGui import (
 from easy_mask.ai.segmenter import NEGATIVE, POSITIVE, Box
 from easy_mask.core.geometry import Point
 from easy_mask.core.rasterize import shape_to_mask
-from easy_mask.gui.tools.ai_worker import EncodeJob, LazySegmenter, SegmenterLoader
+from easy_mask.gui.tools.ai_worker import EncodeJob, LazySegmenter, PrefetchJob, SegmenterLoader
 from easy_mask.gui.tools.base import CanvasTool, mask_image
 from easy_mask.gui.tools.brush import StrokeCallback
 
@@ -53,16 +53,22 @@ def pixmap_to_rgb(pixmap: QPixmap) -> np.ndarray:
     return rows[:, : 3 * width].reshape(height, width, 3).copy()
 
 
+VISIBLE_PRIORITY = 1  # QThreadPool runs higher priorities first
+PREFETCH_PRIORITY = 0
+
+
 class AiSegmentTool(QObject, CanvasTool):
     """Collects click/box prompts, shows the predicted mask, hands it over on accept.
 
     Signals:
         status(str): Progress and hints for the status bar.
         error(str): Loading or encoding failed (e.g. onnxruntime missing, offline).
+        encoded(): The shown image is ready (a good moment to prefetch the next ones).
     """
 
     status = Signal(str)
     error = Signal(str)
+    encoded = Signal()
     right_button = True
 
     def __init__(
@@ -117,7 +123,19 @@ class AiSegmentTool(QObject, CanvasTool):
         self._jobs[self._generation] = job
         if self.lazy.segmenter is None:
             self.status.emit("AI Segment: loading model...")
-        self._pool.start(job)
+        self._pool.start(job, VISIBLE_PRIORITY)  # ahead of any queued prefetch
+
+    def prefetch(self, paths: list[str]) -> None:
+        """Encode these images in the background so AI Segment is instant on them.
+
+        Does nothing until the model has been loaded once (no surprise downloads).
+        """
+        segmenter = self.lazy.segmenter
+        if segmenter is None:
+            return
+        for path in paths:
+            if not segmenter.is_cached(path):
+                self._pool.start(PrefetchJob(segmenter, path), PREFETCH_PRIORITY)
 
     def _on_encoded(self, generation: int) -> None:
         self._jobs.pop(generation, None)
@@ -126,6 +144,7 @@ class AiSegmentTool(QObject, CanvasTool):
         self.ready = True
         self.status.emit(READY_HINT)
         self._predict()
+        self.encoded.emit()
 
     def _on_failed(self, generation: int, message: str) -> None:
         self._jobs.pop(generation, None)
