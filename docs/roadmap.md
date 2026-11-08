@@ -58,7 +58,7 @@ Manual tools on par with classic annotators.
 - [x] Track while navigating: auto-propagate selected objects to the next frame
 - [x] Auto clean-up of AI masks on accept (fill holes, remove specks)
 - [x] AI out of the box (onnxruntime as a regular dependency)
-- [x] Remember export format/folder; export on save
+- [x] Remember export format/folder; Export Again (Ctrl+Shift+E) and export on close
 - [x] Review mode visits automatic "(auto)" shapes first
 
 ## Later / ideas
