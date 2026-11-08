@@ -164,7 +164,8 @@ class MainWindow(QMainWindow):
         )
         self.ask_number = ask_number
         self.ask_text = ask_text
-        self.show_menu: Callable[[QMenu, QPoint], object] = QMenu.exec  # swappable in tests
+        # Pops a menu up at a screen position; swappable so tests never block on it.
+        self.show_menu: Callable[[QMenu, QPoint], object] = lambda menu, pos: menu.exec(pos)
         self.load_segmenter: Callable[[ProgressFn], Segmenter] = lambda progress: (
             efficient_sam.load(self.settings.ai_model, progress)
         )

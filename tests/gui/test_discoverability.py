@@ -130,3 +130,16 @@ def test_right_click_selects_and_offers_shape_actions(window, ui):
     assert window.canvas.selection == [0]
     texts = [a.text() for a in shown[0].actions()]
     assert "Label" in texts and "Propagate Selected" in texts and "Mask" in texts
+
+
+def test_default_show_menu_pops_the_menu_up(make_window):
+    """Regression: QMenu.exec called unbound raised TypeError, so right-click did nothing."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QMenu
+
+    win = make_window(Settings())
+    menu = QMenu(win)
+    shown = []
+    menu.exec = lambda pos: shown.append(pos)  # the instance's own exec: no modal loop
+    win.show_menu(menu, QPoint(5, 6))
+    assert shown == [QPoint(5, 6)]
