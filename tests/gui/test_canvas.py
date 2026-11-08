@@ -21,9 +21,9 @@ def test_empty_canvas_paints_and_ignores_input(qtbot):
 
 def test_ctrl_wheel_zooms_plain_wheel_pans(qtbot, window, ui):
     canvas = window.canvas
+    canvas.zoom_by(1.0)  # any zoom stops auto-fit, so a late resize can't change the scale
     scale, offset = canvas.scale, QPointF(canvas.offset)
     pos = ui.screen(50, 40)
-    qtbot.wait(1)
     from PySide6.QtGui import QWheelEvent
 
     def wheel(dy, modifiers):

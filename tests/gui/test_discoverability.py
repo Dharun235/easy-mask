@@ -7,21 +7,28 @@ from easy_mask.gui.shortcuts import shortcut_rows
 
 def test_every_tool_has_an_icon_and_a_tooltip_with_its_key(make_window):
     win = make_window(Settings())
-    for text, mode, key, icon_name, _group in TOOLS:
+    for text, short, mode, key, icon_name, _group in TOOLS:
         assert (ICON_DIR / f"{icon_name}.svg").is_file()
         action = win.tool_actions[mode]
         assert not action.icon().isNull()
-        assert action.toolTip() == f"{text} ({key})"
+        assert action.toolTip() == f"{text}  ·  {key}"
+        assert action.iconText() == short
     assert icon("does-not-exist").isNull()
 
 
-def test_toolbar_sections_follow_tool_groups(make_window):
+def test_toolbar_is_one_icon_only_row(make_window):
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QToolBar
 
     win = make_window(Settings())
-    toolbar = win.findChild(QToolBar, "Tools")
+    (toolbar,) = win.findChildren(QToolBar)
+    assert toolbar.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+    actions = [a for a in toolbar.actions() if not a.isSeparator()]
+    texts = [a.text() for a in actions]
+    assert texts.index("Open Folder...") < texts.index("Select / Edit")  # file first
+    assert texts[-1] == "Export Again"  # export alone on the right
     separators = sum(1 for a in toolbar.actions() if a.isSeparator())
-    assert separators == len({group for *_, group in TOOLS}) - 1
+    assert separators == 3 + len({group for *_, group in TOOLS}) - 1  # file groups + tools
 
 
 def test_welcome_page_until_an_image_is_open(make_window, image_dir):
@@ -58,3 +65,25 @@ def test_shortcut_list_is_built_from_the_menus(make_window):
     win.show_shortcuts()  # reuses the same window
     assert win.shortcuts_dialog.isVisible()
     assert win.shortcuts_dialog.table.rowCount() == len(rows)
+
+
+def test_panels_hidden_on_start_page_and_shown_with_an_image(make_window, image_dir):
+    from PySide6.QtWidgets import QDockWidget
+
+    win = make_window(Settings())
+    assert all(not d.isVisible() for d in win.docks)
+    win.open_path(image_dir)
+    visible = {d.objectName() for d in win.docks if d.isVisible()}
+    assert visible == {"Labels", "Shapes", "Files"}  # Flags only when there are flags
+    assert all(d.features() == QDockWidget.DockWidgetFeature.DockWidgetMovable for d in win.docks)
+
+
+def test_view_menu_can_toggle_panels(make_window, image_dir):
+    win = make_window(Settings(flags=["blurry"]))
+    win.open_path(image_dir)
+    view = next(a.menu() for a in win.menuBar().actions() if a.text() == "&View")
+    panels = next(a.menu() for a in view.actions() if a.text() == "Panels")
+    toggles = {a.text(): a for a in panels.actions()}
+    assert set(toggles) == {"Flags", "Labels", "Shapes", "Files"}
+    toggles["Files"].trigger()
+    assert not next(d for d in win.docks if d.objectName() == "Files").isVisible()

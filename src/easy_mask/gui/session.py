@@ -60,6 +60,7 @@ class Session:
         state = self.store.value("window/state")
         if state is not None:
             w.restoreState(state)
+            w._show_panels(w.current_index is not None)  # restored layout, start page rules
         if str(self.store.value("track_next", "false")).lower() == "true":
             w.video.track_action.setChecked(True)
         cleanup = self.store.value("auto_cleanup")

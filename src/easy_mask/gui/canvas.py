@@ -33,6 +33,7 @@ from easy_mask.core.display import DisplaySettings, adjust
 from easy_mask.core.geometry import Point
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape, ShapeType
+from easy_mask.gui import theme
 from easy_mask.gui.tools.base import CanvasTool, mask_image, pixmap_to_rgb, rgb_to_pixmap
 
 HIT_TOLERANCE_PX = 6  # how close (in screen pixels) a click must be to grab something
@@ -42,7 +43,6 @@ ZOOM_STEP = 1.15
 MIN_SCALE, MAX_SCALE = 0.02, 64.0
 MIN_FOCUS_PX = 32.0  # smallest image area zoom_to_box shows, so points aren't zoomed to 64x
 DRAFT_RGB = (0, 200, 255)
-BACKGROUND = QColor(40, 40, 44)
 
 
 class Canvas(QWidget):
@@ -476,7 +476,7 @@ class Canvas(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         """Draw the image, every visible shape, and the draft preview."""
         painter = QPainter(self)
-        painter.fillRect(self.rect(), BACKGROUND)
+        painter.fillRect(self.rect(), QColor(theme.current().canvas))
         if self.pixmap.isNull():
             painter.setPen(QColor(170, 170, 170))
             painter.drawText(

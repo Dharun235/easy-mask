@@ -13,7 +13,7 @@ from functools import partial
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QSizePolicy,
     QStackedWidget,
     QWidget,
 )
@@ -68,24 +69,24 @@ from easy_mask.io.video import frames_dir_for, is_video, planned_count, probe
 PREFETCH_AHEAD = 3  # images encoded ahead for AI Segment: the current one and the next two
 DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
-# Toolbar entries: (text, tool, shortcut, icon, group). A ShapeType draws that shape, None is
-# edit mode, and a string names a pixel tool from MainWindow.pixel_tools. A new group starts
-# a new section of the toolbar.
-TOOLS: list[tuple[str, ShapeType | str | None, str, str, str]] = [
-    ("Select / Edit", None, "E", "edit", "select"),
-    ("Polygon", ShapeType.POLYGON, "P", "polygon", "shapes"),
-    ("Rectangle", ShapeType.RECTANGLE, "R", "rectangle", "shapes"),
-    ("Circle", ShapeType.CIRCLE, "C", "circle", "shapes"),
-    ("Line", ShapeType.LINE, "L", "line", "shapes"),
-    ("Line strip", ShapeType.LINESTRIP, "T", "linestrip", "shapes"),
-    ("Point", ShapeType.POINT, "O", "point", "shapes"),
-    ("Brush", "brush", "B", "brush", "paint"),
-    ("Eraser", "eraser", "X", "eraser", "paint"),
-    ("AI Segment", "ai", "I", "ai", "smart"),
-    ("Magic wand", "wand", "W", "wand", "smart"),
-    ("GrabCut", "grabcut", "G", "grabcut", "smart"),
-    ("Superpixels", "superpixel", "S", "superpixel", "smart"),
-    ("Watershed", "watershed", "M", "watershed", "smart"),
+# Toolbar entries: (name, short label, tool, shortcut, icon, group). A ShapeType draws that
+# shape, None is edit mode, and a string names a pixel tool from MainWindow.pixel_tools. A
+# new group starts a new section of the toolbar; the short label is shown under the icon.
+TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
+    ("Select / Edit", "Select", None, "E", "edit", "select"),
+    ("Polygon", "Polygon", ShapeType.POLYGON, "P", "polygon", "shapes"),
+    ("Rectangle", "Box", ShapeType.RECTANGLE, "R", "rectangle", "shapes"),
+    ("Circle", "Circle", ShapeType.CIRCLE, "C", "circle", "shapes"),
+    ("Line", "Line", ShapeType.LINE, "L", "line", "shapes"),
+    ("Line strip", "Path", ShapeType.LINESTRIP, "T", "linestrip", "shapes"),
+    ("Point", "Point", ShapeType.POINT, "O", "point", "shapes"),
+    ("Brush", "Brush", "brush", "B", "brush", "paint"),
+    ("Eraser", "Erase", "eraser", "X", "eraser", "paint"),
+    ("AI Segment", "AI", "ai", "I", "ai", "smart"),
+    ("Magic wand", "Wand", "wand", "W", "wand", "smart"),
+    ("GrabCut", "GrabCut", "grabcut", "G", "grabcut", "smart"),
+    ("Superpixels", "Regions", "superpixel", "S", "superpixel", "smart"),
+    ("Watershed", "Watershed", "watershed", "M", "watershed", "smart"),
 ]
 
 
@@ -222,11 +223,16 @@ class MainWindow(QMainWindow):
         dock = QDockWidget(title, self)
         dock.setObjectName(title)
         dock.setWidget(widget)
+        # No float / close buttons: less chrome. Panels can still be moved, and toggled
+        # from View > Panels.
+        dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)
         self.addDockWidget(area, dock)
+        self.docks.append(dock)
         return dock
 
     def _build_panels(self) -> None:
         right = Qt.DockWidgetArea.RightDockWidgetArea
+        self.docks: list[QDockWidget] = []
         self.flag_list = FlagList()
         self.label_list = LabelList()
         self.label_list.label_clicked.connect(self._on_label_clicked)
@@ -236,7 +242,7 @@ class MainWindow(QMainWindow):
         self._dock("Labels", self.label_list, right)
         self._dock("Shapes", self.shape_list, right)
         self._dock("Files", self.file_list, right)
-        self.flags_dock.setVisible(bool(self.settings.flags))
+        self._show_panels(False)  # the start page stands alone; panels appear with an image
 
         self.flag_list.flags_changed.connect(self._mark_dirty)
         self.shape_list.itemSelectionChanged.connect(
@@ -267,18 +273,18 @@ class MainWindow(QMainWindow):
 
     def _build_actions(self) -> None:
         bar = self.menuBar()
-        files = self.addToolBar("File")
-        files.setObjectName("File")
-        toolbar = self.addToolBar("Tools")
+        toolbar = self.addToolBar("Tools")  # one quiet row: file | tools | export
         toolbar.setObjectName("Tools")
+        toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        toolbar.setIconSize(QSize(20, 20))
         std = QKeySequence.StandardKey
 
         m = bar.addMenu("&File")
         self._action(m, "Open Image...", self.open_image_dialog, std.Open)
         open_folder = self._action(m, "Open Folder...", self.open_folder_dialog, "Ctrl+Shift+O")
         m.addMenu(self.session.recent_menu)
-        self._action(m, "Import Video Frames...", self.import_video_dialog)
+        import_video = self._action(m, "Import Video Frames...", self.import_video_dialog)
         self._action(m, "Change Annotation Folder...", self.change_output_dir)
         m.addSeparator()
         save = self._action(m, "Save", self.save, std.Save)
@@ -291,7 +297,9 @@ class MainWindow(QMainWindow):
         export_menu = m.addMenu("Export Folder As")
         for name in export.EXPORTERS:
             self._action(export_menu, name, lambda _=False, n=name: self.export_dataset(n))
-        self._action(m, "Export Again", self.export_again, "Ctrl+Shift+E")
+        self._export_again_action = self._action(
+            m, "Export Again", self.export_again, "Ctrl+Shift+E"
+        )
         self.export_on_close_action = self._action(
             m,
             "Export Again When Closing",
@@ -317,12 +325,13 @@ class MainWindow(QMainWindow):
         self.tool_group = QActionGroup(self)
         self.tool_actions: dict[ShapeType | str | None, QAction] = {}
         group = None
-        for text, mode, key, icon_name, tool_group in TOOLS:
+        for text, short, mode, key, icon_name, tool_group in TOOLS:
             action = self._action(
                 m, text, lambda _=False, md=mode: self.set_tool(md), key, checkable=True
             )
             action.setIcon(icon(icon_name))
-            action.setToolTip(f"{text} ({key})")
+            action.setIconText(short)
+            action.setToolTip(f"{text}  ·  {key}")
             self.tool_group.addAction(action)
             if group is not None and tool_group != group:
                 toolbar.addSeparator()
@@ -363,6 +372,14 @@ class MainWindow(QMainWindow):
         self._action(m, "Ask for Label Every Time", lambda: self.set_active_label(None), "0")
 
         m = bar.addMenu("&View")
+        panels = m.addMenu("Panels")
+        for dock in self.docks:
+            # Qt disables a dock's own toggle action without a close button, so use ours.
+            toggle = QAction(dock.windowTitle(), self, checkable=True)
+            toggle.toggled.connect(dock.setVisible)
+            dock.visibilityChanged.connect(toggle.setChecked)
+            panels.addAction(toggle)
+        m.addSeparator()
         self._action(
             m,
             "Zoom In",
@@ -376,16 +393,36 @@ class MainWindow(QMainWindow):
         fill.setChecked(True)
         self._action(m, "Adjust Display...", self.open_display)
 
-        style = self.style()
-        for action, pixmap, tip in (
-            (open_folder, style.StandardPixmap.SP_DirOpenIcon, "Open folder (Ctrl+Shift+O)"),
-            (save, style.StandardPixmap.SP_DialogSaveButton, "Save (Ctrl+S)"),
-            (prev_image, style.StandardPixmap.SP_ArrowBack, "Previous image (A)"),
-            (next_image, style.StandardPixmap.SP_ArrowForward, "Next image (D)"),
+        # File and history actions go in front of the tools; export sits alone on the right.
+        first_tool = toolbar.actions()[0]
+        for section in (
+            (
+                (open_folder, "open", "Open folder  ·  Ctrl+Shift+O"),
+                (import_video, "video", "Import video frames"),
+                (save, "save", "Save  ·  Ctrl+S"),
+            ),
+            (
+                (self.undo_action, "undo", "Undo  ·  Ctrl+Z"),
+                (self.redo_action, "redo", "Redo  ·  Ctrl+Shift+Z"),
+            ),
+            (
+                (prev_image, "prev", "Previous image  ·  A"),
+                (next_image, "next", "Next image  ·  D"),
+            ),
         ):
-            action.setIcon(style.standardIcon(pixmap))
-            action.setToolTip(tip)
-            files.addAction(action)
+            for action, icon_name, tip in section:
+                action.setIcon(icon(icon_name))
+                action.setToolTip(tip)
+                toolbar.insertAction(first_tool, action)
+            toolbar.insertSeparator(first_tool)
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+        self._export_again_action.setIcon(icon("export"))
+        self._export_again_action.setToolTip(
+            "Export again (last format and folder)  ·  Ctrl+Shift+E"
+        )
+        toolbar.addAction(self._export_again_action)
 
         m = bar.addMenu("&Help")
         self._action(
@@ -516,7 +553,9 @@ class MainWindow(QMainWindow):
 
         self.current_index = index
         self.image_size = (pixmap.width(), pixmap.height())
-        self.pages.setCurrentWidget(self.canvas)
+        if self.pages.currentWidget() is not self.canvas:
+            self.pages.setCurrentWidget(self.canvas)
+            self._show_panels(True)
         self.canvas.set_image(pixmap)
         self.canvas.set_shapes(shapes)
         self.flag_list.show_flags(flags)
@@ -949,6 +988,11 @@ class MainWindow(QMainWindow):
     def _toggle_fill(self, checked: bool) -> None:
         self.canvas.fill = checked
         self.canvas.update()
+
+    def _show_panels(self, visible: bool) -> None:
+        """Show the side panels (the Flags panel only when there are flags)."""
+        for dock in self.docks:
+            dock.setVisible(visible and (dock is not self.flags_dock or bool(self.settings.flags)))
 
     def _remember_label(self, label: str) -> None:
         if label and label not in self.known_labels:
