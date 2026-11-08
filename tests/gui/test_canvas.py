@@ -116,7 +116,7 @@ def test_switching_tool_discards_draft(window, ui):
     assert not window.canvas.is_drawing()
 
 
-@pytest.mark.parametrize("mode", list(ShapeType))
+@pytest.mark.parametrize("mode", [t for t in ShapeType if t != ShapeType.MASK])
 def test_draft_preview_paints_for_every_tool(window, ui, mode):
     window.set_tool(mode)
     if mode == ShapeType.POINT:

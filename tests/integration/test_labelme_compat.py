@@ -35,3 +35,37 @@ def test_resave_keeps_every_shape_and_drops_image_data(data_dir, tmp_path):
         assert after["shape_type"] == before["shape_type"]
         assert after["points"] == [[float(x), float(y)] for x, y in before["points"]]
         assert after["group_id"] == before["group_id"]
+
+
+def test_reads_labelme_mask_shape_with_0_255_png(tmp_path):
+    """labelme writes mask crops as PNG; accept both 0/1 and 0/255 pixel values."""
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    crop = np.zeros((4, 6), np.uint8)
+    crop[1:3, 2:5] = 255
+    buffer = io.BytesIO()
+    Image.fromarray(crop).save(buffer, format="PNG")
+    data = {
+        "imagePath": "x.png",
+        "imageHeight": 10,
+        "imageWidth": 10,
+        "flags": {},
+        "shapes": [
+            {
+                "label": "m",
+                "shape_type": "mask",
+                "points": [[3, 2], [8, 5]],
+                "mask": base64.b64encode(buffer.getvalue()).decode(),
+                "group_id": None,
+            }
+        ],
+    }
+    path = tmp_path / "x.json"
+    path.write_text(json.dumps(data))
+    (shape,) = ann_io.load(path).shapes
+    assert shape.shape_type == ShapeType.MASK
+    assert shape.mask.sum() == 6 and shape.mask[1, 2]

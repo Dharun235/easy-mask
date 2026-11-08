@@ -11,6 +11,7 @@ def test_shape_type_point_rules():
         ShapeType.POLYGON,
         ShapeType.RECTANGLE,
         ShapeType.CIRCLE,
+        ShapeType.MASK,
     }
 
 

@@ -7,6 +7,7 @@ segmentation model can train on.
 import numpy as np
 from PIL import Image, ImageDraw
 
+from easy_mask.core import masks
 from easy_mask.core.shapes import Shape, ShapeType
 
 
@@ -15,9 +16,12 @@ def shape_to_mask(
 ) -> np.ndarray:
     """Rasterize one shape into a boolean ``(height, width)`` mask.
 
-    Area shapes are filled. Lines and line strips are drawn ``line_width`` pixels thick
-    and points as discs of ``point_radius``, so every shape type yields some pixels.
+    Area shapes are filled and mask shapes copied pixel for pixel. Lines and line strips
+    are drawn ``line_width`` pixels thick and points as discs of ``point_radius``, so
+    every shape type yields some pixels.
     """
+    if shape.shape_type == ShapeType.MASK:
+        return masks.to_full(shape, height, width)
     canvas = Image.new("1", (width, height), 0)
     draw = ImageDraw.Draw(canvas)
     points = [(float(x), float(y)) for x, y in shape.points]
@@ -33,7 +37,7 @@ def shape_to_mask(
         (x, y), r = points[0], point_radius
         draw.ellipse([x - r, y - r, x + r, y + r], fill=1, outline=1)
 
-    return np.asarray(canvas, dtype=bool)
+    return np.array(canvas, dtype=bool)  # a writable copy: callers edit it in place
 
 
 def semantic_mask(

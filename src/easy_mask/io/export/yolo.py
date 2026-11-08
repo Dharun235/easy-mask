@@ -7,11 +7,13 @@ Output layout::
       labels/<stem>.txt  one line per object: ``class x1 y1 x2 y2 ...`` normalized to 0-1
       data.yaml          class names
 
-Only area shapes (polygon, rectangle, circle) are exported.
+Only area shapes (polygon, rectangle, circle, mask) are exported; a mask with
+several blobs gives one line per blob.
 """
 
 from pathlib import Path
 
+from easy_mask.core import masks
 from easy_mask.io.export.common import AnnotatedImage, copy_images, resolve_labels
 
 
@@ -38,10 +40,11 @@ def export_yolo(
         for shape in ann.shapes:
             if not shape.shape_type.is_area or shape.label not in class_ids:
                 continue
-            coords = []
-            for x, y in shape.outline():
-                coords += [min(max(x / w, 0.0), 1.0), min(max(y / h, 0.0), 1.0)]
-            lines.append(" ".join([str(class_ids[shape.label])] + [f"{c:.6f}" for c in coords]))
+            for polygon in masks.shape_polygons(shape):
+                coords = []
+                for x, y in polygon:
+                    coords += [min(max(x / w, 0.0), 1.0), min(max(y / h, 0.0), 1.0)]
+                lines.append(" ".join([str(class_ids[shape.label])] + [f"{c:.6f}" for c in coords]))
         label_file = out_dir / "labels" / f"{item.image_path.stem}.txt"
         label_file.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 

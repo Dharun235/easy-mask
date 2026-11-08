@@ -1,0 +1,162 @@
+"""Bitmap masks: encoding, building mask shapes, editing and conversion.
+
+A *mask shape* stores a boolean array cropped to its bounding box, exactly like labelme:
+``points = [(x1, y1), (x2, y2)]`` are the inclusive top-left and bottom-right pixels, and
+``mask`` has shape ``(y2 - y1 + 1, x2 - x1 + 1)``. In JSON the crop is a base64 PNG
+(see :func:`easy_mask.core.shapes.encode_mask`).
+
+Full-size masks (``height x width`` bool arrays) are the working format for every
+operation here; :func:`to_shape` crops back down for storage.
+"""
+
+from typing import Any
+
+import cv2
+import numpy as np
+
+from easy_mask.core.geometry import Point
+from easy_mask.core.shapes import Shape, ShapeType
+
+# ---------------------------------------------------------------------- shape <-> full mask
+
+
+def to_shape(label: str, full: np.ndarray, **fields: Any) -> Shape | None:
+    """Build a mask shape from a full-size boolean mask, cropped to its content.
+
+    Args:
+        label: Class name for the shape.
+        full: ``(height, width)`` boolean mask.
+        **fields: Other :class:`Shape` fields (``group_id``, ``description``, ``flags``).
+
+    Returns:
+        The shape, or None if the mask is empty.
+    """
+    ys, xs = np.nonzero(full)
+    if len(xs) == 0:
+        return None
+    x1, y1, x2, y2 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+    crop = full[y1 : y2 + 1, x1 : x2 + 1].copy()
+    return Shape(label, ShapeType.MASK, [(x1, y1), (x2, y2)], mask=crop, **fields)
+
+
+def to_full(shape: Shape, height: int, width: int) -> np.ndarray:
+    """Place a mask shape's crop into a full-size ``(height, width)`` boolean array.
+
+    Parts that fall outside the image (e.g. after dragging the shape off the edge) are
+    clipped.
+    """
+    full = np.zeros((height, width), dtype=bool)
+    if shape.mask is None:
+        return full
+    x1, y1 = round(shape.points[0][0]), round(shape.points[0][1])
+    crop_h, crop_w = shape.mask.shape
+    # Intersect the crop rectangle with the image rectangle.
+    fx0, fy0 = max(x1, 0), max(y1, 0)
+    fx1, fy1 = min(x1 + crop_w, width), min(y1 + crop_h, height)
+    if fx0 >= fx1 or fy0 >= fy1:
+        return full
+    full[fy0:fy1, fx0:fx1] = shape.mask[fy0 - y1 : fy1 - y1, fx0 - x1 : fx1 - x1]
+    return full
+
+
+# ---------------------------------------------------------------------- editing
+
+
+def paint_stroke(full: np.ndarray, start: Point, end: Point, radius: int, value: bool) -> None:
+    """Paint (``value=True``) or erase a round brush stroke from ``start`` to ``end`` in place."""
+    canvas = full.view(np.uint8)
+    p0 = (int(start[0]), int(start[1]))
+    p1 = (int(end[0]), int(end[1]))
+    color = 1 if value else 0
+    cv2.line(canvas, p0, p1, color, thickness=max(1, 2 * radius), lineType=cv2.LINE_8)
+    cv2.circle(canvas, p0, radius, color, thickness=-1)
+    cv2.circle(canvas, p1, radius, color, thickness=-1)
+
+
+def fill_holes(full: np.ndarray) -> np.ndarray:
+    """Fill every background region not connected to the image border."""
+    padded = np.pad(full, 1).astype(np.uint8)
+    flood = padded.copy()
+    mask = np.zeros((padded.shape[0] + 2, padded.shape[1] + 2), np.uint8)
+    cv2.floodFill(flood, mask, (0, 0), 1)  # paint the outside background
+    holes = flood == 0
+    return np.asarray(full | holes[1:-1, 1:-1], dtype=bool)
+
+
+def remove_small(full: np.ndarray, min_area: int) -> np.ndarray:
+    """Drop connected foreground blobs smaller than ``min_area`` pixels."""
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        full.astype(np.uint8), connectivity=8
+    )
+    keep = np.zeros(count, dtype=bool)
+    keep[1:] = stats[1:, cv2.CC_STAT_AREA] >= min_area
+    return np.asarray(keep[labels], dtype=bool)
+
+
+def _disc(radius: int) -> np.ndarray:
+    return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
+
+
+def grow(full: np.ndarray, pixels: int) -> np.ndarray:
+    """Dilate the mask outward by ``pixels``."""
+    return cv2.dilate(full.astype(np.uint8), _disc(pixels)).astype(bool)
+
+
+def shrink(full: np.ndarray, pixels: int) -> np.ndarray:
+    """Erode the mask inward by ``pixels``."""
+    return cv2.erode(full.astype(np.uint8), _disc(pixels)).astype(bool)
+
+
+def smooth(full: np.ndarray, radius: int = 2) -> np.ndarray:
+    """Smooth jagged edges: morphological opening then closing with a disc."""
+    kernel = _disc(radius)
+    opened = cv2.morphologyEx(full.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+    return cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel).astype(bool)
+
+
+# ---------------------------------------------------------------------- conversion
+
+
+def to_polygons(
+    full: np.ndarray, tolerance: float = 1.0, min_area: float = 4.0
+) -> list[list[Point]]:
+    """Trace the outer boundary of each blob as a simplified polygon.
+
+    Args:
+        full: Boolean mask.
+        tolerance: Max distance in pixels between the polygon and the true boundary
+            (Douglas-Peucker). Larger means fewer vertices.
+        min_area: Blobs whose polygon area is below this are skipped.
+
+    Holes are not represented: each polygon is an outer boundary only.
+    """
+    contours, _ = cv2.findContours(full.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    polygons = []
+    for contour in contours:
+        approx = cv2.approxPolyDP(contour, tolerance, closed=True)
+        if len(approx) >= 3 and cv2.contourArea(approx) >= min_area:
+            polygons.append([(float(x), float(y)) for x, y in approx[:, 0, :]])
+    return polygons
+
+
+def iou(a: np.ndarray, b: np.ndarray) -> float:
+    """Intersection over union of two boolean masks (1.0 if both are empty)."""
+    union = np.logical_or(a, b).sum()
+    return 1.0 if union == 0 else float(np.logical_and(a, b).sum() / union)
+
+
+def shape_polygons(shape: Shape, tolerance: float = 1.0) -> list[list[Point]]:
+    """Outline polygons of any area shape, in image coordinates.
+
+    Polygons, rectangles and circles give one polygon; masks give one per blob. Used by
+    exporters that need polygons (COCO, YOLO).
+    """
+    if shape.shape_type != ShapeType.MASK:
+        return [shape.outline()]
+    if shape.mask is None:
+        return []
+    x1, y1 = round(shape.points[0][0]), round(shape.points[0][1])
+    return [
+        [(x + x1, y + y1) for x, y in polygon]
+        for polygon in to_polygons(shape.mask, tolerance=tolerance)
+    ]

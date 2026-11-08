@@ -119,3 +119,18 @@ def test_label_color_is_deterministic_and_valid(name, labels):
     color = label_color(name, labels)
     assert color == label_color(name, labels)
     assert len(color) == 3 and all(0 <= c <= 255 for c in color)
+
+
+@given(st.integers(1, 30), st.integers(1, 30), st.integers(0, 2**32 - 1))
+@settings(max_examples=40)
+def test_mask_shape_roundtrip_is_lossless(height, width, seed):
+    """Full mask -> cropped shape -> JSON -> shape -> full mask gives back every pixel."""
+    from easy_mask.core import masks
+
+    full = np.random.default_rng(seed).random((height, width)) > 0.5
+    shape = masks.to_shape("m", full)
+    if shape is None:
+        assert not full.any()
+        return
+    restored = Shape.from_dict(shape.to_dict())
+    assert np.array_equal(masks.to_full(restored, height, width), full)

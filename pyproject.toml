@@ -17,6 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=2.0",
+    "opencv-contrib-python-headless>=5.0.0.93",
     "pillow>=10.0",
     "PySide6>=6.7",
 ]
@@ -50,7 +51,7 @@ packages = ["src/easy_mask"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", "benchmarks"]
 
 [tool.ruff.lint]
 select = [
@@ -75,6 +76,7 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D"]
+"benchmarks/**" = ["D100", "D103"]
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
@@ -95,6 +97,7 @@ testpaths = ["tests"]
 qt_api = "pyside6"
 # importlib mode: test files in different folders may share a basename.
 addopts = "-ra --strict-markers --import-mode=importlib"
+pythonpath = ["."]  # lets tests import the top-level benchmarks package
 # Every test gets the marker of its folder (see tests/conftest.py), so you can run
 # one layer at a time, e.g. `uv run pytest -m unit` or `-m "not gui and not slow"`.
 markers = [

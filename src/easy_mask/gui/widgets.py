@@ -6,9 +6,9 @@ The main window decides what the data is.
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
-from PySide6.QtWidgets import QListWidget, QListWidgetItem, QWidget
+from PySide6.QtWidgets import QAbstractItemView, QListWidget, QListWidgetItem, QWidget
 
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
@@ -76,6 +76,7 @@ class ShapeList(QListWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.itemChanged.connect(self._on_item_changed)
 
     def show_shapes(self, shapes: list[Shape], hidden: set[int], labels: list[str]) -> None:
@@ -93,13 +94,20 @@ class ShapeList(QListWidget):
             self.addItem(item)
         self.blockSignals(False)
 
-    def select_silently(self, row: int) -> None:
-        """Select ``row`` (or clear with -1) without emitting signals."""
+    def select_rows(self, rows: list[int]) -> None:
+        """Select exactly ``rows`` without emitting signals."""
         self.blockSignals(True)
-        self.setCurrentRow(row)
-        if row < 0:
-            self.clearSelection()
+        self.clearSelection()
+        for row in rows:
+            if 0 <= row < self.count():
+                self.item(row).setSelected(True)
+        if rows:
+            self.setCurrentRow(rows[-1], QItemSelectionModel.SelectionFlag.NoUpdate)
         self.blockSignals(False)
+
+    def selected_rows(self) -> list[int]:
+        """Selected rows, top to bottom."""
+        return sorted(self.row(item) for item in self.selectedItems())
 
     def _on_item_changed(self, item: QListWidgetItem) -> None:
         self.visibility_changed.emit(self.row(item), item.checkState() == Qt.CheckState.Checked)

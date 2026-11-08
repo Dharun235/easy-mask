@@ -31,6 +31,7 @@ from PySide6.QtWidgets import QWidget
 from easy_mask.core.geometry import Point
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape, ShapeType
+from easy_mask.gui.tools.base import CanvasTool, mask_image
 
 HIT_TOLERANCE_PX = 6  # how close (in screen pixels) a click must be to grab something
 VERTEX_SIZE_PX = 7
@@ -47,7 +48,7 @@ class Canvas(QWidget):
     Signals:
         shape_drawn(Shape): A new shape was completed; its label is empty.
         shapes_edited(): Existing shapes were moved or reshaped by dragging.
-        selection_changed(int): Selected shape index, or -1 for none.
+        selection_changed(list): Selected shape indices, in the order they were picked.
         double_clicked_shape(int): A shape was double-clicked in edit mode.
         delete_requested(): User pressed Backspace while not drawing.
         status_changed(str): Cursor position / zoom text for the status bar.
@@ -55,7 +56,7 @@ class Canvas(QWidget):
 
     shape_drawn = Signal(object)
     shapes_edited = Signal()
-    selection_changed = Signal(int)
+    selection_changed = Signal(list)
     double_clicked_shape = Signal(int)
     delete_requested = Signal()
     status_changed = Signal(str)
@@ -69,9 +70,10 @@ class Canvas(QWidget):
         self.pixmap = QPixmap()
         self.shapes: list[Shape] = []
         self.hidden: set[int] = set()  # id() of shapes the user hid
-        self.selected: int | None = None
+        self.selection: list[int] = []  # selected indices, in pick order
         self.fill = True
         self.mode: ShapeType | None = None  # None means edit (select/move) mode
+        self.tool: CanvasTool | None = None  # pixel tool (brush, eraser, ...) if active
         self.labels: list[str] = []  # label order decides colours; set by the main window
 
         self.scale = 1.0
@@ -104,19 +106,50 @@ class Canvas(QWidget):
 
     def set_mode(self, mode: ShapeType | None) -> None:
         """Switch to drawing ``mode``, or to edit mode with ``None``."""
+        self._drop_tool()
         self.cancel_draft()
         self.mode = mode
         if mode is not None:
             self.select(None)
         self.setCursor(Qt.CursorShape.CrossCursor if mode else Qt.CursorShape.ArrowCursor)
 
-    def select(self, index: int | None) -> None:
-        """Select the shape at ``index`` (or nothing) and notify listeners."""
-        if index == self.selected:
-            return
-        self.selected = index
-        self.selection_changed.emit(-1 if index is None else index)
+    def set_tool(self, tool: CanvasTool) -> None:
+        """Activate a pixel tool (brush, eraser, ...). Selection is kept: tools act on it."""
+        self._drop_tool()
+        self.cancel_draft()
+        self.mode = None
+        self.tool = tool
+        self.setCursor(tool.cursor)
         self.update()
+
+    def _drop_tool(self) -> None:
+        if self.tool is not None:
+            self.tool.cancel(self)
+            self.tool = None
+
+    @property
+    def selected(self) -> int | None:
+        """The most recently picked selected shape (the one edits apply to), if any."""
+        return self.selection[-1] if self.selection else None
+
+    def select(self, index: int | None) -> None:
+        """Select only the shape at ``index`` (or nothing) and notify listeners."""
+        self.set_selection([] if index is None else [index])
+
+    def set_selection(self, indices: list[int]) -> None:
+        """Select several shapes; the first is the target of combine operations."""
+        if indices == self.selection:
+            return
+        self.selection = list(indices)
+        self.selection_changed.emit(list(self.selection))
+        self.update()
+
+    def toggle_selected(self, index: int) -> None:
+        """Add ``index`` to the selection, or remove it if already selected."""
+        if index in self.selection:
+            self.set_selection([i for i in self.selection if i != index])
+        else:
+            self.set_selection([*self.selection, index])
 
     def set_shape_visible(self, index: int, visible: bool) -> None:
         """Show or hide one shape without deleting it."""
@@ -206,8 +239,14 @@ class Canvas(QWidget):
         if event.button() != Qt.MouseButton.LeftButton:
             return
         p = self._clamp(self.to_image(pos))
-        if self.mode is None:
-            self._press_edit(p)
+        if self.tool is not None:
+            self.tool.press(self, p, event)
+            self.update()
+        elif self.mode is None:
+            add = event.modifiers() & (
+                Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier
+            )
+            self._press_edit(p, add_to_selection=bool(add))
         else:
             self._press_draw(p, pos)
 
@@ -234,8 +273,14 @@ class Canvas(QWidget):
             self.finish_draft()
         self.update()
 
-    def _press_edit(self, p: Point) -> None:
+    def _press_edit(self, p: Point, add_to_selection: bool = False) -> None:
         tol = self._tolerance()
+        if add_to_selection:  # Shift/Ctrl+click: toggle membership, never drag
+            for index in self._hit_order():
+                if self.shapes[index].hit(p, tol):
+                    self.toggle_selected(index)
+                    return
+            return
         # Vertices win over bodies so small shapes stay editable; selected shape first.
         for index in self._hit_order():
             vertex = self.shapes[index].nearest_vertex(p, tol)
@@ -245,7 +290,8 @@ class Canvas(QWidget):
                 return
         for index in self._hit_order():
             if self.shapes[index].hit(p, tol):
-                self.select(index)
+                if index not in self.selection:
+                    self.select(index)  # clicking inside a multi-selection drags all of it
                 self._drag_last = p
                 return
         self.select(None)
@@ -255,9 +301,10 @@ class Canvas(QWidget):
         order = [
             i for i in reversed(range(len(self.shapes))) if id(self.shapes[i]) not in self.hidden
         ]
-        if self.selected in order:
-            order.remove(self.selected)
-            order.insert(0, self.selected)
+        for index in reversed(self.selection):
+            if index in order:
+                order.remove(index)
+                order.insert(0, index)
         return order
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -274,12 +321,15 @@ class Canvas(QWidget):
 
         p = self._clamp(self.to_image(pos))
         self._cursor = p
-        if self._drag_last is not None and self.selected is not None:
-            shape = self.shapes[self.selected]
+        if self.tool is not None:
+            self.tool.move(self, p, event)
+        elif self._drag_last is not None and self.selected is not None:
             if self._drag_vertex is not None:
-                shape.points[self._drag_vertex] = p
+                self.shapes[self.selected].points[self._drag_vertex] = p
             else:
-                shape.translate(p[0] - self._drag_last[0], p[1] - self._drag_last[1])
+                dx, dy = p[0] - self._drag_last[0], p[1] - self._drag_last[1]
+                for index in self.selection:
+                    self.shapes[index].translate(dx, dy)
             self._drag_last = p
             self._dragged = True
         self._emit_status()
@@ -291,6 +341,10 @@ class Canvas(QWidget):
             self._pan_last = None
             return
         if event.button() != Qt.MouseButton.LeftButton:
+            return
+        if self.tool is not None:
+            self.tool.release(self, self._clamp(self.to_image(event.position())), event)
+            self.update()
             return
         if self._dragged:
             self.shapes_edited.emit()
@@ -334,6 +388,9 @@ class Canvas(QWidget):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Enter finishes, Backspace removes a point (or deletes), Esc cancels."""
+        if self.tool is not None and self.tool.key(self, event):
+            self.update()
+            return
         key = event.key()
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.finish_draft()
@@ -379,10 +436,13 @@ class Canvas(QWidget):
         painter.scale(self.scale, self.scale)
         painter.drawPixmap(0, 0, self.pixmap)
 
+        editing = getattr(self.tool, "hidden_index", None)  # shape a tool is redrawing
         for index, shape in enumerate(self.shapes):
-            if id(shape) not in self.hidden:
-                self._paint_shape(painter, shape, selected=index == self.selected)
+            if id(shape) not in self.hidden and index != editing:
+                self._paint_shape(painter, shape, selected=index in self.selection)
         self._paint_draft(painter)
+        if self.tool is not None:
+            self.tool.paint(self, painter)
 
     def _paint_shape(
         self,
@@ -400,6 +460,9 @@ class Canvas(QWidget):
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
 
+        if shape.shape_type == ShapeType.MASK:
+            self._paint_mask(painter, shape, (r, g, b), selected)
+            return
         pts = [QPointF(x, y) for x, y in shape.points]
         match shape.shape_type:
             case ShapeType.POLYGON:
@@ -412,6 +475,21 @@ class Canvas(QWidget):
             case ShapeType.LINE | ShapeType.LINESTRIP:
                 painter.drawPolyline(QPolygonF(pts))
         self._paint_vertices(painter, pts, QColor(r, g, b), selected)
+
+    def _paint_mask(
+        self, painter: QPainter, shape: Shape, rgb: tuple[int, int, int], selected: bool
+    ) -> None:
+        if shape.mask is None:
+            return
+        x1, y1 = round(shape.points[0][0]), round(shape.points[0][1])
+        painter.drawImage(QPointF(x1, y1), mask_image(shape.mask, rgb, 150 if selected else 100))
+        if selected:  # dashed bounding box so a selected mask is easy to spot
+            pen = QPen(QColor(255, 255, 255), 1, Qt.PenStyle.DashLine)
+            pen.setCosmetic(True)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            height, width = shape.mask.shape
+            painter.drawRect(QRectF(x1, y1, width, height))
 
     def _paint_vertices(
         self, painter: QPainter, pts: list[QPointF], color: QColor, selected: bool

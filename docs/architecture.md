@@ -4,7 +4,7 @@ easy-mask is split into three layers with a one-way dependency: `gui -> io -> co
 
 | Layer | Knows about | Must not import |
 | --- | --- | --- |
-| `core/` | numpy, Pillow, stdlib | Qt, `io`, `gui` |
+| `core/` | numpy, Pillow, OpenCV (headless), stdlib | Qt, `io`, `gui` |
 | `io/` | `core`, numpy, Pillow | Qt, `gui` |
 | `gui/` | everything | — |
 
@@ -23,6 +23,8 @@ src/easy_mask/
     history.py           snapshot-based undo/redo stack
     labels.py            stable per-label colours, parsing --labels / --flags
     rasterize.py         Shape -> boolean mask; semantic and instance masks
+    masks.py             mask shapes <-> full masks, brush strokes, clean-up, mask -> polygons
+    operations.py        pure list edits: combine (union/subtract/intersect), map, convert
   io/
     images.py            list images in a folder (natural sort), read size
     export/
@@ -33,7 +35,9 @@ src/easy_mask/
   gui/
     app.py               QApplication bootstrap
     main_window.py       menus, docks, open/save/navigate, edit commands, export menu
-    canvas.py            view transform, drawing tools, select/move/vertex drag, painting
+    canvas.py            view transform, drawing tools, multi-select/move/vertex drag, painting
+    tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
+    tools/brush.py       brush and eraser
     label_dialog.py      label / group id / description dialog with autocomplete
     widgets.py           list widgets for files, labels, shapes, flags
 ```
@@ -56,6 +60,13 @@ list with a snapshot from `History`.
 
 All stored points are image pixels, origin top-left, `(x, y)` floats. `Canvas` converts
 widget positions with `to_image()`; `scale` and `offset` are its only view state.
+
+## Pixel tools
+
+Vector shapes are drawn by the canvas itself. Anything that works on pixels (brush,
+eraser, and later magic wand or AI clicks) subclasses `CanvasTool` and is activated with
+`Canvas.set_tool`; the canvas forwards mouse, key and paint events. A tool reports its
+result through a callback, and `MainWindow` stores it and records undo history.
 
 ## Where SAM2 will plug in
 

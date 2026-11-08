@@ -7,11 +7,13 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Fixed
+- `shape_to_mask` returned a read-only array.
 - Label colours: index-based golden-ratio palette instead of hash, so labels are clearly distinct; mask PNG palette matches.
 - Double-clicking an unselected shape now opens its label dialog.
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Mask shapes (labelme-compatible), brush/eraser, multi-select with union/subtract/intersect, mask clean-up and mask <-> polygon conversion; mask-fidelity benchmark.
 - mypy type checking in CI; short formatting and housekeeping notes in CLAUDE.md.
 - Layered test suite (unit, property-based, architecture, integration, golden-file, GUI, smoke, benchmark-data), coverage gate at 90%, docs/testing.md.
 - Annotation GUI (PySide6): polygon, rectangle, circle, line, line strip and point tools.

@@ -13,25 +13,33 @@ Manual tools on par with classic annotators.
 - [x] labelme-compatible JSON, auto-save, output folder
 - [x] Export: semantic + instance mask PNG, COCO, YOLO-seg
 
-## v0.2 — SAM2 click-to-segment (`feat/sam2`)
-The headline feature. Runs locally on CPU, CUDA or Apple MPS.
-- [ ] `Segmenter` backend interface (introduced with its first real implementation)
-- [ ] SAM2 backend: embed image once, cache per image, prompt with points/boxes
-- [ ] Positive / negative clicks, box prompt, live preview mask
-- [ ] Accept as `mask` shape (bitmap) or polygonize to `polygon`
-- [ ] Model manager: download weights on first use into a user cache dir
-- [ ] Background thread so the UI never freezes during encoding
-- [ ] Click benchmark script: NoC@85/90, mIoU@k on GrabCut / Berkeley / DAVIS ([benchmarks.md](benchmarks.md))
+## v0.2 — mask shapes (`feat/mask-shape`)
+- [x] Native `mask` shape type (PNG crop in JSON, labelme-compatible), pixel-exact export
+- [x] Brush and eraser (`B` / `X`, `[` `]` for size); brushing a polygon turns it into a mask
+- [x] Multi-select (Shift/Ctrl+click, shape list) and union / subtract / intersect
+- [x] Clean-up: fill holes, remove small specks, grow / shrink, smooth edges
+- [x] Polygon <-> mask conversion with a simplification tolerance
+- [x] Mask-fidelity benchmark on GrabCut / Berkeley / DAVIS
 
-## v0.3 — mask editing
-- [ ] Native `mask` shape type (RLE / PNG in JSON, labelme-compatible)
-- [ ] Brush and eraser to refine masks
-- [ ] Polygon <-> mask conversion, simplify polygon tolerance slider
+## v0.3 — classic pixel tools (`feat/pixel-tools`)
+- [ ] Threshold (manual / Otsu / adaptive), colour range, magic wand
+- [ ] GrabCut from a box, watershed from markers, superpixel picking
+- [ ] View adjustments: brightness / contrast / gamma, CLAHE, channel view, mask opacity
 
-## v0.4 — video and propagation
-- [ ] Open video / frame folder
-- [ ] SAM2 video predictor: propagate masks across frames, correct and re-propagate
-- [ ] Object tracks with consistent ids
+## v0.4 — AI click-to-segment on CPU (`feat/ai-segment`)
+- [ ] `Segmenter` interface with EfficientSAM (ONNX, CPU) as first backend
+- [ ] Positive / negative clicks and box prompts, live preview, result is a mask shape
+- [ ] Weights downloaded on first use into a user cache dir; encoding off the UI thread
+- [ ] Click benchmark: NoC@85/90 and mIoU@k on GrabCut / Berkeley / DAVIS
+
+## v0.5 — video (`feat/video`)
+- [ ] Open a video file or frame folder
+- [ ] Propagate masks across frames with memory (SAM 2 / EfficientTAM), correct and re-run
+- [ ] Keyframe interpolation and copy-forward without a model
+- [ ] Export DAVIS-style mask sequences
+
+## v0.6 — workflow (`feat/workflow`)
+- [ ] Review mode, per-label statistics, COCO RLE export
 
 ## Later / ideas
 - Text-prompted detection (e.g. Grounding-DINO / SAM3-style) to pre-label

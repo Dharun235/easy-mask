@@ -6,26 +6,36 @@ Output layout::
       images/            copies of the source images
       annotations.json   COCO format with polygon segmentations
 
-Only area shapes (polygon, rectangle, circle) are exported. Shapes sharing a
+Only area shapes (polygon, rectangle, circle, mask) are exported; masks become
+polygons traced around each blob. Shapes sharing a
 ``(label, group_id)`` become one COCO annotation with several polygons.
 """
 
 import json
 from pathlib import Path
 
-from easy_mask.core import geometry
-from easy_mask.core.shapes import Shape
+from easy_mask.core import geometry, masks
+from easy_mask.core.geometry import Point
+from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.io.export.common import AnnotatedImage, copy_images, resolve_labels
+
+
+def _area(shape: Shape, outlines: list[list[Point]]) -> float:
+    """Pixel area for masks (exact), polygon area for vector shapes."""
+    if shape.shape_type == ShapeType.MASK:
+        return float(shape.mask.sum()) if shape.mask is not None else 0.0
+    return sum(geometry.polygon_area(o) for o in outlines)
 
 
 def _coco_object(shapes: list[Shape]) -> dict:
     """Polygons, bbox and area for one object made of one or more area shapes."""
-    outlines = [s.outline() for s in shapes]
+    per_shape = [(s, masks.shape_polygons(s)) for s in shapes]
+    outlines = [o for _, polys in per_shape for o in polys]
     all_points = [p for outline in outlines for p in outline]
     x_min, y_min, x_max, y_max = geometry.bounding_box(all_points)
     return {
         "segmentation": [[c for x, y in outline for c in (x, y)] for outline in outlines],
-        "area": sum(geometry.polygon_area(o) for o in outlines),
+        "area": sum(_area(s, polys) for s, polys in per_shape),
         "bbox": [x_min, y_min, x_max - x_min, y_max - y_min],
         "iscrowd": 0,
     }
@@ -36,7 +46,7 @@ def _group_objects(shapes: list[Shape]) -> list[list[Shape]]:
     objects: list[list[Shape]] = []
     by_key: dict[tuple[str, int], list[Shape]] = {}
     for shape in shapes:
-        if not shape.shape_type.is_area:
+        if not shape.shape_type.is_area or not masks.shape_polygons(shape):
             continue
         if shape.group_id is None:
             objects.append([shape])

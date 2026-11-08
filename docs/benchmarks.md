@@ -46,10 +46,25 @@ dataset above in the format RITM introduced
 | [SA-V](https://ai.meta.com/datasets/segment-anything-video/) | SAM2's video dataset; for the v0.4 propagation milestone |
 | [DAVIS 2017](https://davischallenge.org/) | Video object segmentation; measure J&F after propagation |
 
+## Results
+
+### Mask fidelity (v0.2)
+
+`uv run python -m benchmarks.mask_fidelity` on every ground-truth mask (2026-11-08):
+
+| dataset | n | stored losslessly | JSON KB / mask | polygon IoU / vertices @ 0.5 px | @ 1 px | @ 2 px | @ 4 px |
+|---|---|---|---|---|---|---|---|
+| GrabCut | 50 | 100% | 2.2 | 0.986 / 253 | 0.980 / 90 | 0.973 / 51 | 0.958 / 31 |
+| Berkeley | 100 | 100% | 1.6 | 0.987 / 224 | 0.978 / 86 | 0.965 / 48 | 0.941 / 29 |
+| DAVIS | 345 | 100% | 2.5 | 0.962 / 372 | 0.950 / 133 | 0.936 / 80 | 0.909 / 48 |
+
+Mask shapes keep every pixel. Polygons lose 1-9% IoU (holes and thin parts), more on
+DAVIS's detailed objects: prefer masks when edges matter, polygons when files must be small.
+
 ## Plan
 
 1. **v0.1 (now):** unit and GUI tests on synthetic images (fast, no downloads, run in CI).
-2. **v0.2 (SAM2):** add `scripts/benchmark_clicks.py` that runs the simulated-click protocol
+2. **AI branch:** add `benchmarks/clicks.py` that runs the simulated-click protocol
    on GrabCut + Berkeley + DAVIS and reports NoC@85/90 and mIoU@1. Datasets live outside
    the repo (`data/` is gitignored); the script takes a path.
 3. **v0.2+:** timed manual sessions on a fixed 20-image COCO val subset to track

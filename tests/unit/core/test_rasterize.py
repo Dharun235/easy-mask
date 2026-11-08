@@ -45,3 +45,9 @@ def test_instance_mask_merges_groups(square):
     mask, instances = instance_mask([square, a, b], 50, 50)
     assert instances == [(1, "cat"), (2, "dog")]
     assert mask[20, 20] == 1 and mask[37, 37] == 2 and mask[45, 45] == 2
+
+
+def test_shape_to_mask_is_writable(square):
+    mask = shape_to_mask(square, 50, 50)
+    mask[0, 0] = True  # brush and combine edit masks in place
+    assert mask[0, 0]

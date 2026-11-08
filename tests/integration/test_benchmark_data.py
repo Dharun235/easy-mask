@@ -8,11 +8,12 @@ Run just these with ``uv run pytest -m benchmark``.
 """
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pytest
+from benchmarks.datasets import DATASETS, ROOT, Dataset, load_ground_truth
+from benchmarks.mask_fidelity import evaluate
 from PIL import Image
 from PySide6.QtGui import QImage
 
@@ -22,37 +23,11 @@ from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.io import export
 from easy_mask.io.images import list_images
 
-ROOT = Path(__file__).parents[2] / "data" / "benchmarks"
-
 pytestmark = [pytest.mark.benchmark, pytest.mark.slow]
 
 
-@dataclass(frozen=True)
-class Dataset:
-    name: str
-    images: str  # folder of images, relative to ROOT
-    masks: str  # folder of ground-truth masks, relative to ROOT
-    mask_suffix: str
-    expected_count: int
-
-
-DATASETS = [
-    Dataset("GrabCut", "GrabCut/GrabCut/data_GT", "GrabCut/GrabCut/boundary_GT", ".bmp", 50),
-    Dataset("Berkeley", "Berkeley/Berkeley/images", "Berkeley/Berkeley/masks", ".png", 100),
-    Dataset("DAVIS", "DAVIS/DAVIS345/img", "DAVIS/DAVIS345/gt", ".png", 345),
-]
-
-
 def foreground(mask_path: Path) -> np.ndarray:
-    """Ground-truth object pixels, whatever the dataset's encoding.
-
-    GrabCut: 0 / 128 (uncertain boundary band, excluded) / 255. Berkeley: RGB 0 / 255.
-    DAVIS: palette image of object ids (0 = background); any id counts, as in RITM.
-    """
-    mask = np.array(Image.open(mask_path))
-    if mask.ndim == 3:
-        mask = mask[..., 0]
-    return mask > 128 if mask.max() == 255 else mask > 0
+    return load_ground_truth(mask_path)
 
 
 @pytest.fixture(params=DATASETS, ids=lambda d: d.name)
@@ -132,3 +107,14 @@ def test_box_iou_ceiling_is_reported(dataset):
         box[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1] = True
         ious.append((fg & box).sum() / (fg | box).sum())
     assert 0.2 < float(np.mean(ious)) < 0.9
+
+
+def test_mask_storage_is_lossless_and_polygons_close(dataset):
+    """Mask shapes store real objects pixel-exactly; polygons are close on average.
+
+    Single thin objects can drop well below 0.9 IoU as polygons (holes and slivers are
+    lost), which is exactly why the mask shape type exists.
+    """
+    results = [evaluate(gt) for _, gt in dataset.samples()]
+    assert all(r["lossless"] == 1.0 for r in results)
+    assert np.mean([r["iou@1.0"] for r in results]) > 0.9

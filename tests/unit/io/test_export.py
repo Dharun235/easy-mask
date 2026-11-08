@@ -75,3 +75,25 @@ def test_coco_skips_labels_outside_class_list(annotated, tmp_path):
     export.export_coco(annotated, tmp_path / "out", labels=["dog"])
     coco = json.loads((tmp_path / "out" / "annotations.json").read_text())
     assert [a["category_id"] for a in coco["annotations"]] == [1]
+
+
+def test_mask_shapes_export_to_every_format(image_dir, tmp_path):
+    from easy_mask.core import masks as mask_ops
+
+    full = np.zeros((80, 100), bool)
+    full[10:20, 10:30] = True  # blob 1: 200 px
+    full[50:60, 60:70] = True  # blob 2: 100 px
+    shape = mask_ops.to_shape("blob", full)
+    ann_io.save(Annotation("img1.png", 100, 80, [shape]), image_dir / "img1.json")
+    items = export.collect(image_dir)
+
+    export.export_masks(items, tmp_path / "m")
+    semantic = np.array(Image.open(tmp_path / "m" / "semantic" / "img1.png"))
+    assert np.array_equal(semantic == 1, full)  # masks export pixel-exact
+
+    export.export_coco(items, tmp_path / "c")
+    (ann,) = json.loads((tmp_path / "c" / "annotations.json").read_text())["annotations"]
+    assert ann["area"] == 300 and len(ann["segmentation"]) == 2
+
+    export.export_yolo(items, tmp_path / "y")
+    assert len((tmp_path / "y" / "labels" / "img1.txt").read_text().splitlines()) == 2

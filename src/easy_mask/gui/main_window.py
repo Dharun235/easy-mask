@@ -11,11 +11,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
@@ -25,18 +27,23 @@ from PySide6.QtWidgets import (
 
 from easy_mask import __version__
 from easy_mask.core import annotation as ann_io
+from easy_mask.core import masks, operations
 from easy_mask.core.annotation import Annotation
 from easy_mask.core.history import History
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
+from easy_mask.gui.tools.base import CanvasTool
+from easy_mask.gui.tools.brush import BrushTool
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
 from easy_mask.io import export
 from easy_mask.io.images import is_image, list_images
 
 DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
-TOOLS: list[tuple[str, ShapeType | None, str]] = [
+# Toolbar entries: (text, tool, shortcut). A ShapeType draws that shape, None is edit
+# mode, and a string names a pixel tool from MainWindow.pixel_tools.
+TOOLS: list[tuple[str, ShapeType | str | None, str]] = [
     ("Edit", None, "E"),
     ("Polygon", ShapeType.POLYGON, "P"),
     ("Rectangle", ShapeType.RECTANGLE, "R"),
@@ -44,7 +51,17 @@ TOOLS: list[tuple[str, ShapeType | None, str]] = [
     ("Line", ShapeType.LINE, "L"),
     ("Line strip", ShapeType.LINESTRIP, "T"),
     ("Point", ShapeType.POINT, "O"),
+    ("Brush", "brush", "B"),
+    ("Eraser", "eraser", "X"),
 ]
+
+
+def ask_number(
+    parent: QWidget, title: str, label: str, value: float, minimum: float, maximum: float
+) -> float | None:
+    """Ask for a number in a small dialog. Returns None if cancelled."""
+    number, ok = QInputDialog.getDouble(parent, title, label, value, minimum, maximum, 2)
+    return number if ok else None
 
 
 @dataclass
@@ -73,8 +90,13 @@ class MainWindow(QMainWindow):
         self.last_label = ""  # pre-filled in the label dialog for fast repeated labelling
         # Swappable so tests can answer the label dialog without a human.
         self.ask_label = LabelDialog.ask
+        self.ask_number = ask_number
 
         self.canvas = Canvas(self)
+        self.pixel_tools: dict[str, CanvasTool] = {
+            "brush": BrushTool(self._apply_stroke),
+            "eraser": BrushTool(self._apply_stroke, erase=True),
+        }
         self.canvas.labels = self.known_labels  # same list object: new labels recolour live
         self.setCentralWidget(self.canvas)
         self._build_panels()
@@ -108,8 +130,8 @@ class MainWindow(QMainWindow):
         self.flags_dock.setVisible(bool(self.settings.flags))
 
         self.flag_list.flags_changed.connect(self._mark_dirty)
-        self.shape_list.currentRowChanged.connect(
-            lambda row: self.canvas.select(row if row >= 0 else None)
+        self.shape_list.itemSelectionChanged.connect(
+            lambda: self.canvas.set_selection(self.shape_list.selected_rows())
         )
         self.shape_list.visibility_changed.connect(self.canvas.set_shape_visible)
         self.shape_list.itemDoubleClicked.connect(lambda _item: self.edit_label())
@@ -172,7 +194,7 @@ class MainWindow(QMainWindow):
 
         m = bar.addMenu("&Draw")
         self.tool_group = QActionGroup(self)
-        self.tool_actions: dict[ShapeType | None, QAction] = {}
+        self.tool_actions: dict[ShapeType | str | None, QAction] = {}
         for text, mode, key in TOOLS:
             action = self._action(
                 m, text, lambda _=False, md=mode: self.set_tool(md), key, checkable=True
@@ -181,6 +203,20 @@ class MainWindow(QMainWindow):
             toolbar.addAction(action)
             self.tool_actions[mode] = action
         self.tool_actions[None].setChecked(True)
+
+        m = bar.addMenu("&Mask")
+        self._action(m, "Union", lambda: self.combine("union"))
+        self._action(m, "Subtract", lambda: self.combine("subtract"))
+        self._action(m, "Intersect", lambda: self.combine("intersect"))
+        m.addSeparator()
+        self._action(m, "Fill Holes", lambda: self.map_selected(masks.fill_holes))
+        self._action(m, "Remove Small Specks...", self.remove_specks)
+        self._action(m, "Grow 1 px", lambda: self.map_selected(lambda f: masks.grow(f, 1)))
+        self._action(m, "Shrink 1 px", lambda: self.map_selected(lambda f: masks.shrink(f, 1)))
+        self._action(m, "Smooth Edges", lambda: self.map_selected(masks.smooth))
+        m.addSeparator()
+        self._action(m, "Convert to Mask", self.convert_to_masks)
+        self._action(m, "Convert to Polygons...", self.convert_to_polygons)
 
         m = bar.addMenu("&View")
         self._action(
@@ -202,7 +238,7 @@ class MainWindow(QMainWindow):
     def _connect_canvas(self) -> None:
         self.canvas.shape_drawn.connect(self._on_shape_drawn)
         self.canvas.shapes_edited.connect(self._commit)
-        self.canvas.selection_changed.connect(self.shape_list.select_silently)
+        self.canvas.selection_changed.connect(self.shape_list.select_rows)
         self.canvas.double_clicked_shape.connect(lambda _i: self.edit_label())
         self.canvas.delete_requested.connect(self.delete_selected)
         self.canvas.status_changed.connect(lambda text: self.status_label.setText(text))
@@ -386,10 +422,13 @@ class MainWindow(QMainWindow):
         self._refresh_panels()
         self.canvas.update()
 
-    def set_tool(self, mode: ShapeType | None) -> None:
-        """Switch the canvas to a drawing tool, or to edit mode with ``None``."""
-        self.canvas.set_mode(mode)
-        self.tool_actions[mode].setChecked(True)
+    def set_tool(self, tool: ShapeType | str | None) -> None:
+        """Switch to a shape tool, a pixel tool by name (``"brush"``), or edit mode (None)."""
+        if isinstance(tool, str) and not isinstance(tool, ShapeType):
+            self.canvas.set_tool(self.pixel_tools[tool])
+        else:
+            self.canvas.set_mode(tool)
+        self.tool_actions[tool].setChecked(True)
 
     def _on_shape_drawn(self, shape: Shape) -> None:
         info = self.ask_label(self.known_labels, LabelInfo(label=self.last_label), self)
@@ -401,6 +440,90 @@ class MainWindow(QMainWindow):
         self.canvas.shapes.append(shape)
         self._commit()
         self.canvas.select(len(self.canvas.shapes) - 1)
+
+    # ------------------------------------------------------------------ masks
+
+    @property
+    def _size(self) -> tuple[int, int]:
+        """Current image ``(height, width)``."""
+        return self.image_size[1], self.image_size[0]
+
+    def _replace_shapes(self, shapes: list[Shape], select: int | None = None) -> None:
+        self.canvas.set_shapes(shapes)
+        self._commit()
+        self.canvas.select(select)
+
+    def _apply_stroke(self, full: np.ndarray, index: int | None) -> None:
+        """Store a finished brush/eraser stroke (called by the brush tool)."""
+        shapes = list(self.canvas.shapes)
+        if index is None:  # a new mask: ask for its label
+            info = self.ask_label(self.known_labels, LabelInfo(label=self.last_label), self)
+            new = None
+            if info is not None:
+                new = masks.to_shape(
+                    info.label, full, group_id=info.group_id, description=info.description
+                )
+            if new is None:
+                self.canvas.update()
+                return
+            self._remember_label(new.label)
+            self.last_label = new.label
+            self._replace_shapes([*shapes, new], select=len(shapes))
+            return
+        changed = operations.with_pixels(shapes[index], full)
+        if changed is None:
+            del shapes[index]
+            self._replace_shapes(shapes)
+        else:
+            shapes[index] = changed
+            self._replace_shapes(shapes, select=index)
+
+    def combine(self, op: operations.CombineOp) -> None:
+        """Union / subtract / intersect the selected shapes; the first picked is the target."""
+        if len(self.canvas.selection) < 2:
+            self.statusBar().showMessage("Select two or more shapes (Shift+click) to combine", 4000)
+            return
+        shapes, index = operations.combine(
+            self.canvas.shapes, self.canvas.selection, op, *self._size
+        )
+        self._replace_shapes(shapes, select=index)
+
+    def map_selected(self, fn: operations.MaskFn) -> None:
+        """Apply a mask clean-up operation to every selected shape."""
+        if self.canvas.selection:
+            selection = list(self.canvas.selection)
+            shapes = operations.map_pixels(self.canvas.shapes, selection, fn, *self._size)
+            kept_all = len(shapes) == len(self.canvas.shapes)
+            self._replace_shapes(shapes, select=selection[-1] if kept_all else None)
+
+    def remove_specks(self) -> None:
+        """Remove blobs smaller than a size the user picks."""
+        if not self.canvas.selection:
+            return
+        area = self.ask_number(
+            self, "Remove Small Specks", "Minimum blob size (pixels):", 50, 1, 1_000_000
+        )
+        if area is not None:
+            self.map_selected(lambda full: masks.remove_small(full, int(area)))
+
+    def convert_to_masks(self) -> None:
+        """Turn selected polygons / rectangles / circles into mask shapes."""
+        if self.canvas.selection:
+            shapes = operations.to_masks(self.canvas.shapes, self.canvas.selection, *self._size)
+            self._replace_shapes(shapes)
+
+    def convert_to_polygons(self) -> None:
+        """Turn selected masks into polygons, simplified to a tolerance the user picks."""
+        if not self.canvas.selection:
+            return
+        tolerance = self.ask_number(
+            self, "Convert to Polygons", "Max deviation (pixels):", 1.0, 0.1, 50.0
+        )
+        if tolerance is not None:
+            shapes = operations.to_polygons(
+                self.canvas.shapes, self.canvas.selection, *self._size, tolerance=tolerance
+            )
+            self._replace_shapes(shapes)
 
     def edit_label(self) -> None:
         """Change label / group id / description of the selected shape."""
@@ -416,16 +539,14 @@ class MainWindow(QMainWindow):
         shape.label, shape.group_id, shape.description = info.label, info.group_id, info.description
         self._remember_label(info.label)
         self._commit()
-        self.shape_list.select_silently(index)
+        self.shape_list.select_rows([index])
 
     def delete_selected(self) -> None:
-        """Delete the selected shape."""
-        index = self.canvas.selected
-        if index is None:
+        """Delete every selected shape."""
+        if not self.canvas.selection:
             return
-        del self.canvas.shapes[index]
-        self.canvas.select(None)
-        self._commit()
+        selected = set(self.canvas.selection)
+        self._replace_shapes([s for i, s in enumerate(self.canvas.shapes) if i not in selected])
 
     def duplicate_selected(self) -> None:
         """Add a slightly shifted copy of the selected shape."""
@@ -500,9 +621,7 @@ class MainWindow(QMainWindow):
     def _refresh_panels(self) -> None:
         self.label_list.show_labels(self.known_labels, self.canvas.shapes)
         self.shape_list.show_shapes(self.canvas.shapes, self.canvas.hidden, self.known_labels)
-        self.shape_list.select_silently(
-            -1 if self.canvas.selected is None else self.canvas.selected
-        )
+        self.shape_list.select_rows(self.canvas.selection)
         self._update_undo_actions()
 
     def _refresh_file_list(self) -> None:

@@ -29,8 +29,9 @@ no cloud upload, no account, no telemetry. Click-to-segment with
 
 | Area | What you get |
 | --- | --- |
-| Shapes | polygon, rectangle, circle, line, line strip, point |
-| Editing | select, move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
+| Shapes | polygon, rectangle, circle, line, line strip, point, pixel **mask** |
+| Mask editing | brush and eraser, union / subtract / intersect, fill holes, remove specks, grow / shrink, smooth, mask <-> polygon |
+| Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
 | Labels | label dialog with autocomplete, distinct per-label colours, group id (one object in several parts), description |
 | Navigation | open image or folder, file list with done-marks, next/prev, zoom at cursor, pan, fit |
 | Image flags | per-image checkboxes for classification or data cleaning (`--flags`) |
@@ -76,6 +77,7 @@ uv run easy-mask export images/ --format yolo  --out dataset/
 | `D` / `A` | next / previous image | `Ctrl+S` | save |
 | `Ctrl+wheel` | zoom at cursor | wheel / middle-drag | pan |
 | `F` | fit image to window | `Ctrl+C` / `Ctrl+V` | copy / paste shape |
+| `B` / `X` | brush / eraser | `[` / `]` | smaller / bigger brush |
 
 Rectangles, circles and lines can be drawn by dragging or by two clicks.
 
@@ -104,9 +106,9 @@ Rectangles store two opposite corners; circles store the centre and one point on
 Full plan with milestones: [docs/roadmap.md](docs/roadmap.md).
 
 - [x] **v0.1 Core annotation:** all manual shape tools, editing, undo/redo, labelme JSON, mask/COCO/YOLO export
+- [x] **v0.2 Mask shapes:** pixel masks, brush/eraser, boolean combine, clean-up, mask <-> polygon
 - [ ] **v0.2 SAM2 click-to-segment:** positive/negative clicks and box prompts, runs locally on CUDA / Apple MPS / CPU
 - [ ] **v0.2 Benchmarks:** NoC@85/90 and mIoU on GrabCut, Berkeley, DAVIS ([docs/benchmarks.md](docs/benchmarks.md))
-- [ ] **v0.3 Mask editing:** native bitmap masks, brush and eraser, polygon <-> mask conversion
 - [ ] **v0.4 Video:** SAM2 propagation across frames, object tracks
 - [ ] Text-prompted pre-labelling (SAM3 / Grounding-DINO style)
 - [ ] Brightness / contrast, keep previous annotations, COCO import, Pascal VOC export
