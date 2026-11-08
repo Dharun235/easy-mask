@@ -49,6 +49,8 @@ always works. `slow` and `benchmark` are added explicitly.
   `UPDATE_GOLDEN=1 uv run pytest tests/integration/test_export_golden.py`.
 - **Cross-checking formats.** `test_pipeline.py` rasterizes COCO and YOLO polygons and
   compares them with the mask PNGs: a bug in one exporter shows up as disagreement.
+- **Reference implementation.** `core/rle.py` is checked byte-for-byte against
+  pycocotools (a dev-only dependency) on known vectors and Hypothesis-generated masks.
 - **Model-based testing.** `test_history_matches_simple_model` runs random push/undo/redo
   sequences against an obviously-correct list model.
 - **Headless GUI.** `QT_QPA_PLATFORM=offscreen` is set in `tests/conftest.py`. Modal dialogs

@@ -15,7 +15,7 @@ rasterizing, export) is plain Python that runs and tests without a display.
 
 ```
 src/easy_mask/
-  cli.py                 argparse: `easy-mask [PATH]` (GUI) and `easy-mask export` (headless)
+  cli.py                 argparse: `easy-mask [PATH]` (GUI), `easy-mask export` and `easy-mask stats`
   core/
     geometry.py          distances, point-in-polygon, area, bbox, circle -> polygon
     shapes.py            ShapeType enum + Shape dataclass (hit-testing, outline, (de)serialize)
@@ -25,12 +25,14 @@ src/easy_mask/
     rasterize.py         Shape -> boolean mask; semantic and instance masks
     masks.py             mask shapes <-> full masks, brush strokes, clean-up, mask -> polygons
     operations.py        pure list edits: combine (union/subtract/intersect), map, convert
+    rle.py               COCO RLE encode/decode (pycocotools-compatible, pure numpy)
   io/
     images.py            list images in a folder (natural sort), read size
+    stats.py             folder statistics and label validation (CLI `stats`, GUI dialog)
     export/
       common.py          collect (image, annotation) pairs, resolve class list, copy images
       masks.py           semantic + instance PNG masks
-      coco.py            COCO instance segmentation JSON
+      coco.py            COCO instance segmentation JSON (polygons, or RLE for masks)
       yolo.py            YOLO-seg label files + data.yaml
   gui/
     app.py               QApplication bootstrap
@@ -40,6 +42,7 @@ src/easy_mask/
     tools/brush.py       brush and eraser
     label_dialog.py      label / group id / description dialog with autocomplete
     widgets.py           list widgets for files, labels, shapes, flags
+    workflow.py          Workflow menu: review mode, copy previous image, statistics dialog
 ```
 
 ## Data flow for one edit
