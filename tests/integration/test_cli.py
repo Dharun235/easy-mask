@@ -23,3 +23,10 @@ def test_export_command(image_dir, square, tmp_path, capsys):
 
 def test_export_command_without_annotations_fails(image_dir, tmp_path):
     assert main(["export", str(image_dir), "--format", "yolo", "--out", str(tmp_path / "o")]) == 1
+
+
+def test_export_davis_command(image_dir, square, tmp_path):
+    ann_io.save(Annotation("img1.png", 100, 80, [square]), image_dir / "img1.json")
+    out = tmp_path / "davis"
+    assert main(["export", str(image_dir), "--format", "davis", "--out", str(out)]) == 0
+    assert (out / "Annotations" / image_dir.name / "img1.png").exists()

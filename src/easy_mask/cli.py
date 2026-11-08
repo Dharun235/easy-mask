@@ -3,7 +3,7 @@
 Two forms::
 
     easy-mask [PATH] [--output DIR] [--labels ...] [--flags ...] [--autosave]   # open the GUI
-    easy-mask export IMAGE_DIR --format {masks,coco,yolo} --out DIR             # headless export
+    easy-mask export IMAGE_DIR --format {masks,coco,yolo,davis} --out DIR    # headless export
 """
 
 import argparse
@@ -13,7 +13,7 @@ from pathlib import Path
 from easy_mask import __version__
 from easy_mask.core.labels import parse_name_list
 
-EXPORT_FORMATS = ("masks", "coco", "yolo")
+EXPORT_FORMATS = ("masks", "coco", "yolo", "davis")
 
 
 def build_gui_parser() -> argparse.ArgumentParser:
@@ -31,6 +31,19 @@ def build_gui_parser() -> argparse.ArgumentParser:
     parser.add_argument("--flags", help="image-level flags: comma-separated or a text file")
     parser.add_argument(
         "--autosave", action="store_true", help="save automatically when switching images"
+    )
+    parser.add_argument(
+        "--frame-step", type=int, default=1, help="when opening a video: keep every n-th frame"
+    )
+    parser.add_argument(
+        "--max-frames", type=int, help="when opening a video: extract at most this many frames"
+    )
+    parser.add_argument(
+        "--video-model",
+        choices=("efficienttam_ti_512", "sam2.1_hiera_tiny"),
+        default="efficienttam_ti_512",
+        help="mask propagation model (needs the video extra): fast default, or SAM 2.1 for "
+        "~3 points better J&F at ~5x the time",
     )
     return parser
 
@@ -81,5 +94,8 @@ def main(argv: list[str] | None = None) -> int:
         labels=parse_name_list(args.labels),
         flags=parse_name_list(args.flags),
         autosave=args.autosave,
+        frame_step=args.frame_step,
+        max_frames=args.max_frames,
+        video_model=args.video_model,
     )
     return run(args.path, settings)
