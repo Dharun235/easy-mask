@@ -33,9 +33,13 @@ from easy_mask.core.annotation import Annotation
 from easy_mask.core.history import History
 from easy_mask.core.shapes import Shape, ShapeType
 from easy_mask.gui.canvas import Canvas
+from easy_mask.gui.display_dialog import DisplayDialog
 from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
+from easy_mask.gui.threshold_dialog import ThresholdDialog
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
+from easy_mask.gui.tools.region import GrabCutTool, MagicWandTool, SuperpixelTool
+from easy_mask.gui.tools.watershed import WatershedTool
 from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
 from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
@@ -55,6 +59,10 @@ TOOLS: list[tuple[str, ShapeType | str | None, str]] = [
     ("Point", ShapeType.POINT, "O"),
     ("Brush", "brush", "B"),
     ("Eraser", "eraser", "X"),
+    ("Magic wand", "wand", "W"),
+    ("GrabCut", "grabcut", "G"),
+    ("Superpixels", "superpixel", "S"),
+    ("Watershed", "watershed", "M"),
 ]
 
 
@@ -101,7 +109,13 @@ class MainWindow(QMainWindow):
         self.pixel_tools: dict[str, CanvasTool] = {
             "brush": BrushTool(self._apply_stroke),
             "eraser": BrushTool(self._apply_stroke, erase=True),
+            "wand": MagicWandTool(self._apply_stroke),
+            "grabcut": GrabCutTool(self._apply_stroke),
+            "superpixel": SuperpixelTool(self._apply_stroke),
+            "watershed": WatershedTool(self._apply_stroke),
         }
+        self.threshold_dialog: ThresholdDialog | None = None
+        self.display_dialog: DisplayDialog | None = None
         self.canvas.labels = self.known_labels  # same list object: new labels recolour live
         self.setCentralWidget(self.canvas)
         self._build_panels()
@@ -221,6 +235,8 @@ class MainWindow(QMainWindow):
         self._action(m, "Shrink 1 px", lambda: self.map_selected(lambda f: masks.shrink(f, 1)))
         self._action(m, "Smooth Edges", lambda: self.map_selected(masks.smooth))
         m.addSeparator()
+        self._action(m, "Threshold / Colour Range...", self.open_threshold, "Ctrl+T")
+        m.addSeparator()
         self._action(m, "Convert to Mask", self.convert_to_masks)
         self._action(m, "Convert to Polygons...", self.convert_to_polygons)
 
@@ -236,6 +252,7 @@ class MainWindow(QMainWindow):
         self._action(m, "Actual Size", self.canvas.zoom_to_actual_size, "Ctrl+0")
         fill = self._action(m, "Fill Shapes", self._toggle_fill, checkable=True)
         fill.setChecked(True)
+        self._action(m, "Adjust Display...", self.open_display)
 
         m = bar.addMenu("&Help")
         self._action(m, "About", self._about)
@@ -544,6 +561,21 @@ class MainWindow(QMainWindow):
             )
             self._replace_shapes(shapes)
 
+    def open_threshold(self) -> None:
+        """Show the threshold / colour-range panel; its preview replaces the active tool."""
+        if self.image_path is None:
+            return
+        if self.threshold_dialog is None:
+            self.threshold_dialog = ThresholdDialog(self.canvas, self._apply_stroke, self)
+            self.threshold_dialog.finished.connect(self._threshold_closed)
+        self.canvas.set_tool(self.threshold_dialog.tool)
+        self.threshold_dialog.refresh()
+        self.threshold_dialog.show()
+
+    def _threshold_closed(self) -> None:
+        if self.threshold_dialog is not None and self.canvas.tool is self.threshold_dialog.tool:
+            self.set_tool(None)
+
     def edit_label(self) -> None:
         """Change label / group id / description of the selected shape."""
         index = self.canvas.selected
@@ -626,6 +658,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Exported {len(items)} images as {fmt} to {out}", 5000)
 
     # ------------------------------------------------------------------ view helpers
+
+    def open_display(self) -> None:
+        """Show the display-adjustment panel (brightness, CLAHE, mask opacity, ...)."""
+        if self.display_dialog is None:
+            self.display_dialog = DisplayDialog(self.canvas, self)
+        self.display_dialog.show()
 
     def _toggle_fill(self, checked: bool) -> None:
         self.canvas.fill = checked
