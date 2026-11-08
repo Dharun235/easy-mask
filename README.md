@@ -31,7 +31,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | --- | --- |
 | Shapes | polygon, rectangle, circle, line, line strip, point, pixel **mask** |
 | AI Segment | click an object (right/Alt-click = background, drag = box), live preview, Enter to keep; EfficientSAM on CPU, offline after a one-time download |
-| Mask editing | brush, **eraser** (any mask under it, carried through frames by Propagate), union / subtract / intersect, fill holes, remove specks, mask <-> polygon (right-click a shape) |
+| Mask editing | **paint** (start on a mask to extend it, elsewhere for a new one), **eraser** (any mask under it, carried through frames by Propagate), union / subtract / intersect, fill holes, remove specks, mask <-> polygon (right-click a shape) |
 | Pixel tools (no AI) | magic wand, threshold (manual / Otsu / adaptive) and colour range with live preview |
 | Display | brightness / contrast / gamma, CLAHE, single-channel view, mask opacity (view only, never saved) |
 | Editing | select (Shift+click for several), move shapes, drag vertices, relabel (double-click), delete, duplicate, copy/paste across images, undo/redo |
@@ -85,12 +85,12 @@ code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/Effic
 ## Quick start: annotate fast
 
 Every toolbar button is labelled: **Open, Video, Undo, Redo, Back, Next, Propagate,
-Select, AI, Polygon, Box, Brush, Eraser, Export**.
+Select, AI, Polygon, Box, Paint, Eraser, Export**.
 
 1. **Open** a folder of images or a **Video** (its frames are imported first).
 2. **Labels**: type a name in the Labels panel's *Add a label* box and press Enter (the
    first one is used for new masks; click another to switch). **AI**: click an object,
-   double-click to keep it; or draw it with **Polygon**, **Box** or **Brush**. The status
+   double-click to keep it; or draw it with **Polygon**, **Box** or **Paint** (paint it with the mouse). The status
    bar says which label the new mask got; right-click a mask > **Label** to change it.
 3. **Next** moves on; work is saved automatically.
 4. **Propagate** sends this frame's objects (the selected ones, or all) through the next
@@ -145,7 +145,7 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
 
 ### Video workflow
 
-1. Open a video (or a folder of frames). Draw or brush the objects on one frame.
+1. Open a video (or a folder of frames). Draw or paint the objects on one frame.
    `(label, group id)` is an object's identity across frames; a new object with a label
    already on the frame gets the next free **group id** automatically, so two dogs stay two
    objects. To join parts into one object, give them the same group id (Edit Label) or use
@@ -169,7 +169,7 @@ Everything is reachable with the mouse; keys are optional (Help > Keyboard Short
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
 | `E` | select | `P` / `R` / `C` | polygon / rectangle / circle |
-| `B` / `X` | brush / eraser | `I` / `W` / `C` | AI Segment / magic wand / circle |
+| `B` / `X` | paint / eraser | `I` / `W` / `C` | AI Segment / magic wand / circle |
 | `D` / `A` | next / previous image | `1`-`9`, `0` | use a label, ask each time |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo (across frames) | `Ctrl+S` | save |
 | `Enter` / double-click | finish a polygon, keep an AI mask | `Esc` / `Backspace` | cancel / remove last point |

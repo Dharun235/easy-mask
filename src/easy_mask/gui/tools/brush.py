@@ -1,7 +1,8 @@
-"""Brush and eraser: paint pixels into a mask shape.
+"""Paint and eraser: paint masks with the mouse, or paint away what should go.
 
-* Brush with a shape selected paints into it (a polygon/rectangle/circle becomes a mask).
-  Brush with nothing selected starts a new mask; its label is asked when the stroke ends.
+* Paint: a stroke that starts on a mask extends that mask (a polygon/rectangle/circle
+  becomes a mask); a stroke that starts on empty image is a new mask with the current
+  label (or the label is asked when the stroke ends).
 * Eraser paints the area to remove; when the stroke ends it is cut from every mask under
   it (only from the selected shapes, if any), exactly like a cut, so Propagate carries it.
 
@@ -50,15 +51,15 @@ class BrushTool(CanvasTool):
         self._box: list[int] = [0, 0, 0, 0]  # x0, y0, x1, y1 (exclusive) of changed pixels
 
     def press(self, canvas: "Canvas", p: Point, event: QInputEvent) -> None:
-        """Start a stroke on the selected shape, or on a new empty mask."""
+        """Start a stroke: extend the mask under the cursor, or begin a new one."""
         height, width = canvas.pixmap.height(), canvas.pixmap.width()
-        index = canvas.selected
+        index = None if self.erase else canvas.area_shape_at(p)
         if self.erase:  # paint the area to remove; the main window cuts it out
             self._full = np.zeros((height, width), dtype=bool)
             self._rgb = ERASE_RGB
             self._box = [int(p[0]), int(p[1]), int(p[0]) + 1, int(p[1]) + 1]
             self.hidden_index = None
-        elif index is not None and canvas.shapes[index].shape_type.is_area:
+        elif index is not None:
             shape = canvas.shapes[index]
             self._full = shape_to_mask(shape, height, width)
             self._rgb = label_color(shape.label, canvas.labels)

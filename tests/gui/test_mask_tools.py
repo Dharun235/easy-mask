@@ -189,3 +189,23 @@ def test_eraser_without_selection_erases_every_mask_under_it(window, ui):
     assert cat[25, 20] and not cat[25, 35]
     assert dog[25, 50] and not dog[25, 35]
     assert window.video.last_cut is not None  # Propagate carries the erased part
+
+
+def test_paint_on_empty_image_makes_a_new_mask_even_with_a_selection(window, ui):
+    """Regression: a still-selected shape swallowed strokes painted elsewhere."""
+    window.ask_label = lambda known, initial, parent: LabelInfo("dog")
+    draw_rect(window, ui, (10, 10), (30, 30))
+    window.canvas.select(0)
+    window.set_tool("brush")
+    ui.drag((60, 50), (80, 50))
+    assert len(window.canvas.shapes) == 2
+    assert full(window, 1)[50, 70] and not full(window, 0)[50, 70]
+
+
+def test_paint_starting_on_a_mask_extends_it_without_selecting(window, ui):
+    draw_rect(window, ui, (10, 10), (30, 30))
+    window.canvas.select(None)
+    window.set_tool("brush")
+    ui.drag((20, 20), (60, 20))
+    (shape,) = window.canvas.shapes
+    assert shape.shape_type == ShapeType.MASK and full(window)[20, 55]

@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- Brush is now **Paint** and works by where a stroke starts: on a mask it extends that mask, on empty image it makes a new mask. No need to select first (a still-selected shape no longer swallows strokes painted elsewhere).
 - Undo / Redo cover the whole folder, not just the frame on screen: every edit on any frame is a step, a Propagate / erase / clear / interpolate run is one step over all its frames, and undoing an edit made on another frame goes back to it. Undo Last Run is gone (plain Undo does it).
 - Toolbar buttons have a word under each icon, and only the everyday tools are on it (Select, AI, Polygon, Box, Brush, Eraser); circle, line, point and magic wand keep their keys. Tools, navigation, Propagate and Export are disabled until an image is open.
 - Propagate's dropdown in plain words: Use AI, Auto-Propagate on Next Image (was Track, no longer a separate button), How Many Frames; Stop moved to the progress bar's Cancel.

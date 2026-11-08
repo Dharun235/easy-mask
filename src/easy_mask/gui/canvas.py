@@ -348,6 +348,18 @@ class Canvas(QWidget):
                 return
         self.select(None)
 
+    def area_shape_at(self, p: Point) -> int | None:
+        """The visible area shape under image point ``p`` (selected first, then topmost)."""
+        tol = self._tolerance()
+        return next(
+            (
+                i
+                for i in self._hit_order()
+                if self.shapes[i].shape_type.is_area and self.shapes[i].hit(p, tol)
+            ),
+            None,
+        )
+
     def _pick_for_menu(self, p: Point) -> None:
         """Right-click: select the shape under the cursor unless it is already selected."""
         tol = self._tolerance()

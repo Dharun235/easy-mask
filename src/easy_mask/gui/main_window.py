@@ -81,7 +81,7 @@ TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
     ("AI Segment: click an object", "AI", "ai", "I", "ai", "smart"),
     ("Polygon", "Polygon", ShapeType.POLYGON, "P", "polygon", "shapes"),
     ("Rectangle", "Box", ShapeType.RECTANGLE, "R", "rectangle", "shapes"),
-    ("Brush", "Brush", "brush", "B", "brush", "paint"),
+    ("Paint: paint a mask with the mouse", "Paint", "brush", "B", "brush", "paint"),
     (
         "Eraser: removes what you paint, from every mask under it",
         "Eraser",
@@ -111,7 +111,7 @@ TOOL_HINTS: dict[ShapeType | str | None, str] = {
     ShapeType.LINE: "Line: drag from one end to the other",
     ShapeType.LINESTRIP: "Line strip: click to place points  ·  double-click (or Enter) to finish",
     ShapeType.POINT: "Point: click to place it",
-    "brush": "Brush: paint a new mask, or select a mask first to paint onto it  ·  [ and ] "
+    "brush": "Paint: start on a mask to extend it, on empty image for a new mask  ·  [ and ] "
     "change the size",
     "eraser": "Eraser: paint over what to remove from the masks underneath (select a mask "
     "first to erase only from it)  ·  [ and ] change the size  ·  Propagate carries it",
