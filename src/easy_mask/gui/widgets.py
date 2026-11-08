@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QAbstractItemView, QListWidget, QListWidgetItem, Q
 
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
-from easy_mask.core.video import is_auto
+from easy_mask.core.video import ERASE_LABEL, is_auto
 
 
 def color_icon(label: str, labels: list[str], size: int = 12) -> QIcon:
@@ -53,7 +53,7 @@ class FileList(QListWidget):
 
 
 class LabelList(QListWidget):
-    """Every known label with its colour, number key and count on this image.
+    """Erase, then every known label with its colour and count on this image.
 
     The active label (used for new shapes without asking) is shown in bold.
 
@@ -65,7 +65,7 @@ class LabelList(QListWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setToolTip("Click a label to use it for new shapes (keys 1-9); click again to ask")
+        self.setToolTip("Click a label to use it for new shapes; click it again to be asked")
         self.itemClicked.connect(
             lambda item: self.label_clicked.emit(item.data(Qt.ItemDataRole.UserRole))
         )
@@ -73,19 +73,29 @@ class LabelList(QListWidget):
     def show_labels(
         self, labels: list[str], shapes: list[Shape], active: str | None = None
     ) -> None:
-        """Replace the list with ``labels``, per-label counts and the active label."""
+        """Replace the list with ``labels``, per-label counts and the active label.
+
+        The first row is always Erase: shapes drawn with it cut the masks underneath.
+        """
         self.clear()
-        for number, label in enumerate(labels, start=1):
+        erase = QListWidgetItem("✂  Erase (cut out of masks)")
+        erase.setData(Qt.ItemDataRole.UserRole, ERASE_LABEL)
+        erase.setToolTip("Shapes drawn with Erase are cut out of the masks under them")
+        self._bold_if(erase, active == ERASE_LABEL)
+        self.addItem(erase)
+        for label in labels:
             count = sum(1 for s in shapes if s.label == label)
-            key = f"{number}  " if number <= 9 else "    "
-            text = f"{key}{label}  ({count})" if count else f"{key}{label}"
+            text = f"{label}  ({count})" if count else label
             item = QListWidgetItem(color_icon(label, labels), text)
             item.setData(Qt.ItemDataRole.UserRole, label)
-            if label == active:
-                font = item.font()
-                font.setBold(True)
-                item.setFont(font)
+            self._bold_if(item, label == active)
             self.addItem(item)
+
+    @staticmethod
+    def _bold_if(item: QListWidgetItem, bold: bool) -> None:
+        font = item.font()
+        font.setBold(bold)
+        item.setFont(font)
 
 
 class ShapeList(QListWidget):

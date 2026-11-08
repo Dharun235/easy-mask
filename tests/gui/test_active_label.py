@@ -38,16 +38,48 @@ def test_number_beyond_known_labels_is_ignored(window):
 
 
 def test_clicking_label_toggles_it(window):
-    item = window.label_list.item(0)
+    item = window.label_list.item(1)  # row 0 is Erase
     window.label_list.itemClicked.emit(item)
     assert window.active_label == "cat"
-    assert window.label_list.item(0).font().bold()
-    window.label_list.itemClicked.emit(window.label_list.item(0))
+    assert window.label_list.item(1).font().bold()
+    window.label_list.itemClicked.emit(window.label_list.item(1))
     assert window.active_label is None
 
 
-def test_labels_panel_shows_number_keys(window):
-    assert window.label_list.item(0).text().startswith("1  cat")
+def test_labels_panel_starts_with_erase(window):
+    texts = [window.label_list.item(i).text() for i in range(window.label_list.count())]
+    assert texts[0].startswith("✂") and texts[1:] == ["cat", "dog"]
+
+
+def test_polygon_with_erase_label_cuts_instead_of_being_kept(window, ui):
+    from easy_mask.core.rasterize import shape_to_mask
+    from easy_mask.core.shapes import Shape
+    from easy_mask.core.video import ERASE_LABEL
+
+    window.canvas.set_shapes([Shape("dog", ShapeType.RECTANGLE, [(10, 10), (60, 60)])])
+    window._commit()
+    window.set_active_label(ERASE_LABEL)
+    assert "Erase" in window.active_label_status.text()
+    assert ERASE_LABEL not in window.known_labels
+    window.set_tool(ShapeType.RECTANGLE)
+    ui.drag((40, 5), (70, 70))
+    (dog,) = window.canvas.shapes
+    full = shape_to_mask(dog, 80, 100)
+    assert full[30, 20] and not full[30, 50]
+    assert window.video.last_cut is not None  # Propagate will carry it
+
+
+def test_label_dialog_erase_button(qtbot):
+    from PySide6.QtWidgets import QPushButton
+
+    from easy_mask.core.video import ERASE_LABEL
+    from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
+
+    dialog = LabelDialog(["cat"], LabelInfo("cat"))
+    qtbot.addWidget(dialog)
+    erase = next(b for b in dialog.findChildren(QPushButton) if b.text() == "Erase With It")
+    erase.click()
+    assert dialog.result() and dialog.result_info().label == ERASE_LABEL
 
 
 def test_brush_mask_uses_active_label(window, ui):

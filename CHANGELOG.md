@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- Labels panel: no number prefixes (keys 1-9 still work).
 - Four menus (File, Edit, View, Help). Video commands are one Propagate button with a dropdown (backward, AI or copy, frames per run, interpolate, clear labels from here, undo, stop) plus the Track toggle; mask operations moved to Edit > Mask and the right-click menu; labels are picked in the Labels panel; tools live in the toolbar.
 - AI Segment: a plain click always starts a new object; Shift adds to the selected one (a selected mask used to swallow new objects).
 - The Export button asks the format the first time, then repeats it.
@@ -34,6 +35,7 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Erase as a label: finish any shape with *Erase With It* (label dialog) or the ✂ Erase row (Labels panel) and it cuts the masks under it instead of being kept; Propagate carries the cut. Or propagate a shape first and right-click > *Erase With This*: it cuts the other masks on this frame and every frame it was propagated to, then goes (one Undo reverts).
 - Cut tool (scissors): drag a loop to cut that part out of every mask under it, no label needed (only the selected objects, if any). Propagate and Track carry the cut part through the next frames like another object (copy without the video add-on).
 - Clear Labels From Here (Propagate's dropdown): delete every shape on this and the next frames.
 - One undo per video run: right after Propagate, Track, Interpolate or Clear Labels, Undo restores every frame the run touched (Undo Last Run in Propagate's dropdown works until the next run). The status bar says how many frames changed, and why when none could.

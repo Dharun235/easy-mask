@@ -19,6 +19,7 @@ ObjectKey = tuple[str, int | None]
 PROPAGATED_FLAG = "propagated"
 INTERPOLATED_FLAG = "interpolated"
 AUTO_FLAGS = (PROPAGATED_FLAG, INTERPOLATED_FLAG)
+ERASE_LABEL = "(erase)"  # a shape with this label is never kept: it cuts the masks under it
 
 
 def object_key(shape: Shape) -> ObjectKey:

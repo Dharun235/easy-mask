@@ -91,11 +91,16 @@ code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/Effic
    plain click always starts a new object; hold Shift to add to the selected one.
 4. Next image (arrow button). Work is saved automatically.
 5. **Video:** draw or AI-segment the objects on a frame and press **Propagate**
-   (fast-forward button): EfficientTAM tracks them through the next frames. To remove a
-   wrong part (a second dog merged into the first, a leg in a wing), pick **Cut**
-   (scissors) and drag a loop around it: it is cut from every mask underneath, no label
-   needed. Press **Propagate** and the cut part is tracked like another object and cut on
-   every frame. One **Undo** right after reverts the whole run. The arrow next to
+   (fast-forward button): EfficientTAM tracks them through the next frames.
+   **Removing a wrong part** (a second dog merged into the first, a leg in a wing) uses
+   the same tools. Draw a polygon (or box, brush, AI click) over it, then either:
+   - choose **Erase With It** in the label dialog (or the ✂ Erase row in the Labels
+     panel): it is cut out of the masks underneath; **Propagate** carries the cut; or
+   - give it any label, **Propagate** it, then right-click it > **Erase With This**: on
+     this frame and every frame it was propagated to, it cuts the masks under it and goes.
+
+   The **Cut** tool (scissors) does the first in one drag, with a freehand loop. One
+   **Undo** right after reverts the whole run. The arrow next to
    Propagate holds the rest: backward, AI or plain copy, frames per run, interpolate,
    clear labels from here, stop. **Track** (target button) does it one frame at a time
    as you move to the next image.

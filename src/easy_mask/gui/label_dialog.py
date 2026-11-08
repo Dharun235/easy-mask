@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from easy_mask.core.video import ERASE_LABEL
 from easy_mask.gui.widgets import color_icon
 
 
@@ -76,6 +77,9 @@ class LabelDialog(QDialog):
         )
         buttons.accepted.connect(self._accept_if_valid)
         buttons.rejected.connect(self.reject)
+        erase = buttons.addButton("Erase With It", QDialogButtonBox.ButtonRole.ActionRole)
+        erase.setToolTip("Don't keep the shape: cut it out of the masks underneath")
+        erase.clicked.connect(self._accept_erase)
 
         form = QFormLayout()
         form.addRow("Label", self.label_edit)
@@ -98,6 +102,10 @@ class LabelDialog(QDialog):
             group_id=int(group) if group else None,
             description=self.description_edit.text().strip(),
         )
+
+    def _accept_erase(self) -> None:
+        self.label_edit.setText(ERASE_LABEL)
+        self.accept()
 
     def _accept_label(self, label: str) -> None:
         self.label_edit.setText(label)

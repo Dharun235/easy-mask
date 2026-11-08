@@ -39,7 +39,7 @@ from easy_mask.core.annotation import Annotation
 from easy_mask.core.history import History
 from easy_mask.core.rasterize import shape_to_mask
 from easy_mask.core.shapes import Shape, ShapeType
-from easy_mask.core.video import ObjectKey, cut_region, free_group_id, object_key
+from easy_mask.core.video import ERASE_LABEL, ObjectKey, cut_region, free_group_id, object_key
 from easy_mask.gui.canvas import Canvas
 from easy_mask.gui.display_dialog import DisplayDialog
 from easy_mask.gui.export_worker import ExportWorker
@@ -456,6 +456,11 @@ class MainWindow(QMainWindow):
             "Propagate Selected" if has_selection else "Propagate All",
             lambda: self.video.propagate(+1),
         )
+        erase = menu.addAction(
+            icon("cut"), "Erase With This", lambda: self.video.erase_with(self.canvas.selected)
+        )
+        erase.setEnabled(self.canvas.selected is not None)
+        erase.setToolTip("Cut it out of the masks under it, here and on its propagated frames")
         menu.addSeparator()
         menu.addMenu(self.mask_menu).setEnabled(has_selection)
         self.show_menu(menu, position)
@@ -715,7 +720,9 @@ class MainWindow(QMainWindow):
         """Ask for a label; with strict labels, refuse any outside the label list."""
         info = self.ask_label(self.known_labels, initial, self)
         allowed = self._allowed_labels()
-        if info is not None and allowed is not None and info.label not in allowed:
+        if info is None or info.label == ERASE_LABEL:
+            return info
+        if allowed is not None and info.label not in allowed:
             self.statusBar().showMessage(f"'{info.label}' is not in the label list", 5000)
             return None
         return info
@@ -724,7 +731,7 @@ class MainWindow(QMainWindow):
 
     def set_active_label(self, label: str | None) -> None:
         """Label new shapes with ``label`` without asking, or ask every time with None."""
-        if label is not None:
+        if label is not None and label != ERASE_LABEL:
             self._remember_label(label)
         self.active_label = label
         self.session.save_project()
@@ -743,6 +750,8 @@ class MainWindow(QMainWindow):
     def _show_active_label(self) -> None:
         if self.active_label is None:
             text = "Label: ask each time (click a label to use it)"
+        elif self.active_label == ERASE_LABEL:
+            text = "Erase: shapes you draw cut the masks under them"
         else:
             text = f"Label: {self.active_label}  (click it again to ask)"
         self.active_label_status.setText(text)
@@ -767,6 +776,11 @@ class MainWindow(QMainWindow):
     def _on_shape_drawn(self, shape: Shape) -> None:
         info = self._label_for_new_shape()
         if info is None:
+            return
+        if info.label == ERASE_LABEL:  # not kept: it cuts the masks under it
+            if shape.shape_type.is_area:
+                self.cut(shape_to_mask(shape, *self._size))
+            self.canvas.update()
             return
         shape.label, shape.description = info.label, info.description
         shape.group_id = self._group_for(info)
@@ -799,6 +813,9 @@ class MainWindow(QMainWindow):
         shapes = list(self.canvas.shapes)
         if index is None:  # a new mask: active label, or ask for one
             info = self._label_for_new_shape()
+            if info is not None and info.label == ERASE_LABEL:
+                self.cut(full)
+                return
             new = None
             if info is not None:
                 new = masks.to_shape(
@@ -920,6 +937,9 @@ class MainWindow(QMainWindow):
         shape = self.canvas.shapes[index]
         info = self._ask_label(LabelInfo(shape.label, shape.group_id, shape.description))
         if info is None:
+            return
+        if info.label == ERASE_LABEL:
+            self.video.erase_with(index)
             return
         shape.label, shape.group_id, shape.description = info.label, info.group_id, info.description
         self._remember_label(info.label)

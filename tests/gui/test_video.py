@@ -522,3 +522,34 @@ def test_masks_a_cut_fixes_do_not_steer_the_run(qtbot, window, video, image_dir,
     lasso(window, 35, 99)
     propagate(qtbot, video)
     assert sorted(fake_propagator.calls[0][1]) == [0]  # only this frame prompts the model
+
+
+def test_propagate_a_polygon_then_erase_with_it(qtbot, window, video, image_dir):
+    """Draw a shape, propagate it, then use it to cut the other masks on every frame."""
+    for stem in FRAMES[1:]:
+        save_frame(image_dir, stem, [Shape("wing", ShapeType.RECTANGLE, [(10, 10), (59, 29)])])
+    wing = Shape("wing", ShapeType.RECTANGLE, [(10, 10), (59, 29)])
+    leg = Shape("leg", ShapeType.RECTANGLE, [(40, 5), (49, 35)])
+    window.canvas.set_shapes([wing, leg])
+    window._commit()
+    window.canvas.select(1)
+    propagate(qtbot, video)  # only the leg goes (selected); the fake moves it 2 px per frame
+    window.canvas.select(1)
+    video.erase_with(1)
+    assert [s.label for s in window.canvas.shapes] == ["wing"]
+    assert not pixels(window.canvas.shapes, "wing")[20, 45]
+    for stem in FRAMES[1:]:
+        later = saved(image_dir, stem)
+        assert [s.label for s in later] == ["wing"]  # the leg copy is gone
+    assert not pixels(saved(image_dir, "img2"), "wing")[20, 47]  # cut where the leg moved
+    window.undo()  # one undo: every frame back
+    assert len(saved(image_dir, "img2")) == 2 and len(window.canvas.shapes) == 2
+
+
+def test_right_click_offers_erase_with_this(window, ui):
+    window.canvas.set_shapes([rect(10)])
+    shown = []
+    window.show_menu = lambda menu, pos: shown.append(menu)
+    ui.click(12, 12, Qt.MouseButton.RightButton)
+    (erase,) = [a for a in shown[0].actions() if a.text() == "Erase With This"]
+    assert erase.isEnabled()

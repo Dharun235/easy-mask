@@ -140,7 +140,9 @@ A cut made with the Cut tool is remembered per frame (`VideoMenu.last_cut`: the 
 pixels, not the whole lasso). Propagate and Track send it along as one more object (a
 temporary `__region__` label) and call `cut_region` on each frame with where it moved;
 masks the cut is fixing do not prompt the model in that run, or they would pull the part
-back. Every run (propagate, copy, track,
+back. A shape finished with the reserved label `ERASE_LABEL` goes through the same cut
+path instead of being stored. `VideoMenu.erase_with` turns an object into an eraser on
+its frame and the contiguous frames holding automatic copies of it (one journaled run). Every run (propagate, copy, track,
 cut through, interpolate, clear) records each frame's shapes before its first change in
 `VideoMenu.journal`; `undo_run` writes them back (deleting files the run created).
 `MainWindow.undo` does that instead of a canvas undo while `History.version` still equals

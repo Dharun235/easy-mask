@@ -396,6 +396,46 @@ class VideoMenu:
         ann_io.save(annotation, json_path)
         w.file_list.mark_annotated(index)
 
+    # ------------------------------------------------------------------ erase with a shape
+
+    def erase_with(self, index: int | None) -> None:
+        """Use shape ``index``'s object as an eraser, here and on its propagated frames.
+
+        On this frame and on every neighbouring frame (both directions, without a gap) that
+        has an automatic copy of the object, the object is cut out of the other masks under
+        it and then removed. One Undo reverts all of it.
+        """
+        w = self.window
+        current = w.current_index
+        if current is None or index is None or self.running:
+            return
+        key = object_key(w.canvas.shapes[index])
+        height, width = w.image_size[1], w.image_size[0]
+
+        def has_copy(i: int) -> bool:
+            return any(is_auto(s) and object_key(s) == key for s in self._frame_shapes(i))
+
+        frames = [current]
+        for step in (+1, -1):
+            i = current + step
+            while 0 <= i < len(w.image_paths) and has_copy(i):
+                frames.append(i)
+                i += step
+
+        def erase(shapes: list[Shape]) -> list[Shape]:
+            eraser = np.zeros((height, width), dtype=bool)
+            for s in shapes:
+                if object_key(s) == key and s.shape_type.is_area:
+                    eraser |= shape_to_mask(s, height, width)
+            rest = [s for s in shapes if object_key(s) != key]
+            return cut_region(rest, eraser, height, width)
+
+        self._begin_run("Erase")
+        for i in sorted(frames):
+            self._update_frame(i, erase)
+        self._end_run()
+        w.statusBar().showMessage(f"Erased on {len(self.journal)} frame(s)  ·  Undo reverts", 6000)
+
     # ------------------------------------------------------------------ interpolate, clear
 
     def interpolate(self) -> None:
