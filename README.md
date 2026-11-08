@@ -88,9 +88,10 @@ Every toolbar button is labelled: **Open, Video, Undo, Redo, Back, Next, Propaga
 Select, AI, Polygon, Box, Brush, Eraser, Export**.
 
 1. **Open** a folder of images or a **Video** (its frames are imported first).
-2. **AI**: click an object, double-click to keep it. Or draw it with **Polygon**, **Box**
-   or **Brush**. Pick its label in the dialog, or click a label in the Labels panel to use
-   it for every new shape.
+2. **Labels**: type a name in the Labels panel's *Add a label* box and press Enter (the
+   first one is used for new masks; click another to switch). **AI**: click an object,
+   double-click to keep it; or draw it with **Polygon**, **Box** or **Brush**. The status
+   bar says which label the new mask got; right-click a mask > **Label** to change it.
 3. **Next** moves on; work is saved automatically.
 4. **Propagate** sends this frame's objects (the selected ones, or all) through the next
    frames with EfficientTAM. Its arrow has the options: backward, AI or plain copy,
@@ -107,7 +108,8 @@ Select, AI, Polygon, Box, Brush, Eraser, Export**.
 7. **Export**: the first click asks the format and folder; later clicks repeat it.
 
 Right-click a shape for its actions (edit label, delete, propagate, erase with it, mask
-operations). Right-click a label in the Labels panel to delete it from every frame. Keys are optional: Help > Keyboard Shortcuts.
+operations). Right-click a label for: use for new shapes, apply to the selected shapes,
+rename (on every frame), delete from this frame, delete from all frames. Keys are optional: Help > Keyboard Shortcuts.
 
 AI and smart-tool masks are tidied automatically (specks and pinholes removed). AI Segment needs no extra install: the model downloads on first use.
 

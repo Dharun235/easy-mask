@@ -603,3 +603,16 @@ def test_right_click_a_label_offers_delete_everywhere(window):
         window.label_list.visualItemRect(window.label_list.item(0)).center()
     )
     assert len(shown) == 1  # the Erase row has no such menu
+
+
+def test_rename_a_label_on_all_frames(window, image_dir):
+    save_frame(image_dir, "img2", [rect(10)])
+    window.canvas.set_shapes([rect(30)])
+    window._commit()
+    window.set_active_label("car")
+    window.ask_text = lambda *args: "auto"
+    window.rename_label("car")
+    assert window.canvas.shapes[0].label == "auto" and saved(image_dir, "img2")[0].label == "auto"
+    assert "car" not in window.known_labels and window.active_label == "auto"
+    window.undo()
+    assert saved(image_dir, "img2")[0].label == "car"

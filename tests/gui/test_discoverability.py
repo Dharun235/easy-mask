@@ -129,4 +129,4 @@ def test_right_click_selects_and_offers_shape_actions(window, ui):
     ui.click(20, 20, Qt.MouseButton.RightButton)
     assert window.canvas.selection == [0]
     texts = [a.text() for a in shown[0].actions()]
-    assert "Edit Label" in texts and "Propagate Selected" in texts and "Mask" in texts
+    assert "Label" in texts and "Propagate Selected" in texts and "Mask" in texts

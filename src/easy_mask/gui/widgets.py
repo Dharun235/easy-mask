@@ -8,7 +8,14 @@ from pathlib import Path
 
 from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
-from PySide6.QtWidgets import QAbstractItemView, QListWidget, QListWidgetItem, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
@@ -108,6 +115,34 @@ class LabelList(QListWidget):
         font = item.font()
         font.setBold(bold)
         item.setFont(font)
+
+
+class LabelPanel(QWidget):
+    """The Labels panel: an "Add a label" box above the :class:`LabelList`.
+
+    Signals:
+        label_added(str): The user typed a new label name and pressed Enter.
+    """
+
+    label_added = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.add_edit = QLineEdit()
+        self.add_edit.setPlaceholderText("Add a label…  (type, then Enter)")
+        self.add_edit.returnPressed.connect(self._add)
+        self.label_list = LabelList()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self.add_edit)
+        layout.addWidget(self.label_list)
+
+    def _add(self) -> None:
+        name = self.add_edit.text().strip()
+        self.add_edit.clear()
+        if name:
+            self.label_added.emit(name)
 
 
 class ShapeList(QListWidget):

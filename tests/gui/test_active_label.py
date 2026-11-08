@@ -129,3 +129,68 @@ def test_second_object_with_the_same_label_gets_its_own_group_id(window, ui):
     first, second = window.canvas.shapes
     assert (first.label, first.group_id) == ("dog", None)
     assert (second.label, second.group_id) == ("dog", 1)  # a separate object
+
+
+def test_add_label_box_adds_and_selects_the_first_label(make_window, image_dir):
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    panel = win.label_panel
+    panel.add_edit.setText("swan")
+    panel.add_edit.returnPressed.emit()
+    assert win.known_labels == ["swan"] and win.active_label == "swan"
+    panel.add_edit.setText("reed")
+    panel.add_edit.returnPressed.emit()
+    assert win.known_labels == ["swan", "reed"] and win.active_label == "swan"
+    assert panel.add_edit.text() == ""
+
+
+def test_new_mask_says_which_label_it_got(window, ui):
+    window.set_active_label("dog")
+    window.set_tool(ShapeType.RECTANGLE)
+    ui.drag((10, 10), (30, 30))
+    assert "New “dog” mask" in window.statusBar().currentMessage()
+
+
+def test_label_menu_separates_this_frame_from_all_frames(window):
+    from PySide6.QtCore import QPoint
+
+    shown = []
+    window.show_menu = lambda menu, pos: shown.append([a.text() for a in menu.actions()])
+    window.label_list.label_menu_requested.emit("cat", QPoint(0, 0))
+    assert "Delete “cat” From This Frame" in shown[0]
+    assert "Delete “cat” From All Frames" in shown[0]
+    assert "Rename..." in shown[0] and "Apply to Selected Shapes" in shown[0]
+
+
+def test_apply_label_to_selected_and_delete_here(window):
+    from easy_mask.core.shapes import Shape
+
+    window.canvas.set_shapes(
+        [
+            Shape("cat", ShapeType.RECTANGLE, [(10, 10), (20, 20)]),
+            Shape("dog", ShapeType.RECTANGLE, [(30, 30), (40, 40)]),
+        ]
+    )
+    window._commit()
+    window.canvas.select(1)
+    window.apply_label_to_selected("cat")
+    _first, second = window.canvas.shapes
+    assert second.label == "cat" and second.group_id == 1  # still its own object
+    window.delete_label_here("cat")
+    assert window.canvas.shapes == []
+    window.undo()
+    assert len(window.canvas.shapes) == 2
+
+
+def test_shape_menu_has_a_label_submenu(window, ui):
+    from easy_mask.core.shapes import Shape
+
+    window.canvas.set_shapes([Shape("cat", ShapeType.RECTANGLE, [(10, 10), (40, 40)])])
+    menus = []
+    window.show_menu = lambda menu, pos: menus.append(menu)
+    ui.click(20, 20, Qt.MouseButton.RightButton)
+    (label_menu,) = [a.menu() for a in menus[0].actions() if a.text() == "Label"]
+    names = [a.text() for a in label_menu.actions()]
+    assert names[:2] == ["cat", "dog"] and names[-1] == "New Label..."
+    next(a for a in label_menu.actions() if a.text() == "dog").trigger()
+    assert window.canvas.shapes[0].label == "dog"

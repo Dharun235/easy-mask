@@ -481,6 +481,34 @@ class VideoMenu:
             f"Deleted “{label}” from {len(self.changed)} frame(s)  ·  Undo brings it back", 8000
         )
 
+    def rename_label(self, old: str, new: str) -> None:
+        """Rename ``old`` to ``new`` on every frame of the folder (one undo step)."""
+        w = self.window
+        if w.current_index is None or self.running:
+            return
+
+        def rename(shapes: list[Shape]) -> list[Shape]:
+            result = []
+            for shape in shapes:
+                if shape.label == old:
+                    shape = shape.copy()
+                    shape.label = new
+                result.append(shape)
+            return result
+
+        self._begin_run()
+        for index in range(len(w.image_paths)):
+            self._update_frame(index, rename)
+        self._end_run()
+        was_active = w.active_label == old
+        w._remember_label(new)
+        w.forget_label(old)
+        if was_active:
+            w.set_active_label(new)
+        w.statusBar().showMessage(
+            f"Renamed “{old}” to “{new}” on {len(self.changed)} frame(s)", 6000
+        )
+
     # ------------------------------------------------------------------ one undo step per run
 
     def _begin_run(self) -> None:

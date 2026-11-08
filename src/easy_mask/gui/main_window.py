@@ -62,7 +62,7 @@ from easy_mask.gui.video_import import (
 )
 from easy_mask.gui.video_menu import Cut, VideoMenu
 from easy_mask.gui.welcome import WelcomePage
-from easy_mask.gui.widgets import FileList, FlagList, LabelList, ShapeList
+from easy_mask.gui.widgets import FileList, FlagList, LabelPanel, ShapeList, color_icon
 from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
 from easy_mask.io.images import image_size, is_image, list_images
@@ -104,6 +104,12 @@ def ask_number(
     """Ask for a number in a small dialog. Returns None if cancelled."""
     number, ok = QInputDialog.getDouble(parent, title, label, value, minimum, maximum, 2)
     return number if ok else None
+
+
+def ask_text(parent: QWidget, title: str, label: str, value: str) -> str | None:
+    """Ask for a line of text in a small dialog. Returns None if cancelled or empty."""
+    text, ok = QInputDialog.getText(parent, title, label, text=value)
+    return text.strip() or None if ok else None
 
 
 @dataclass
@@ -157,6 +163,7 @@ class MainWindow(QMainWindow):
             partial(LabelDialog.ask, allowed=self._allowed_labels())
         )
         self.ask_number = ask_number
+        self.ask_text = ask_text
         self.show_menu: Callable[[QMenu, QPoint], object] = QMenu.exec  # swappable in tests
         self.load_segmenter: Callable[[ProgressFn], Segmenter] = lambda progress: (
             efficient_sam.load(self.settings.ai_model, progress)
@@ -251,13 +258,15 @@ class MainWindow(QMainWindow):
         right = Qt.DockWidgetArea.RightDockWidgetArea
         self.docks: list[QDockWidget] = []
         self.flag_list = FlagList()
-        self.label_list = LabelList()
+        self.label_panel = LabelPanel()
+        self.label_panel.label_added.connect(self.add_label)
+        self.label_list = self.label_panel.label_list
         self.label_list.label_clicked.connect(self._on_label_clicked)
         self.label_list.label_menu_requested.connect(self._show_label_menu)
         self.shape_list = ShapeList()
         self.file_list = FileList()
         self.flags_dock = self._dock("Flags", self.flag_list, right)
-        self._dock("Labels", self.label_list, right)
+        self._dock("Labels", self.label_panel, right)
         self._dock("Shapes", self.shape_list, right)
         self._dock("Files", self.file_list, right)
 
@@ -460,11 +469,20 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         has_selection = bool(self.canvas.selection)
         for text, slot in (
-            ("Edit Label", self.edit_label),
             ("Delete", self.delete_selected),
             ("Duplicate", self.duplicate_selected),
         ):
             menu.addAction(text, slot).setEnabled(has_selection)
+        labels = menu.addMenu("Label")
+        labels.setEnabled(has_selection)
+        for label in self.known_labels:
+            labels.addAction(
+                color_icon(label, self.known_labels),
+                label,
+                lambda checked=False, lb=label: self.apply_label_to_selected(lb),
+            )
+        labels.addSeparator()
+        labels.addAction("New Label...", self._apply_new_label)
         menu.addSeparator()
         menu.addAction(
             icon("propagate"),
@@ -767,17 +785,70 @@ class MainWindow(QMainWindow):
         """Clicking a label activates it; clicking the active label switches back to asking."""
         self.set_active_label(None if label == self.active_label else label)
 
+    def add_label(self, name: str) -> None:
+        """Add ``name`` to the label list; the first label becomes the one for new shapes."""
+        if name == ERASE_LABEL:
+            return
+        self._remember_label(name)
+        if self.active_label is None:
+            self.set_active_label(name)
+        self._refresh_panels()
+        self.statusBar().showMessage(f"Added label “{name}”", 4000)
+
     def _show_label_menu(self, label: str, position: QPoint) -> None:
-        """Right-click on a label: what can be done with it in the whole folder."""
+        """Right-click on a label: use, apply, rename, or delete it here or everywhere."""
         menu = QMenu(self)
         menu.addAction(f"Use “{label}” for New Shapes", lambda: self.set_active_label(label))
+        apply = menu.addAction(
+            "Apply to Selected Shapes", lambda: self.apply_label_to_selected(label)
+        )
+        apply.setEnabled(bool(self.canvas.selection))
+        menu.addAction("Rename...", lambda: self.rename_label(label))
         menu.addSeparator()
+        menu.addAction(f"Delete “{label}” From This Frame", lambda: self.delete_label_here(label))
         menu.addAction(
             icon("eraser"),
             f"Delete “{label}” From All Frames",
             lambda: self.video.remove_label(label),
         )
         self.show_menu(menu, position)
+
+    def _apply_new_label(self) -> None:
+        name = self.ask_text(self, "New Label", "Label name:", "")
+        if name and name != ERASE_LABEL:
+            self.apply_label_to_selected(name)
+
+    def apply_label_to_selected(self, label: str) -> None:
+        """Give the selected shapes ``label`` (each stays its own object)."""
+        selection = list(self.canvas.selection)
+        if not selection:
+            return
+        shapes = list(self.canvas.shapes)
+        for index in selection:
+            shape = shapes[index].copy()
+            if shape.label != label:
+                others = [s for i, s in enumerate(shapes) if i != index]
+                shape.label, shape.group_id = label, free_group_id(others, label)
+            shapes[index] = shape
+        self._remember_label(label)
+        self._replace_shapes(shapes, select=selection[-1])
+        self.statusBar().showMessage(f"Labelled {len(selection)} shape(s) “{label}”", 4000)
+
+    def delete_label_here(self, label: str) -> None:
+        """Delete the shapes with ``label`` on this frame only."""
+        kept = [s for s in self.canvas.shapes if s.label != label]
+        if len(kept) == len(self.canvas.shapes):
+            self.statusBar().showMessage(f"No “{label}” on this frame", 3000)
+            return
+        self._replace_shapes(kept)
+        self.statusBar().showMessage(f"Deleted “{label}” from this frame  ·  Undo brings it back")
+
+    def rename_label(self, label: str) -> None:
+        """Rename ``label`` in the list and on every frame (one undo step)."""
+        new = self.ask_text(self, "Rename Label", f"New name for “{label}”:", label)
+        if new is None or new in (label, ERASE_LABEL):
+            return
+        self.video.rename_label(label, new)
 
     def forget_label(self, label: str) -> None:
         """Drop ``label`` from the label list (unless it was given on the command line)."""
@@ -803,6 +874,11 @@ class MainWindow(QMainWindow):
         if self.active_label is not None:
             return LabelInfo(label=self.active_label)
         return self._ask_label(LabelInfo(label=self.last_label))
+
+    def _announce_new(self, label: str) -> None:
+        self.statusBar().showMessage(
+            f"New “{label}” mask  ·  to change it: right-click it > Label", 6000
+        )
 
     def _group_for(self, info: LabelInfo) -> int | None:
         """The group id for a new shape: the one typed in, else one that keeps it separate.
@@ -831,6 +907,7 @@ class MainWindow(QMainWindow):
         self.canvas.shapes.append(shape)
         self._commit()
         self.canvas.select(len(self.canvas.shapes) - 1)
+        self._announce_new(info.label)
 
     # ------------------------------------------------------------------ masks
 
@@ -869,6 +946,7 @@ class MainWindow(QMainWindow):
             self._remember_label(new.label)
             self.last_label = new.label
             self._replace_shapes([*shapes, new], select=len(shapes))
+            self._announce_new(new.label)
             return
         changed = operations.with_pixels(shapes[index], full)
         if changed is None:
