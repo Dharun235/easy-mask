@@ -84,8 +84,8 @@ code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/Effic
 
 ## Quick start: annotate fast
 
-Every toolbar button is labelled: **Open, Video, Undo, Redo, Back, Next, Propagate,
-Settings, Select, AI, Polygon, Box, Points, Paint, Eraser, Export**.
+Every toolbar button is labelled: **Open, Video, Undo, Redo, Back, Next, Select, AI,
+Polygon, Box, Points, Paint, Eraser, Export**.
 
 1. **Open** a folder of images or a **Video** (its frames are imported first).
 2. **Labels**: type a name in the Labels panel's *Add a label* box and press Enter (the
@@ -93,11 +93,11 @@ Settings, Select, AI, Polygon, Box, Points, Paint, Eraser, Export**.
    double-click to keep it; or draw it with **Polygon**, **Box** or **Paint** (paint it with the mouse). The status
    bar says which label the new mask got; right-click a mask > **Label** to change it.
 3. **Next** moves on; work is saved automatically.
-4. **Propagate**: tick labels (or single shapes) in the Labels panel's checklist and press
-   **Propagate**: EfficientTAM tracks them through the next frames (nothing ticked: every
-   object). Or right-click a label > Propagate "dog" Forward / Backward. The **Settings**
-   gear has the options: AI or plain copy, auto-propagate on Next, how many frames,
-   interpolate, clear labels from here. Right-click a label > Hide / Show to declutter.
+4. **Propagate**: right-click a label > **Propagate "dog" Forward** (or Backward) and
+   EfficientTAM tracks it through the next frames. Tick several labels (or single shapes)
+   in the Labels panel's checklist and the entry reads **Propagate Ticked**. The
+   **Propagation** submenu has the options: AI or plain copy, auto-propagate on Next, how
+   many frames, interpolate, clear labels from here. Right-click a label > Hide / Show.
 5. **Remove a wrong part** (a second dog merged into the first, a leg in a wing):
    - paint over it with the **Eraser**, or draw a shape over it and choose **Erase With
      It** in the label dialog. It is cut out of every mask underneath (only the selected

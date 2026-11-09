@@ -103,22 +103,22 @@ def test_view_menu_can_toggle_panels(make_window, image_dir):
     assert not next(d for d in win.docks if d.objectName() == "Files").isVisible()
 
 
-def test_propagate_is_on_the_toolbar_and_in_the_label_menu(make_window, image_dir):
+def test_propagate_is_in_the_label_menu_not_the_toolbar(make_window, image_dir):
     from PySide6.QtCore import QPoint
     from PySide6.QtWidgets import QToolBar
 
     win = make_window(Settings(labels=["cat"]))
     win.open_path(image_dir)
     (toolbar,) = win.findChildren(QToolBar)
-    texts = [a.text() for a in toolbar.actions() if not a.isSeparator()]
-    i = texts.index("Next Image")
-    assert texts[i + 1 : i + 3] == ["Propagate", "Settings"]
-    assert win.propagation_settings_action.menu() is win.video.menu  # the gear: options
+    texts = [a.text() for a in toolbar.actions()]
+    assert "Propagate" not in texts and "Settings" not in texts
     menus = []
     win.show_menu = lambda menu, pos: menus.append(menu)
     win.label_list.label_menu_requested.emit("cat", QPoint(0, 0))
     texts = [a.text() for a in menus[0].actions()]
     assert "Propagate “cat” Forward" in texts and "Propagate “cat” Backward" in texts
+    (options,) = [a.menu() for a in menus[0].actions() if a.text() == "Propagation"]
+    assert options is win.video.menu
 
 
 def test_only_four_menus(make_window):

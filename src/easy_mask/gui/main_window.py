@@ -254,7 +254,6 @@ class MainWindow(QMainWindow):
         self._build_panels()
         self._build_actions()
         self.video = VideoMenu(self)
-        self._add_propagate_buttons()
         self._add_points_button()
         self._show_panels(False)  # the start page stands alone; panels appear with an image
         self._connect_canvas()
@@ -1358,31 +1357,6 @@ class MainWindow(QMainWindow):
         self.canvas.fill = checked
         self.canvas.update()
 
-    def _add_propagate_buttons(self) -> None:
-        """Propagate and its Settings (gear) right after the image arrows."""
-        actions = self.toolbar.actions()
-        before = actions[next(i for i, a in enumerate(actions) if a.text() == "Next Image") + 1]
-        propagate = QAction(icon("propagate"), "Propagate", self)
-        propagate.setToolTip(
-            "Propagate: track the ticked labels (or the selected shapes, or everything) and "
-            "what you erased through the next frames"
-        )
-        propagate.triggered.connect(lambda _=False: self.video.propagate(+1))
-        settings = QAction(icon("settings"), "Settings", self)
-        settings.setToolTip(
-            "Propagation settings: AI or copy, auto-propagate on Next, how many frames, "
-            "interpolate, clear labels from here"
-        )
-        settings.setMenu(self.video.menu)
-        for action in (propagate, settings):
-            action.setStatusTip(action.toolTip())
-            self.toolbar.insertAction(before, action)
-        button = self.toolbar.widgetForAction(settings)
-        if isinstance(button, QToolButton):  # the gear opens its menu on a plain click
-            button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.propagate_button_action = propagate
-        self.propagation_settings_action = settings
-
     def _add_points_button(self) -> None:
         """Points, right after Box: each mask's centroid and four corners as points."""
         menu = QMenu("Points", self)
@@ -1461,8 +1435,6 @@ class MainWindow(QMainWindow):
         for action in [
             *self.tool_actions.values(),
             *self.nav_actions,
-            self.propagate_button_action,
-            self.propagation_settings_action,
             self.points_action,
             self._export_action,
         ]:
