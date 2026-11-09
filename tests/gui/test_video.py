@@ -721,6 +721,23 @@ def test_right_click_propagates_one_label(qtbot, window, video, image_dir):
     menus = []
     window.show_menu = lambda menu, pos: menus.append(menu)
     window.label_list.label_menu_requested.emit("car", QPoint(0, 0))
-    next(a for a in menus[0].actions() if a.text() == "Propagate “car”").trigger()
+    next(a for a in menus[0].actions() if a.text() == "Propagate “car” Forward").trigger()
     qtbot.waitUntil(lambda: not video.running, timeout=5000)
     assert [s.label for s in saved(image_dir, "img2")] == ["car"]
+
+
+def test_label_menu_propagates_all_selected_labels(qtbot, window, video, image_dir):
+    from PySide6.QtCore import QPoint
+
+    window.canvas.set_shapes([rect(10), rect(50, label="tree"), rect(70, label="sign")])
+    for label in ("car", "tree", "sign"):
+        window._remember_label(label)
+    window._commit()
+    for row in window.label_list.label_rows():
+        row.setSelected(row.data(0, Qt.ItemDataRole.UserRole) in ("car", "tree"))
+    menus = []
+    window.show_menu = lambda menu, pos: menus.append(menu)
+    window.label_list.label_menu_requested.emit("tree", QPoint(0, 0))
+    next(a for a in menus[0].actions() if a.text() == "Propagate 2 Labels Forward").trigger()
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    assert sorted(s.label for s in saved(image_dir, "img2")) == ["car", "tree"]

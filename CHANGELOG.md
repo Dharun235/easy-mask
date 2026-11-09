@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- Propagate moved from the toolbar into the label right-click menu (Propagate “label” Forward / Backward, for every selected label) with its options in a Propagation submenu; shapes keep Propagate Selected in their right-click menu.
 - The Shapes panel is folded into the Labels panel: each label lists its shapes on this frame underneath (click to select, checkbox to hide, right-click for delete / label / propagate / erase / mask, double-click to edit); folded labels stay folded.
 - Brush is now **Paint** and works by where a stroke starts: on a mask it extends that mask, on empty image it makes a new mask. No need to select first (a still-selected shape no longer swallows strokes painted elsewhere).
 - Undo / Redo cover the whole folder, not just the frame on screen: every edit on any frame is a step, a Propagate / erase / clear / interpolate run is one step over all its frames, and undoing an edit made on another frame goes back to it. Undo Last Run is gone (plain Undo does it).

@@ -120,7 +120,7 @@ TOOL_HINTS: dict[ShapeType | str | None, str] = {
     "brush": "Paint: start on a mask to extend it, on empty image for a new mask  ·  [ and ] "
     "change the size",
     "eraser": "Eraser: paint over what to remove from the masks underneath (select a mask "
-    "first to erase only from it)  ·  [ and ] change the size  ·  Propagate carries it",
+    "first to erase only from it)  ·  [ and ] change the size  ·  propagating carries it",
     "wand": "Magic wand: click a region of similar colour  ·  Shift adds it to the selected "
     "mask, Alt removes it  ·  [ and ] change the tolerance",
 }
@@ -254,7 +254,6 @@ class MainWindow(QMainWindow):
         self._build_panels()
         self._build_actions()
         self.video = VideoMenu(self)
-        self._add_video_buttons()
         self._add_points_button()
         self._show_panels(False)  # the start page stands alone; panels appear with an image
         self._connect_canvas()
@@ -545,6 +544,7 @@ class MainWindow(QMainWindow):
             "Propagate Selected" if has_selection else "Propagate All",
             lambda: self.video.propagate(+1),
         )
+        menu.addMenu(self.video.menu)
         erase = menu.addAction(
             icon("cut"), "Erase With This", lambda: self.video.erase_with(self.canvas.selected)
         )
@@ -860,11 +860,20 @@ class MainWindow(QMainWindow):
         """Right-click on a label: use, apply, rename, or delete it here or everywhere."""
         menu = QMenu(self)
         menu.addAction(f"Use “{label}” for New Shapes", lambda: self.set_active_label(label))
+        menu.addSeparator()
+        selected = self.label_list.selected_labels()
+        labels = selected if label in selected and len(selected) > 1 else [label]
+        name = f"“{label}”" if len(labels) == 1 else f"{len(labels)} Labels"
         menu.addAction(
             icon("propagate"),
-            f"Propagate “{label}”",
-            lambda: self.video.propagate(+1, labels=[label]),
-        )
+            f"Propagate {name} Forward",
+            lambda: self.video.propagate(+1, labels=labels),
+        ).setStatusTip("Track it through the next frames (with what you erased on this frame)")
+        menu.addAction(
+            f"Propagate {name} Backward", lambda: self.video.propagate(-1, labels=labels)
+        ).setStatusTip("Track it through the earlier frames")
+        menu.addMenu(self.video.menu)
+        menu.addSeparator()
         apply = menu.addAction(
             "Apply to Selected Shapes", lambda: self.apply_label_to_selected(label)
         )
@@ -1047,7 +1056,7 @@ class MainWindow(QMainWindow):
         self._replace_shapes(shapes)
         if self.current_index is not None:
             self._remember_cut(region, keys, before)
-        follow = "  ·  Propagate carries it through the next frames"
+        follow = "  ·  right-click a label > Propagate carries it through the next frames"
         self.statusBar().showMessage("Erased" + (follow if len(self.image_paths) > 1 else ""), 8000)
 
     def _remember_cut(
@@ -1335,24 +1344,6 @@ class MainWindow(QMainWindow):
         self.canvas.fill = checked
         self.canvas.update()
 
-    def _add_video_buttons(self) -> None:
-        """The Propagate button (with its options dropdown) right after the image arrows."""
-        actions = self.toolbar.actions()
-        next_index = next(i for i, a in enumerate(actions) if a.text() == "Next Image")
-        propagate = QAction(icon("propagate"), "Propagate", self)
-        propagate.setToolTip(
-            "Propagate: carry the labels selected in the Labels panel (or the selected shapes, "
-            "or everything) and what you erased through the next frames. Arrow: more options"
-        )
-        propagate.setStatusTip(propagate.toolTip())
-        propagate.triggered.connect(lambda _=False: self.video.propagate(+1))
-        propagate.setMenu(self.video.menu)
-        self.propagate_button_action = propagate
-        self.toolbar.insertAction(actions[next_index + 1], propagate)
-        button = self.toolbar.widgetForAction(propagate)
-        if isinstance(button, QToolButton):
-            button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-
     def _add_points_button(self) -> None:
         """Points, right after Box: each mask's centroid and four corners as points."""
         menu = QMenu("Points", self)
@@ -1431,7 +1422,6 @@ class MainWindow(QMainWindow):
         for action in [
             *self.tool_actions.values(),
             *self.nav_actions,
-            self.propagate_button_action,
             self.points_action,
             self._export_action,
         ]:

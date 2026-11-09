@@ -84,8 +84,8 @@ code and weights are Apache-2.0 ([EfficientTAM](https://github.com/yformer/Effic
 
 ## Quick start: annotate fast
 
-Every toolbar button is labelled: **Open, Video, Undo, Redo, Back, Next, Propagate,
-Select, AI, Polygon, Box, Paint, Eraser, Export**.
+Every toolbar button is labelled: **Open, Video, Undo, Redo, Back, Next, Select, AI,
+Polygon, Box, Points, Paint, Eraser, Export**.
 
 1. **Open** a folder of images or a **Video** (its frames are imported first).
 2. **Labels**: type a name in the Labels panel's *Add a label* box and press Enter (the
@@ -93,10 +93,11 @@ Select, AI, Polygon, Box, Paint, Eraser, Export**.
    double-click to keep it; or draw it with **Polygon**, **Box** or **Paint** (paint it with the mouse). The status
    bar says which label the new mask got; right-click a mask > **Label** to change it.
 3. **Next** moves on; work is saved automatically.
-4. **Propagate** sends this frame's objects through the next frames with EfficientTAM:
-   the labels selected in the Labels panel (Cmd/Shift-click for several), or the selected
-   shapes, or everything. Right-click a label > Propagate sends just that label. Its arrow has the options: backward, AI or plain copy,
-   auto-propagate on Next, how many frames, interpolate, clear labels from here.
+4. **Propagate**: right-click a label > **Propagate "dog" Forward** (or Backward) and
+   EfficientTAM tracks that label's objects through the next frames. Select several labels
+   (Cmd/Shift-click) to send them together; right-click a shape for Propagate Selected.
+   The **Propagation** submenu has the options: AI or plain copy, auto-propagate on Next,
+   how many frames, interpolate, clear labels from here.
 5. **Remove a wrong part** (a second dog merged into the first, a leg in a wing):
    - paint over it with the **Eraser**, or draw a shape over it and choose **Erase With
      It** in the label dialog. It is cut out of every mask underneath (only the selected
@@ -158,8 +159,8 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
    already on the frame gets the next free **group id** automatically, so two dogs stay two
    objects. To join parts into one object, give them the same group id (Edit Label) or use
    Mask > Union.
-2. Optionally select the objects to send (Shift+click for several; nothing selected =
-   every object) and press **Propagate**: they are tracked through the next frames on a
+2. Right-click a label (or several selected labels, or a shape) > **Propagate**: its objects
+   are tracked through the next frames on a
    background thread (AI with the video extra, plain copy without it); the progress bar's
    Cancel stops it. A cut made on the frame goes along and is cut on every frame. Results
    are mask shapes flagged `propagated` and shown as `(auto)` under their label in the Labels panel.
@@ -167,7 +168,7 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
    replaced, hand-drawn ones are never overwritten and also steer the model. When nothing
    could change (every frame already has hand-drawn masks), the status bar says so.
 4. Without the model: annotate two keyframes and use **Interpolate From Previous
-   Keyframe** (Propagate's arrow) on the later one. Polygons and boxes morph vertex by
+   Keyframe** (right-click a label > Propagation) on the later one. Polygons and boxes morph vertex by
    vertex, masks through signed distance fields; results are flagged `interpolated`.
 
 ### Keyboard shortcuts

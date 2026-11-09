@@ -40,9 +40,9 @@ def test_toolbar_is_one_row_of_labelled_buttons(make_window):
 def test_working_tools_are_disabled_until_an_image_is_open(make_window, image_dir):
     win = make_window(Settings())
     assert not win.tool_actions["ai"].isEnabled()
-    assert not win.propagate_button_action.isEnabled()
+    assert not win.points_action.isEnabled()
     win.open_path(image_dir)
-    assert win.tool_actions["ai"].isEnabled() and win.propagate_button_action.isEnabled()
+    assert win.tool_actions["ai"].isEnabled() and win.points_action.isEnabled()
 
 
 def test_welcome_page_until_an_image_is_open(make_window, image_dir):
@@ -103,16 +103,21 @@ def test_view_menu_can_toggle_panels(make_window, image_dir):
     assert not next(d for d in win.docks if d.objectName() == "Files").isVisible()
 
 
-def test_propagate_and_track_buttons_follow_the_image_arrows(make_window):
+def test_propagate_lives_in_the_label_menu_not_the_toolbar(make_window, image_dir):
+    from PySide6.QtCore import QPoint
     from PySide6.QtWidgets import QToolBar
 
-    win = make_window(Settings())
+    win = make_window(Settings(labels=["cat"]))
+    win.open_path(image_dir)
     (toolbar,) = win.findChildren(QToolBar)
-    texts = [a.text() for a in toolbar.actions() if not a.isSeparator()]
-    i = texts.index("Next Image")
-    assert texts[i + 1] == "Propagate"
-    assert win.video.track_action.isCheckable()  # auto-propagate, in the dropdown
-    assert win.propagate_button_action.menu() is win.video.menu  # dropdown with the options
+    assert "Propagate" not in [a.text() for a in toolbar.actions()]
+    menus = []
+    win.show_menu = lambda menu, pos: menus.append(menu)
+    win.label_list.label_menu_requested.emit("cat", QPoint(0, 0))
+    texts = [a.text() for a in menus[0].actions()]
+    assert "Propagate “cat” Forward" in texts and "Propagate “cat” Backward" in texts
+    (options,) = [a.menu() for a in menus[0].actions() if a.text() == "Propagation"]
+    assert options is win.video.menu and win.video.track_action in options.actions()
 
 
 def test_only_four_menus(make_window):

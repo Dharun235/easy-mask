@@ -3,10 +3,10 @@
 A video is just the folder of frames the main window already shows, so everything here
 works frame by frame on the same per-image JSON files.
 
-**Propagate** sends the selected objects (or all of them) *and the last cut made on this
-frame* through the next frames together: the cut part is tracked like one more object and
-cut from the masks on every frame. The button's dropdown holds the rest: backward, AI or
-plain copying, auto-propagate on Next, how many frames, interpolate, clear and undo; the
+**Propagate** (right-click a label, or a shape) sends those objects *and the last cut made
+on this frame* through the next frames together: the cut part is tracked like one more
+object and cut from the masks on every frame. The Propagation submenu holds the rest: AI
+or plain copying, auto-propagate on Next, how many frames, interpolate and clear; the
 progress bar's Cancel stops a run.
 
 Shapes made automatically are flagged (see :mod:`easy_mask.core.video`) and replaced on the
@@ -50,7 +50,7 @@ MISSING_EXTRA = (
     "(PyTorch, about 1 GB):\n\n    SAM2_BUILD_CUDA=0 uv sync --extra video"
 )
 REGION_LABEL = "__region__"  # the cut part, tracked like an object during a run
-NOTHING_HINT = "Draw an object (or erase a part) on this frame first, then press Propagate"
+NOTHING_HINT = "Draw an object (or erase a part) on this frame first, then propagate it"
 FALLBACK_NOTE = "AI tracking needs the video add-on (uv sync --extra video): copying instead"
 
 
@@ -99,12 +99,9 @@ class VideoMenu:
         self.changed: set[int] = set()  # frames the current / last run changed
         self._run_frames = 0
 
-        menu = QMenu("Propagate", window)  # the Propagate button's dropdown
+        menu = QMenu("Propagation", window)  # in the label and shape right-click menus
         self.menu = menu
         a = window._action
-        self.propagate_action = a(menu, "Propagate Forward", lambda: self.propagate(+1))
-        backward = a(menu, "Propagate Backward", lambda: self.propagate(-1))
-        menu.addSeparator()
         self.ai_action = a(menu, "Use AI (EfficientTAM)", self._toggle_ai, checkable=True)
         self.ai_action.setChecked(window.settings.video_model != COPY_MODEL)
         self.track_action = a(
@@ -115,8 +112,6 @@ class VideoMenu:
         interpolate = a(menu, "Interpolate From Previous Keyframe", self.interpolate)
         clear = a(menu, "Clear Labels From Here...", self.clear_frames)
         for action, tip in (
-            (self.propagate_action, "Send this frame's objects (and what you erased) forward"),
-            (backward, "Send this frame's objects (and what you erased) to earlier frames"),
             (self.ai_action, "On: EfficientTAM follows each object. Off: masks are copied as is"),
             (self.track_action, "Each Next carries the objects into the next frame by itself"),
             (frames, "How many frames one Propagate goes through"),
