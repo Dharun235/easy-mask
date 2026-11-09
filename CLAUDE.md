@@ -40,7 +40,7 @@ src/easy_mask/
   gui/      PySide6 widgets. Thin: translate user input into core calls and draw core state.
   cli.py    argument parsing and entry point.
 tests/      by type: unit/ property/ architecture/ integration/ gui/ smoke/ (docs/testing.md).
-docs/       architecture.md, command-line.md, roadmap.md, testing.md, benchmarks.md.
+docs/       architecture.md, command-line.md, roadmap.md, ideas.md, testing.md, benchmarks.md.
 ```
 
 Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to import from

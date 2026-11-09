@@ -56,7 +56,7 @@ AI models download once on first use (40-70 MB), then everything works offline.
 - [Command line](docs/command-line.md) for scripts, and the annotation file format
   (labelme-compatible JSON)
 - [Benchmarks](docs/benchmarks.md) · [Architecture](docs/architecture.md) ·
-  [Roadmap](docs/roadmap.md) · [Contributing](CONTRIBUTING.md)
+  [Roadmap](docs/roadmap.md) · [Ideas](docs/ideas.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
 

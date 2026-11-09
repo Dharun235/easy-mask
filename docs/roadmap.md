@@ -72,7 +72,6 @@ Manual tools on par with classic annotators.
 - [x] Export window: format, parts (masks, cutouts, coordinates, centroid, corners,
       points, overlays), frame range, folder
 
-## Later / ideas
-- Text-prompted detection (e.g. Grounding-DINO / SAM3-style) to pre-label
-- Pascal VOC export, import from COCO
-- Standalone app bundles (PyInstaller)
+## Later
+
+Ideas for future features are collected in [ideas.md](ideas.md).
