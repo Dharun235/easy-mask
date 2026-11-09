@@ -81,6 +81,10 @@ Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to im
 - Conventional commit messages (`feat: add circle tool`, `fix: clamp points to image`).
 - Do not commit datasets, exported masks, or model weights (see `.gitignore`).
 
+## Writing docs
+
+Keep docs short and plain: essentials only, a line per idea, no walls of text.
+
 ## Housekeeping
 
 - Commit only what the change needs: no scratch scripts, debug output or local data.
