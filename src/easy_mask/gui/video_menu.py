@@ -38,6 +38,7 @@ from easy_mask.core.video import (
 )
 from easy_mask.gui.propagate import PropagationWorker
 from easy_mask.gui.video_import import VIDEO_FILTER
+from easy_mask.gui.widgets import as_list, quoted
 from easy_mask.propagation.tracker import CopyPropagator, Propagator
 
 if TYPE_CHECKING:  # the main window imports this module
@@ -487,25 +488,29 @@ class VideoMenu:
         )
         w.statusBar().showMessage(f"Cleared {len(self.changed)} frame(s)  ·  Undo puts them back")
 
-    def remove_label(self, label: str, frames: range | None = None) -> None:
-        """Delete every shape with ``label`` on ``frames`` (default: all), as one undo step.
+    def remove_label(self, labels: str | list[str], frames: range | None = None) -> None:
+        """Delete every shape with ``labels`` on ``frames`` (default: all), as one undo step.
 
-        Deleting it from every frame also drops it from the label list.
+        Deleting them from every frame also drops them from the label list.
         """
         w = self.window
         if w.current_index is None or self.running:
             return
-        everywhere = frames is None
+        names = as_list(labels)
         indices = list(range(len(w.image_paths)) if frames is None else frames)
         self.run_over_frames(
-            indices, lambda shapes: [s for s in shapes if s.label != label], f"Deleting “{label}”"
+            indices,
+            lambda shapes: [s for s in shapes if s.label not in names],
+            f"Deleting {quoted(names)}",
         )
-        if everywhere:
-            w.forget_label(label)
+        if frames is None:
+            for name in names:
+                w.forget_label(name)
         else:
             w._refresh_panels()
         w.statusBar().showMessage(
-            f"Deleted “{label}” from {len(self.changed)} frame(s)  ·  Undo brings it back", 8000
+            f"Deleted {quoted(names)} from {len(self.changed)} frame(s)  ·  Undo brings it back",
+            8000,
         )
 
     def run_over_frames(

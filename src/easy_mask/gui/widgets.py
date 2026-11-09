@@ -25,6 +25,18 @@ from easy_mask.core.shapes import Shape
 from easy_mask.core.video import ObjectKey, is_auto
 
 
+def as_list(labels: str | list[str]) -> list[str]:
+    """One label or several, as a list."""
+    return [labels] if isinstance(labels, str) else list(labels)
+
+
+def quoted(labels: list[str]) -> str:
+    """Labels for a menu or message: “dog”, “dog” + “wing1”, or “4 labels”."""
+    if len(labels) > 3:
+        return f"{len(labels)} labels"
+    return " + ".join(f"“{label}”" for label in labels)
+
+
 def color_icon(label: str, labels: list[str], size: int = 12) -> QIcon:
     """A small square icon filled with ``label``'s colour (see ``label_color``)."""
     pixmap = QPixmap(size, size)

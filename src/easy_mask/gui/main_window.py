@@ -68,7 +68,7 @@ from easy_mask.gui.video_import import (
 )
 from easy_mask.gui.video_menu import Cut, VideoMenu
 from easy_mask.gui.welcome import WelcomePage
-from easy_mask.gui.widgets import FileList, FlagList, LabelPanel, color_icon
+from easy_mask.gui.widgets import FileList, FlagList, LabelPanel, as_list, color_icon, quoted
 from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
 from easy_mask.io.images import image_size, is_image, list_images
@@ -856,29 +856,33 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Added label “{name}”", 4000)
 
     def _show_label_menu(self, label: str, position: QPoint) -> None:
-        """Right-click on a label: use, apply, rename, or delete it here or everywhere."""
+        """Right-click on a label: use, propagate, hide, rename, or delete it.
+
+        When the clicked label is ticked together with others, Propagate, Hide / Show and
+        Delete act on all the ticked labels, and their text names them.
+        """
         menu = QMenu(self)
         menu.addAction(f"Use “{label}” for New Shapes", lambda: self.set_active_label(label))
         menu.addSeparator()
+        ticked_labels = self.label_list.checked_labels()
+        group = ticked_labels if label in ticked_labels and len(ticked_labels) > 1 else [label]
+        name = quoted(group)
         ticked = self.label_list.checked_keys()
-        own = {object_key(s) for s in self.canvas.shapes if s.label == label}
-        keys = ticked if own & ticked and ticked - own else own
-        name = f"“{label}”" if keys == own else "Ticked"
+        own = {object_key(s) for s in self.canvas.shapes if s.label in group}
+        keys = (ticked & own) if len(group) > 1 else own  # several: only the ticked shapes
         menu.addAction(
-            icon("propagate"),
-            f"Propagate {name} Forward",
-            lambda: self.video.propagate(+1, keys=keys),
+            icon("propagate"), f"Propagate {name} Forward", lambda: self.video.propagate(+1, keys)
         ).setStatusTip("Track it through the next frames (with what you erased on this frame)")
         menu.addAction(
-            f"Propagate {name} Backward", lambda: self.video.propagate(-1, keys=keys)
+            f"Propagate {name} Backward", lambda: self.video.propagate(-1, keys)
         ).setStatusTip("Track it through the earlier frames")
         menu.addMenu(self.video.menu)
         menu.addSeparator()
-        mine = [i for i, s in enumerate(self.canvas.shapes) if s.label == label]
+        mine = [i for i, s in enumerate(self.canvas.shapes) if s.label in group]
         hidden = any(id(self.canvas.shapes[i]) in self.canvas.hidden for i in mine)
         menu.addAction(
-            f"Show “{label}”" if hidden else f"Hide “{label}”",
-            lambda: self.set_label_visible(label, hidden),
+            f"Show {name}" if hidden else f"Hide {name}",
+            lambda: self.set_label_visible(group, hidden),
         ).setEnabled(bool(mine))
         apply = menu.addAction(
             "Apply to Selected Shapes", lambda: self.apply_label_to_selected(label)
@@ -886,14 +890,14 @@ class MainWindow(QMainWindow):
         apply.setEnabled(bool(self.canvas.selection))
         menu.addAction("Rename...", lambda: self.rename_label(label))
         menu.addSeparator()
-        menu.addAction(f"Delete “{label}” From This Frame", lambda: self.delete_label_here(label))
+        menu.addAction(f"Delete {name} From This Frame", lambda: self.delete_label_here(group))
         menu.addAction(
-            f"Delete “{label}” From Frames...", lambda: self.delete_label_from_frames(label)
+            f"Delete {name} From Frames...", lambda: self.delete_label_from_frames(group)
         )
         menu.addAction(
             icon("eraser"),
-            f"Delete “{label}” From All Frames",
-            lambda: self.video.remove_label(label),
+            f"Delete {name} From All Frames",
+            lambda: self.video.remove_label(group),
         )
         self.show_menu(menu, position)
 
@@ -902,10 +906,11 @@ class MainWindow(QMainWindow):
         if name and name != ERASE_LABEL:
             self.apply_label_to_selected(name)
 
-    def set_label_visible(self, label: str, visible: bool) -> None:
-        """Show or hide every shape of ``label`` on the canvas (nothing is deleted)."""
+    def set_label_visible(self, labels: str | list[str], visible: bool) -> None:
+        """Show or hide every shape of ``labels`` on the canvas (nothing is deleted)."""
+        names = as_list(labels)
         for index, shape in enumerate(self.canvas.shapes):
-            if shape.label == label:
+            if shape.label in names:
                 self.canvas.set_shape_visible(index, visible)
         self._refresh_panels()
 
@@ -925,26 +930,30 @@ class MainWindow(QMainWindow):
         self._replace_shapes(shapes, select=selection[-1])
         self.statusBar().showMessage(f"Labelled {len(selection)} shape(s) “{label}”", 4000)
 
-    def delete_label_here(self, label: str) -> None:
-        """Delete the shapes with ``label`` on this frame only."""
-        kept = [s for s in self.canvas.shapes if s.label != label]
+    def delete_label_here(self, labels: str | list[str]) -> None:
+        """Delete the shapes with ``labels`` on this frame only."""
+        names = as_list(labels)
+        kept = [s for s in self.canvas.shapes if s.label not in names]
         if len(kept) == len(self.canvas.shapes):
-            self.statusBar().showMessage(f"No “{label}” on this frame", 3000)
+            self.statusBar().showMessage(f"No {quoted(names)} on this frame", 3000)
             return
         self._replace_shapes(kept)
-        self.statusBar().showMessage(f"Deleted “{label}” from this frame  ·  Undo brings it back")
+        self.statusBar().showMessage(
+            f"Deleted {quoted(names)} from this frame  ·  Undo brings it back"
+        )
 
-    def delete_label_from_frames(self, label: str) -> None:
-        """Ask for a frame range (e.g. 10 to 100) and delete ``label`` there."""
+    def delete_label_from_frames(self, labels: str | list[str]) -> None:
+        """Ask for a frame range (e.g. 10 to 100) and delete ``labels`` there."""
         if self.current_index is None:
             return
+        names = as_list(labels)
         last = len(self.image_paths)
         picked = self.ask_range(
-            self, f"Delete “{label}”", "Delete it from frame", self.current_index + 1, last, last
+            self, f"Delete {quoted(names)}", "Delete from frame", self.current_index + 1, last, last
         )
         if picked is not None:
             first, end = picked
-            self.video.remove_label(label, range(first - 1, end))
+            self.video.remove_label(names, range(first - 1, end))
 
     def rename_label(self, label: str) -> None:
         """Rename ``label`` in the list and on every frame (one undo step)."""

@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- Right-click a label that is ticked together with others: Propagate, Hide / Show and the three Delete entries act on all the ticked labels and name them (“dog” + “wing1”, or “4 labels”); Rename, Use for New Shapes and Apply to Selected stay single-label.
 - The Labels panel is a checklist: ticking a label ticks its shapes, single shapes can be ticked, a label is half-ticked when only some are; ticks follow objects across frames. Right-click a label > Propagate Forward / Backward sends that label, or everything ticked (Propagate Ticked); its options are in the Propagation submenu, not on the toolbar. Hiding shapes moved to right-click a label > Hide / Show.
 - Propagate moved from the toolbar into the label right-click menu (Propagate “label” Forward / Backward, for every selected label) with its options in a Propagation submenu; shapes keep Propagate Selected in their right-click menu.
 - The Shapes panel is folded into the Labels panel: each label lists its shapes on this frame underneath (click to select, checkbox to hide, right-click for delete / label / propagate / erase / mask, double-click to edit); folded labels stay folded.

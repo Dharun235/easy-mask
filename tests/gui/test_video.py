@@ -755,7 +755,9 @@ def test_label_menu_propagates_everything_ticked(qtbot, window, video, image_dir
     menus = []
     window.show_menu = lambda menu, pos: menus.append(menu)
     window.label_list.label_menu_requested.emit("tree", QPoint(0, 0))
-    next(a for a in menus[0].actions() if a.text() == "Propagate Ticked Forward").trigger()
+    texts = [a.text() for a in menus[0].actions()]
+    assert "Hide “car” + “tree”" in texts and "Delete “car” + “tree” From All Frames" in texts
+    next(a for a in menus[0].actions() if a.text() == "Propagate “car” + “tree” Forward").trigger()
     qtbot.waitUntil(lambda: not video.running, timeout=5000)
     assert sorted(s.label for s in saved(image_dir, "img2")) == ["car", "tree"]
 
@@ -769,3 +771,37 @@ def test_hide_and_show_a_label_from_its_menu(window):
     assert window.label_list.shape_rows()[0].text(0).endswith("(hidden)")
     window.set_label_visible("car", True)
     assert not window.canvas.hidden
+
+
+def test_menu_on_ticked_labels_deletes_and_hides_them_all(window, image_dir):
+    from PySide6.QtCore import QPoint
+
+    save_frame(image_dir, "img2", [rect(10), rect(50, label="tree"), rect(70, label="sign")])
+    window.canvas.set_shapes([rect(10), rect(50, label="tree"), rect(70, label="sign")])
+    for label in ("car", "tree", "sign"):
+        window._remember_label(label)
+    window._commit()
+    for row in window.label_list.label_rows():
+        if row.data(0, Qt.ItemDataRole.UserRole) in ("car", "tree"):
+            row.setCheckState(0, Qt.CheckState.Checked)
+    menus = []
+    window.show_menu = lambda menu, pos: menus.append(menu)
+    window.label_list.label_menu_requested.emit("car", QPoint(0, 0))
+    next(a for a in menus[0].actions() if a.text() == "Hide “car” + “tree”").trigger()
+    assert len(window.canvas.hidden) == 2
+    window.label_list.label_menu_requested.emit("car", QPoint(0, 0))
+    menu = menus[-1]
+    next(a for a in menu.actions() if a.text() == "Delete “car” + “tree” From All Frames").trigger()
+    assert [s.label for s in window.canvas.shapes] == ["sign"]
+    assert [s.label for s in saved(image_dir, "img2")] == ["sign"]
+    assert "car" not in window.known_labels and "tree" not in window.known_labels
+    window.undo()
+    assert len(saved(image_dir, "img2")) == 3
+
+
+def test_quoted_label_names():
+    from easy_mask.gui.widgets import quoted
+
+    assert quoted(["dog"]) == "“dog”"
+    assert quoted(["dog", "wing1"]) == "“dog” + “wing1”"
+    assert quoted(["a", "b", "c", "d"]) == "4 labels"
