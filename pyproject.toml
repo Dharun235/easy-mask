@@ -20,7 +20,7 @@ dependencies = [
     "onnxruntime>=1.31.1",  # AI Segment (EfficientSAM on CPU), ~75 MB
     "opencv-contrib-python-headless>=5.0.0.93",
     "pillow>=10.0",
-    "PySide6>=6.7",
+    "PySide6-Essentials>=6.7",  # Core, Gui, Widgets, Svg; the full PySide6 adds ~700 MB unused
 ]
 
 [project.optional-dependencies]

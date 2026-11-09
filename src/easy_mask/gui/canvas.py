@@ -255,10 +255,6 @@ class Canvas(QWidget):
         self._emit_status()
         self.update()
 
-    def zoom_to_actual_size(self) -> None:
-        """Show the image at 100% (one image pixel per screen pixel)."""
-        self.zoom_by(1.0 / self.scale)
-
     # ------------------------------------------------------------------ coordinates
 
     def to_image(self, pos: QPointF) -> Point:

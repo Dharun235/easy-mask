@@ -61,9 +61,8 @@ def test_zoom_is_clamped(window):
     assert window.canvas.scale == MIN_SCALE
 
 
-def test_actual_size_and_fit(window):
-    window.canvas.zoom_to_actual_size()
-    assert window.canvas.scale == pytest.approx(1.0)
+def test_fit_to_window(window):
+    window.canvas.zoom_by(0.1)
     window.canvas.fit_to_window()
     assert window.canvas.scale > 1.0  # 100x80 image in a large window
 

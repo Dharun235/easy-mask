@@ -388,7 +388,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._action(m, "Save", self.save, std.Save)
         self._export_action = self._action(m, "Export...", self.export_dialog)
-        self._export_again_action = self._action(m, "Export Again", self.export_again)
+        self._action(m, "Export Again", self.export_again)
         # Set in the Export window; kept as a checkable action for the session state.
         self.export_on_close_action = QAction("Export Again When Closing", self, checkable=True)
         m.addSeparator()
@@ -1369,7 +1369,6 @@ class MainWindow(QMainWindow):
     def _add_points_button(self) -> None:
         """Points, right after Box: each mask's centroid and four corners as points."""
         menu = QMenu("Points", self)
-        self.points_menu = menu
         here = self._action(menu, "Add to This Frame", self.add_keypoints_here)
         all_frames = self._action(menu, "Add to All Frames", self.add_keypoints_everywhere)
         menu.addSeparator()

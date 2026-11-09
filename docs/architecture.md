@@ -32,6 +32,8 @@ src/easy_mask/
     pixel_ops.py         classic segmentation: threshold, magic wand, colour range, GrabCut,
                          (image -> full-size bool mask); GrabCut kept as a benchmark baseline
     display.py           display-only adjustments (brightness, gamma, CLAHE, channel, opacity)
+    video.py             object identity across frames, auto vs manual shapes, cutting regions
+    interpolate.py       keyframe interpolation: outline correspondence, SDF mask blending
   ai/
     segmenter.py         Segmenter interface: cached image embedding + click/box prompts -> masks
     efficient_sam.py     EfficientSAM ONNX backend (onnxruntime, CPU), model table, load()
@@ -40,10 +42,6 @@ src/easy_mask/
     images.py            list images in a folder (natural sort), read size
     project.py           .easy-mask.json per image folder (labels, flags, active label)
     stats.py             folder statistics and label validation (CLI `stats`, GUI dialog)
-    video.py             object identity across frames, auto vs manual shapes, merging results
-    interpolate.py       keyframe interpolation: outline correspondence, SDF mask blending
-  io/
-    images.py            list images in a folder (natural sort), read size
     video.py             extract a video's frames to <stem>_frames/ (step, max frames)
     export/
       common.py          collect (image, annotation) pairs, resolve class list, copy images
@@ -51,13 +49,14 @@ src/easy_mask/
       coco.py            COCO instance segmentation JSON (polygons, or RLE for masks)
       yolo.py            YOLO-seg label files + data.yaml
       davis.py           DAVIS-style indexed PNG per frame, object ids stable across frames
+      objects.py         per-object masks, cutouts, coordinate / centroid / corner tables, overlays
   propagation/
     tracker.py           Propagator protocol, CopyPropagator (no model); track(): shapes -> prompts -> flagged masks
     backend.py           EfficientTAM / SAM 2.1 video predictor, weights download, device pick
     configs/             EfficientTAM config (its wheel ships none)
   gui/
     app.py               QApplication bootstrap
-    main_window.py       menus, docks, open/save/navigate, edit commands, export menu
+    main_window.py       toolbar, menus, docks, open/save/navigate, edit commands, right-click menus
     canvas.py            view transform, drawing tools, multi-select/move/vertex drag, painting
     session.py           remembered state: window layout, tool sizes, recent folders, projects
     welcome.py           start page (open buttons, recent folders)
@@ -66,7 +65,7 @@ src/easy_mask/
     theme.py             calm light / dark theme: palette, stylesheet, Fusion style
     progress.py          status-bar progress panel (several tasks, Cancel)
     export_worker.py     dataset export on a background thread
-    object_export_dialog.py  Objects export: choose binary masks / cutouts / coordinates
+    export_dialog.py     Export window: format, parts, frame range, folder, export on close
     video_import.py      video import dialog (format, folder, every n-th frame) + worker
     tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
     tools/brush.py       brush and eraser
@@ -76,9 +75,9 @@ src/easy_mask/
     tools/ai_segment.py  AI Segment: prompts, mask preview, accept into a mask shape
     tools/ai_worker.py   QThreadPool job that loads the model and encodes images
     label_dialog.py      label / group id / description dialog with autocomplete
-    widgets.py           list widgets for files, labels, shapes, flags
-    workflow.py          Workflow menu: review mode, statistics dialog
-    video_menu.py        Video menu: open video, interpolate, propagate / stop
+    widgets.py           file list, label checklist tree (labels with their shapes), flags
+    workflow.py          review mode (View) and statistics (File)
+    video_menu.py        propagation (Propagation submenu, label right-click), erase-through, interpolate, clear
     propagate.py         PropagationWorker: QThread running the tracker, one signal per frame
 ```
 
@@ -87,7 +86,7 @@ src/easy_mask/
 ```
 mouse/keys -> Canvas ----shape_drawn----> MainWindow._on_shape_drawn -> LabelDialog
                     \---shapes_edited---> MainWindow._commit
-                                              |- History.push(shapes)
+                                              |- History.record(frame, before, after)
                                               |- dirty = True (title shows *)
                                               '- refresh the Labels panel (labels and their shapes)
 ```

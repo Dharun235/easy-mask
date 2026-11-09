@@ -43,7 +43,7 @@ or a box with [EfficientSAM](https://github.com/yformer/EfficientSAM), on the CP
 | Image flags | per-image checkboxes for classification or data cleaning (`--flags`) |
 | Saving | one JSON per image next to the image or in `--output`, optional auto-save, crash-safe writes |
 | Export | semantic mask PNG, instance mask PNG, COCO instance JSON (polygons or exact RLE), YOLO-seg TXT, DAVIS-style video masks (GUI or CLI) |
-| Per-object export | pick any of: **binary mask** PNG, **cutout** (the object's original pixels on transparency), **coordinates** (box, area, outline points), **centroid** and **corners** (straight and rotated box), in `objects.json` / `objects.csv` |
+| Per-object export | pick any of: **binary mask** PNG, **cutout** (the object's original pixels on transparency), **coordinates** (box, area, outline points), **centroid**, **corners** (straight and rotated box), hand-placed **points**, **frames with overlays**, in `objects.json` / `objects.csv` |
 | Workflow | review mode (step and zoom through every object, `reviewed` flag), folder statistics, strict label list |
 | Video | open mp4/avi/mov (frames extracted, `--frame-step`, `--max-frames`) or a frame folder; keyframe interpolation; mask propagation with memory (EfficientTAM / SAM 2.1, optional extra); erase through frames; clear frames; undo across frames |
 | Privacy | 100% offline; images never leave your disk |
@@ -95,7 +95,7 @@ Polygon, Box, Points, Paint, Eraser, Export**.
 3. **Next** moves on; work is saved automatically.
 4. **Propagate**: right-click a label > **Propagate "dog" Forward** (or Backward) and
    EfficientTAM tracks it through the next frames. Tick several labels (or single shapes)
-   in the Labels panel's checklist and the entry reads **Propagate Ticked**. The
+   in the Labels panel's checklist and the entry names them all (**Propagate “dog” + “wing1” Forward**). The
    **Propagation** submenu has the options: AI or plain copy, auto-propagate on Next, how
    many frames, interpolate, clear labels from here. Right-click a label > Hide / Show.
 5. **Remove a wrong part** (a second dog merged into the first, a leg in a wing):
@@ -157,8 +157,8 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
 1. Open a video (or a folder of frames). Draw or paint the objects on one frame.
    `(label, group id)` is an object's identity across frames; a new object with a label
    already on the frame gets the next free **group id** automatically, so two dogs stay two
-   objects. To join parts into one object, give them the same group id (Edit Label) or use
-   Mask > Union.
+   objects. To join parts into one object, give them the same group id (Edit Label) or
+   right-click > Mask > Union.
 2. Right-click a label (or several selected labels, or a shape) > **Propagate**: its objects
    are tracked through the next frames on a
    background thread (AI with the video extra, plain copy without it); the progress bar's
@@ -178,16 +178,16 @@ Everything is reachable with the mouse; keys are optional (Help > Keyboard Short
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
 | `E` | select | `P` / `R` / `C` | polygon / rectangle / circle |
-| `B` / `X` | paint / eraser | `I` / `W` / `C` | AI Segment / magic wand / circle |
+| `B` / `X` | paint / eraser | `I` / `W` | AI Segment / magic wand |
+| `L` / `T` / `O` | line / line strip / point | | |
 | `D` / `A` | next / previous image | `1`-`9`, `0` | use a label, ask each time |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo (across frames) | `Ctrl+S` | save |
 | `Enter` / double-click | finish a polygon, keep an AI mask | `Esc` / `Backspace` | cancel / remove last point |
 | `Ctrl+wheel` | zoom at cursor | wheel / middle-drag | pan |
 | `[` / `]` | smaller / bigger brush or wand tolerance | `F` | fit image to window |
 
-Rectangles, circles and lines can be drawn by dragging or by two clicks. AI Segment adds the
-mask to the selected shape if one is selected, otherwise it creates a new mask and asks
-for its label.
+Rectangles, circles and lines can be drawn by dragging or by two clicks. AI Segment makes a new mask
+with the active label; Shift-click to add to the selected shape instead.
 
 ### Annotation format
 

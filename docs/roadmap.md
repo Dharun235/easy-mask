@@ -37,7 +37,7 @@ Manual tools on par with classic annotators.
 - [x] Open a video file (frames extracted with step / max-frames) or frame folder
 - [x] Propagate masks across frames with memory (EfficientTAM / SAM 2.1), correct and re-run
 - [x] Keyframe interpolation without a model (outline correspondence, SDF for masks)
-- [ ] Copy-forward without a model (lands with `feat/workflow`)
+- [x] Copy-forward without a model (Propagate copies the masks when the video extra is missing)
 - [x] Export DAVIS-style mask sequences
 - [x] Video benchmark: J&F and seconds per frame on DAVIS 2017 val
 
@@ -60,6 +60,16 @@ Manual tools on par with classic annotators.
 - [x] AI out of the box (onnxruntime as a regular dependency)
 - [x] Remember export format/folder; Export Again (Ctrl+Shift+E) and export on close
 - [x] Review mode visits automatic "(auto)" shapes first
+
+## v0.8 — simpler masks and video (`feat/polish`)
+- [x] Toolbar trimmed to the essentials, every button labelled, status-bar hint per tool
+- [x] Paint and Eraser; eraser cuts carried through frames by Propagate, Erase With This
+- [x] Labels panel as a checklist tree (labels with their shapes); right-click a label to
+      propagate, hide, rename or delete it (this frame, a frame range, all frames)
+- [x] One undo history across all frames; a video run is one step
+- [x] Key points: centroid and rotated-box corners as editable points, kept by Propagate
+- [x] Export window: format, parts (masks, cutouts, coordinates, centroid, corners,
+      points, overlays), frame range, folder
 
 ## Later / ideas
 - Text-prompted detection (e.g. Grounding-DINO / SAM3-style) to pre-label
