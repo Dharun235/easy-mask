@@ -63,7 +63,7 @@ from easy_mask.gui.video_import import (
 )
 from easy_mask.gui.video_menu import Cut, VideoMenu
 from easy_mask.gui.welcome import WelcomePage
-from easy_mask.gui.widgets import FileList, FlagList, LabelPanel, ShapeList, color_icon
+from easy_mask.gui.widgets import FileList, FlagList, LabelPanel, color_icon
 from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
 from easy_mask.io.images import image_size, is_image, list_images
@@ -288,22 +288,19 @@ class MainWindow(QMainWindow):
         self.flag_list = FlagList()
         self.label_panel = LabelPanel()
         self.label_panel.label_added.connect(self.add_label)
-        self.label_list = self.label_panel.label_list
+        self.label_list = self.label_panel.tree  # labels, each with its shapes below
         self.label_list.label_clicked.connect(self._on_label_clicked)
         self.label_list.label_menu_requested.connect(self._show_label_menu)
-        self.shape_list = ShapeList()
+        self.label_list.shape_menu_requested.connect(self._show_context_menu)
         self.file_list = FileList()
         self.flags_dock = self._dock("Flags", self.flag_list, right)
         self._dock("Labels", self.label_panel, right)
-        self._dock("Shapes", self.shape_list, right)
         self._dock("Files", self.file_list, right)
 
         self.flag_list.flags_changed.connect(self._mark_dirty)
-        self.shape_list.itemSelectionChanged.connect(
-            lambda: self.canvas.set_selection(self.shape_list.selected_rows())
-        )
-        self.shape_list.visibility_changed.connect(self.canvas.set_shape_visible)
-        self.shape_list.itemDoubleClicked.connect(lambda _item: self.edit_label())
+        self.label_list.shapes_selected.connect(self.canvas.set_selection)
+        self.label_list.visibility_changed.connect(self.canvas.set_shape_visible)
+        self.label_list.shape_double_clicked.connect(self._edit_shape_label)
         self.file_list.currentRowChanged.connect(self._on_file_row_changed)
 
     def _action(
@@ -524,7 +521,7 @@ class MainWindow(QMainWindow):
     def _connect_canvas(self) -> None:
         self.canvas.shape_drawn.connect(self._on_shape_drawn)
         self.canvas.shapes_edited.connect(self._commit)
-        self.canvas.selection_changed.connect(self.shape_list.select_rows)
+        self.canvas.selection_changed.connect(self.label_list.select_shapes)
         self.canvas.double_clicked_shape.connect(lambda _i: self.edit_label())
         self.canvas.context_menu_requested.connect(self._show_context_menu)
         self.canvas.delete_requested.connect(self.delete_selected)
@@ -802,7 +799,7 @@ class MainWindow(QMainWindow):
         self.active_label = label
         self.session.save_project()
         self._show_active_label()
-        self.label_list.show_labels(self.known_labels, self.canvas.shapes, self.active_label)
+        self._refresh_labels()
 
     def set_active_label_number(self, number: int) -> None:
         """Make the ``number``-th known label (1-based) active; ignored if there is none."""
@@ -1090,7 +1087,7 @@ class MainWindow(QMainWindow):
         shape.label, shape.group_id, shape.description = info.label, info.group_id, info.description
         self._remember_label(info.label)
         self._commit()
-        self.shape_list.select_rows([index])
+        self.label_list.select_shapes([index])
 
     def delete_selected(self) -> None:
         """Delete every selected shape."""
@@ -1391,10 +1388,19 @@ class MainWindow(QMainWindow):
             self.known_labels.append(label)
             self.session.save_project()
 
+    def _refresh_labels(self) -> None:
+        """Rebuild the Labels panel: labels, their shapes, hidden ones and the selection."""
+        self.label_list.show_labels(
+            self.known_labels, self.canvas.shapes, self.canvas.hidden, self.active_label
+        )
+        self.label_list.select_shapes(self.canvas.selection)
+
+    def _edit_shape_label(self, index: int) -> None:
+        self.canvas.select(index)
+        self.edit_label()
+
     def _refresh_panels(self) -> None:
-        self.label_list.show_labels(self.known_labels, self.canvas.shapes, self.active_label)
-        self.shape_list.show_shapes(self.canvas.shapes, self.canvas.hidden, self.known_labels)
-        self.shape_list.select_rows(self.canvas.selection)
+        self._refresh_labels()
         self._update_undo_actions()
 
     def _refresh_file_list(self) -> None:

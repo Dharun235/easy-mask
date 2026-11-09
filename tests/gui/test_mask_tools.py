@@ -90,7 +90,7 @@ def test_shift_click_multi_select_and_union(window, ui):
         ui.screen(45, 20),
     )
     assert window.canvas.selection == [0, 1]
-    assert window.shape_list.selected_rows() == [0, 1]
+    assert window.label_list.selected_shapes() == [0, 1]
     window.combine("union")
     (merged,) = window.canvas.shapes
     assert merged.shape_type == ShapeType.MASK and full(window)[20, 12] and full(window)[20, 48]
@@ -113,11 +113,12 @@ def test_dragging_multi_selection_moves_all(window, ui):
     assert window.canvas.shapes[0].points[0][1] > 25 and window.canvas.shapes[1].points[0][1] > 25
 
 
-def test_shape_list_extended_selection_drives_canvas(window, ui):
+def test_selecting_shapes_in_the_labels_panel_drives_canvas(window, ui):
     draw_rect(window, ui, (10, 10), (20, 20))
     draw_rect(window, ui, (40, 10), (50, 20))
-    window.shape_list.item(0).setSelected(True)
-    window.shape_list.item(1).setSelected(True)
+    first, second = window.label_list.shape_rows()
+    first.setSelected(True)
+    second.setSelected(True)
     assert window.canvas.selection == [0, 1]
 
 

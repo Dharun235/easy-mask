@@ -314,10 +314,11 @@ def test_worker_body_runs_in_the_calling_thread(fake_propagator, image_dir):
     assert done == [1, 2]
 
 
-def test_shape_list_marks_auto_shapes(window):
+def test_labels_panel_marks_auto_shapes(window):
     window.canvas.set_shapes([rect(10), rect(30, propagated=True)])
+    window._remember_label("car")
     window._refresh_panels()
-    texts = [window.shape_list.item(i).text() for i in range(2)]
+    texts = [item.text(0) for item in window.label_list.shape_rows()]
     assert "(auto)" not in texts[0] and texts[1].endswith("(auto)")
 
 

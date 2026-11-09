@@ -160,7 +160,7 @@ uv run easy-mask export clip_frames/ --format davis --out davis/   # indexed PNG
    every object) and press **Propagate**: they are tracked through the next frames on a
    background thread (AI with the video extra, plain copy without it); the progress bar's
    Cancel stops it. A cut made on the frame goes along and is cut on every frame. Results
-   are mask shapes flagged `propagated` and shown as `(auto)` in the shape list.
+   are mask shapes flagged `propagated` and shown as `(auto)` under their label in the Labels panel.
 3. Fix a bad frame by hand and propagate again from there: automatic shapes are
    replaced, hand-drawn ones are never overwritten and also steer the model. When nothing
    could change (every frame already has hand-drawn masks), the status bar says so.

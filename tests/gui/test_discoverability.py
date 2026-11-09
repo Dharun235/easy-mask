@@ -88,7 +88,7 @@ def test_panels_hidden_on_start_page_and_shown_with_an_image(make_window, image_
     assert all(not d.isVisible() for d in win.docks)
     win.open_path(image_dir)
     visible = {d.objectName() for d in win.docks if d.isVisible()}
-    assert visible == {"Labels", "Shapes", "Files"}  # Flags only when there are flags
+    assert visible == {"Labels", "Files"}  # Flags only when there are flags
     assert all(d.features() == QDockWidget.DockWidgetFeature.DockWidgetMovable for d in win.docks)
 
 
@@ -98,7 +98,7 @@ def test_view_menu_can_toggle_panels(make_window, image_dir):
     view = next(a.menu() for a in win.menuBar().actions() if a.text() == "&View")
     panels = next(a.menu() for a in view.actions() if a.text() == "Panels")
     toggles = {a.text(): a for a in panels.actions()}
-    assert set(toggles) == {"Flags", "Labels", "Shapes", "Files"}
+    assert set(toggles) == {"Flags", "Labels", "Files"}
     toggles["Files"].trigger()
     assert not next(d for d in win.docks if d.objectName() == "Files").isVisible()
 

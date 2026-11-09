@@ -25,7 +25,7 @@ def test_draw_polygon_then_undo_redo(ui, qtbot, window):
     shape = window.canvas.shapes[0]
     assert shape.label == "cat" and shape.shape_type == ShapeType.POLYGON
     assert shape.points[1] == pytest.approx((40, 10), abs=1)
-    assert window.dirty and window.shape_list.count() == 1
+    assert window.dirty and len(window.label_list.shape_rows()) == 1
 
     window.undo()
     assert window.canvas.shapes == []
@@ -135,7 +135,7 @@ def test_hidden_shape_cannot_be_selected(ui, qtbot, window):
     window.set_tool(ShapeType.RECTANGLE)
     ui.drag((10, 10), (30, 30))
     window.set_tool(None)
-    window.shape_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+    window.label_list.shape_rows()[0].setCheckState(0, Qt.CheckState.Unchecked)
     window.canvas.select(None)
     ui.click(20, 20)
     assert window.canvas.selected is None

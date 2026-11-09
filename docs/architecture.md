@@ -89,7 +89,7 @@ mouse/keys -> Canvas ----shape_drawn----> MainWindow._on_shape_drawn -> LabelDia
                     \---shapes_edited---> MainWindow._commit
                                               |- History.push(shapes)
                                               |- dirty = True (title shows *)
-                                              '- refresh Labels / Shapes panels
+                                              '- refresh the Labels panel (labels and their shapes)
 ```
 
 The canvas mutates shapes only while dragging; adding, deleting and relabelling happen

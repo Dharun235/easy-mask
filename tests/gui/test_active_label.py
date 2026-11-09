@@ -38,16 +38,16 @@ def test_number_beyond_known_labels_is_ignored(window):
 
 
 def test_clicking_label_toggles_it(window):
-    item = window.label_list.item(0)
-    window.label_list.itemClicked.emit(item)
+    item = window.label_list.label_rows()[0]
+    window.label_list.itemClicked.emit(item, 0)
     assert window.active_label == "cat"
-    assert window.label_list.item(0).font().bold()
-    window.label_list.itemClicked.emit(window.label_list.item(0))
+    assert window.label_list.label_rows()[0].font(0).bold()
+    window.label_list.itemClicked.emit(window.label_list.label_rows()[0], 0)
     assert window.active_label is None
 
 
 def test_labels_panel_lists_only_labels(window):
-    texts = [window.label_list.item(i).text() for i in range(window.label_list.count())]
+    texts = [row.text(0) for row in window.label_list.label_rows()]
     assert texts == ["cat", "dog"]
 
 
@@ -194,3 +194,33 @@ def test_shape_menu_has_a_label_submenu(window, ui):
     assert names[:2] == ["cat", "dog"] and names[-1] == "New Label..."
     next(a for a in label_menu.actions() if a.text() == "dog").trigger()
     assert window.canvas.shapes[0].label == "dog"
+
+
+def test_labels_panel_shows_each_labels_shapes_underneath(window):
+
+    from easy_mask.core.shapes import Shape
+
+    window.canvas.set_shapes(
+        [
+            Shape("cat", ShapeType.POLYGON, [(10, 10), (30, 10), (20, 30)]),
+            Shape("dog", ShapeType.RECTANGLE, [(40, 40), (60, 60)]),
+            Shape("cat", ShapeType.RECTANGLE, [(70, 10), (90, 30)], group_id=1),
+        ]
+    )
+    window._commit()
+    cat, dog = window.label_list.label_rows()
+    assert cat.text(0) == "cat  (2)" and cat.isExpanded()
+    assert [cat.child(i).text(0) for i in range(cat.childCount())] == ["polygon", "rectangle  g1"]
+    cat.child(1).setSelected(True)  # select a shape from the panel
+    assert window.canvas.selection == [2]
+    menus = []
+    window.show_menu = lambda menu, pos: menus.append([a.text() for a in menu.actions()])
+    tree = window.label_list
+    tree._request_menu(tree.visualItemRect(dog.child(0)).center())  # right-click a shape
+    assert window.canvas.selection == [1] and "Delete" in menus[-1]
+    window.delete_selected()
+    assert [s.label for s in window.canvas.shapes] == ["cat", "cat"]
+    assert window.label_list.label_rows()[1].text(0) == "dog"  # label stays, now empty
+    tree.label_rows()[0].setExpanded(False)
+    window._refresh_panels()
+    assert not tree.label_rows()[0].isExpanded()  # folding is remembered across refreshes
