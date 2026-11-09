@@ -4,11 +4,13 @@ Guidance for Claude Code (and any AI or human contributor) working in this repo.
 
 ## Project in one paragraph
 
-**easy-mask** is a local-first desktop tool for annotating images with object masks for
-computer vision. Users draw polygons, rectangles, circles, lines and points (and, in later
-branches, click objects for SAM2 to segment). Everything runs on the user's machine: no
-cloud, no account, no telemetry. Annotations are stored as one JSON file per image
-(labelme-compatible) and export to mask PNGs, COCO and YOLO-seg.
+**easy-mask** is a local-first, no-code desktop tool for drawing object masks on images
+and videos. Users click objects for AI Segment (EfficientSAM), draw polygons and boxes,
+paint and erase masks, propagate masks through video frames (EfficientTAM / SAM 2.1),
+edit centroid / corner points, and export masks, cutouts, points, COCO, YOLO and DAVIS.
+Everything runs on the user's machine: no cloud, no account, no telemetry. Annotations
+are one labelme-compatible JSON file per image. The app is for non-programmers: keep the
+UI to a few labelled buttons and right-click menus, and keep the README short.
 
 ## Commands
 
@@ -38,7 +40,7 @@ src/easy_mask/
   gui/      PySide6 widgets. Thin: translate user input into core calls and draw core state.
   cli.py    argument parsing and entry point.
 tests/      by type: unit/ property/ architecture/ integration/ gui/ smoke/ (docs/testing.md).
-docs/       architecture.md, roadmap.md, testing.md, benchmarks.md.
+docs/       architecture.md, command-line.md, roadmap.md, testing.md, benchmarks.md.
 ```
 
 Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to import from

@@ -1,6 +1,7 @@
 # Roadmap
 
-Each milestone lands as its own branch and PR into `main`.
+v0.1 to v0.8 are done and released together as easy-mask 0.1.0. New features get their
+own branch and PR into `main`.
 
 ## v0.1 — core annotation (`feat/core-annotation`)
 Manual tools on par with classic annotators.
