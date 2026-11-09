@@ -46,6 +46,8 @@ dataset above in the format RITM introduced
 | [SA-V](https://ai.meta.com/datasets/segment-anything-video/) | SAM2's video dataset; a larger propagation test set |
 | [DAVIS 2017](https://davischallenge.org/) (CC BY 4.0) | Video object segmentation; J&F after propagation. `DAVIS-2017-trainval-480p.zip` (833 MB) unzipped to `data/benchmarks/DAVIS2017/` |
 
+Check each dataset's licence before use; several are research-only.
+
 ## Results
 
 ### Mask fidelity (v0.2)
@@ -202,16 +204,6 @@ objects (bike-packing, 2 objects, is the slowest). Interpolation is free and goo
 rigid or slow motion (blackswan, camel) but fails on articulated motion and occlusion
 (breakdance, bmx-trees): propagate those instead, and use interpolation for short gaps.
 
-## Plan
-
-1. **v0.1 (now):** unit and GUI tests on synthetic images (fast, no downloads, run in CI).
-2. **AI branch (done):** `benchmarks/clicks.py` runs the simulated-click protocol on
-   GrabCut + Berkeley + DAVIS (results above). Next: SBD / COCO-MVal and boundary IoU.
-3. **v0.2+:** timed manual sessions on a fixed 20-image COCO val subset to track
-   seconds-per-object as the UI changes.
-
-Check each dataset's licence before use; several are research-only.
-
 ### AI Segment responsiveness and click filtering (v0.7)
 
 - **Prefetch:** with the model loaded, the current and next two images are encoded in the
@@ -256,7 +248,7 @@ against the ground truth of frames 1-15:
 | AI Propagate | 0.965 | 0.970 | 0.963 | 9.4 s (incl. model load) |
 | Copy | 0.635 | 0.914 | 0.503 | 0.1 s |
 
-### Cutting a part through frames (v0.9)
+### Cutting a part through frames (v0.8)
 
 Through the GUI on DAVIS 2017 `dogs-jump`: object 2 was merged into object 1's mask on
 every frame (a typical propagation mistake); object 2 erased on frame 0 (an Erase polygon; eraser strokes give 0.758),
