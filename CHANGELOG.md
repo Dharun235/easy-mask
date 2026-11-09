@@ -45,6 +45,7 @@ All notable changes to this project are documented here. Format follows
 - GUI export kept only `--labels`; labels added during the session are now exported too.
 
 ### Added
+- Propagate chosen labels: select one or more labels in the Labels panel (Cmd/Shift-click) and Propagate sends only their objects; right-click a label > Propagate sends just that label.
 - Right-click a label > Delete From Frames...: pick a frame range (e.g. 10 to 100) and the label's shapes go from those frames only (progress bar, one undo step).
 - Progress bar with Cancel for every all-frames action (points on all frames, delete or rename a label everywhere, clear labels from here, erase with a shape); a cancelled run keeps the frames done and still undoes in one step.
 - Points (toolbar, next to Box): each mask's centroid and the 4 corners of its tight rotated box as editable point shapes (drag, delete, add), on this frame or all frames, kept on moving masks by Propagate. The Objects export reads centroid and corners from them as adjusted, adds a `points` part, and a *Frames with overlays* part writes each frame with its masks, points and boxes drawn on.

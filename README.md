@@ -93,8 +93,9 @@ Select, AI, Polygon, Box, Paint, Eraser, Export**.
    double-click to keep it; or draw it with **Polygon**, **Box** or **Paint** (paint it with the mouse). The status
    bar says which label the new mask got; right-click a mask > **Label** to change it.
 3. **Next** moves on; work is saved automatically.
-4. **Propagate** sends this frame's objects (the selected ones, or all) through the next
-   frames with EfficientTAM. Its arrow has the options: backward, AI or plain copy,
+4. **Propagate** sends this frame's objects through the next frames with EfficientTAM:
+   the labels selected in the Labels panel (Cmd/Shift-click for several), or the selected
+   shapes, or everything. Right-click a label > Propagate sends just that label. Its arrow has the options: backward, AI or plain copy,
    auto-propagate on Next, how many frames, interpolate, clear labels from here.
 5. **Remove a wrong part** (a second dog merged into the first, a leg in a wing):
    - paint over it with the **Eraser**, or draw a shape over it and choose **Erase With

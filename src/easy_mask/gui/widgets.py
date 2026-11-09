@@ -104,8 +104,8 @@ class LabelTree(QTreeWidget):
         self.setIndentation(16)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setToolTip(
-            "Click a label to use it for new shapes (again to be asked); click a shape to "
-            "select it; right-click either for more"
+            "Click a label to use it for new shapes and to choose what Propagate sends "
+            "(Cmd/Shift-click for several); click a shape to select it; right-click for more"
         )
         self.folded: set[str] = set()  # labels the user folded away
         self.itemClicked.connect(self._on_clicked)
@@ -127,6 +127,7 @@ class LabelTree(QTreeWidget):
         """Rebuild: every label in ``labels`` with its shapes; ``hidden`` holds shape ids."""
         hidden = hidden or set()
         self.blockSignals(True)
+        kept = set(self.selected_labels())  # label selection survives the rebuild
         self.clear()
         for label in labels:
             members = [(i, s) for i, s in enumerate(shapes) if s.label == label]
@@ -148,6 +149,7 @@ class LabelTree(QTreeWidget):
                 row.addChild(child)
             self.addTopLevelItem(row)
             row.setExpanded(label not in self.folded)
+            row.setSelected(label in kept)
         self.blockSignals(False)
 
     def label_rows(self) -> list[QTreeWidgetItem]:
@@ -161,15 +163,19 @@ class LabelTree(QTreeWidget):
         return [child for child in children if child is not None]
 
     def select_shapes(self, indices: list[int]) -> None:
-        """Select exactly the rows of shapes ``indices`` without emitting signals."""
+        """Select exactly the rows of shapes ``indices`` (label rows keep their selection)."""
         self.blockSignals(True)
-        self.clearSelection()
         wanted = set(indices)
         for item in self.shape_rows():
-            if item.data(0, SHAPE_ROLE) in wanted:
-                item.setSelected(True)
+            chosen = item.data(0, SHAPE_ROLE) in wanted
+            item.setSelected(chosen)
+            if chosen:
                 self.scrollToItem(item)
         self.blockSignals(False)
+
+    def selected_labels(self) -> list[str]:
+        """Labels whose rows are selected (for Propagate), in list order."""
+        return [row.data(0, LABEL_ROLE) for row in self.label_rows() if row.isSelected()]
 
     def selected_shapes(self) -> list[int]:
         """Indices of the selected shapes, in canvas order."""

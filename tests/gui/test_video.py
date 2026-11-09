@@ -695,3 +695,32 @@ def test_ask_range_returns_an_ordered_range(qtbot, monkeypatch):
     assert ask_range(None, "t", "from", 1, 5, 200) == (10, 100)
     monkeypatch.setattr(QDialog, "exec", lambda dialog: QDialog.DialogCode.Rejected)
     assert ask_range(None, "t", "from", 1, 5, 200) is None
+
+
+def test_propagate_only_the_labels_selected_in_the_panel(qtbot, window, video, image_dir):
+    window.canvas.set_shapes([rect(10), rect(50, label="tree")])
+    window._remember_label("car")
+    window._remember_label("tree")
+    window._commit()
+    tree_row = next(
+        r for r in window.label_list.label_rows() if r.data(0, Qt.ItemDataRole.UserRole) == "tree"
+    )
+    tree_row.setSelected(True)
+    window._refresh_panels()  # the label selection survives a rebuild
+    assert window.label_list.selected_labels() == ["tree"]
+    propagate(qtbot, video)
+    assert [s.label for s in saved(image_dir, "img2")] == ["tree"]  # the car stayed behind
+
+
+def test_right_click_propagates_one_label(qtbot, window, video, image_dir):
+    from PySide6.QtCore import QPoint
+
+    window.canvas.set_shapes([rect(10), rect(50, label="tree")])
+    window._remember_label("car")
+    window._commit()
+    menus = []
+    window.show_menu = lambda menu, pos: menus.append(menu)
+    window.label_list.label_menu_requested.emit("car", QPoint(0, 0))
+    next(a for a in menus[0].actions() if a.text() == "Propagate “car”").trigger()
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
+    assert [s.label for s in saved(image_dir, "img2")] == ["car"]

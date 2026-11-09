@@ -860,6 +860,11 @@ class MainWindow(QMainWindow):
         """Right-click on a label: use, apply, rename, or delete it here or everywhere."""
         menu = QMenu(self)
         menu.addAction(f"Use “{label}” for New Shapes", lambda: self.set_active_label(label))
+        menu.addAction(
+            icon("propagate"),
+            f"Propagate “{label}”",
+            lambda: self.video.propagate(+1, labels=[label]),
+        )
         apply = menu.addAction(
             "Apply to Selected Shapes", lambda: self.apply_label_to_selected(label)
         )
@@ -1336,8 +1341,8 @@ class MainWindow(QMainWindow):
         next_index = next(i for i, a in enumerate(actions) if a.text() == "Next Image")
         propagate = QAction(icon("propagate"), "Propagate", self)
         propagate.setToolTip(
-            "Propagate: carry the selected (or all) objects and what you erased through the "
-            "next frames. Arrow: more options"
+            "Propagate: carry the labels selected in the Labels panel (or the selected shapes, "
+            "or everything) and what you erased through the next frames. Arrow: more options"
         )
         propagate.setStatusTip(propagate.toolTip())
         propagate.triggered.connect(lambda _=False: self.video.propagate(+1))
