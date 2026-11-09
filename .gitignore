@@ -17,6 +17,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.hypothesis/
 .coverage
 htmlcov/
 
@@ -28,9 +29,9 @@ checkpoints/
 *.safetensors
 
 # ---------------------------------------------------------------- User data (keep datasets out of git)
-data/
-datasets/
-exports/
+/data/
+/datasets/
+/exports/
 
 # ---------------------------------------------------------------- Editors / OS
 .vscode/

@@ -1,8 +1,9 @@
+exclude: ^tests/data/  # golden files stay exactly as generated
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.4
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix]
       - id: ruff-format
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -11,5 +12,5 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: check-yaml
+      - id: check-toml
       - id: check-added-large-files
-        args: [--maxkb=1024]

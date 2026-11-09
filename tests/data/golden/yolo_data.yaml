@@ -1,0 +1,9 @@
+path: .
+train: images
+val: images
+names:
+  0: ball
+  1: lane
+  2: nose
+  3: person
+  4: pole

@@ -1,0 +1,181 @@
+"""Remembered state: per-folder project file and app-wide settings."""
+
+import json
+
+from easy_mask.core.shapes import ShapeType
+from easy_mask.gui.label_dialog import LabelInfo
+from easy_mask.gui.main_window import Settings
+from easy_mask.io.project import PROJECT_FILE
+
+
+def test_labels_and_active_label_are_restored_per_folder(make_window, image_dir, driver):
+    first = make_window(Settings(), LabelInfo("zebra"))
+    first.open_path(image_dir)
+    first.set_tool(ShapeType.POINT)
+    driver(first).click(10, 10)  # labels 'zebra' via the dialog
+    first.set_active_label("zebra")
+    first.close()
+    saved = json.loads((image_dir / PROJECT_FILE).read_text())
+    assert saved["labels"] == ["zebra"] and saved["active_label"] == "zebra"
+
+    second = make_window(Settings())
+    second.open_path(image_dir)
+    assert second.known_labels == ["zebra"] and second.active_label == "zebra"
+
+
+def test_command_line_labels_come_first(make_window, image_dir):
+    (image_dir / PROJECT_FILE).write_text(json.dumps({"labels": ["b", "a"], "flags": ["dark"]}))
+    win = make_window(Settings(labels=["a", "c"]))
+    win.open_path(image_dir)
+    assert win.known_labels == ["a", "c", "b"]
+    assert win.flag_list.flags() == {"dark": False}
+
+
+def test_output_dir_is_remembered_relative(make_window, image_dir, tmp_path, monkeypatch):
+
+    labels = image_dir / "labels"
+    labels.mkdir()
+    win = make_window(Settings(output_dir=labels))
+    win.open_path(image_dir)
+    win.session.save_project()
+    assert json.loads((image_dir / PROJECT_FILE).read_text())["output_dir"] == "labels"
+    again = make_window(Settings())
+    again.open_path(image_dir)
+    assert again.settings.output_dir == labels
+
+
+def test_recent_folders_and_menu(make_window, image_dir, tmp_path):
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    win.open_path(image_dir / "img2.png")  # same folder: not duplicated
+    assert win.session.recent() == [image_dir.resolve()]
+    win.session.recent_menu.aboutToShow.emit()
+    (action,) = win.session.recent_menu.actions()
+    assert action.text() == str(image_dir.resolve())
+
+
+def test_empty_recent_menu_shows_placeholder(make_window):
+    win = make_window(Settings())
+    win.session.recent_menu.aboutToShow.emit()
+    (action,) = win.session.recent_menu.actions()
+    assert not action.isEnabled()
+
+
+def test_tool_sizes_and_layout_survive_restart(make_window):
+    win = make_window(Settings())
+    win.pixel_tools["brush"].radius = 23
+    win.session.save()
+    again = make_window(Settings())
+    assert again.pixel_tools["brush"].radius == 23
+
+
+def test_read_only_folder_is_not_an_error(make_window, image_dir, monkeypatch):
+    import easy_mask.io.project as project_io
+
+    def refuse(*args):
+        raise OSError("read-only")
+
+    monkeypatch.setattr(project_io, "save", refuse)
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    win.set_active_label("cat")  # would write the project file
+    assert win.active_label == "cat"
+
+
+# ---------------------------------------------------------------------- export settings
+
+
+def export_once(win, out, monkeypatch, fmt="coco"):
+    from dataclasses import replace
+
+    win.ask_export = lambda choice, count, current, parent: replace(choice, fmt=fmt, out=out)
+    win.export_dialog()
+    win.export_worker.wait()  # exports run in the background
+    win._on_export_finished()
+
+
+def annotate(win, driver):
+    win.set_active_label("cat")
+    win.set_tool(ShapeType.RECTANGLE)
+    driver(win).drag((10, 10), (30, 30))
+    win.save()
+
+
+def test_export_again_reuses_format_and_folder(
+    make_window, image_dir, tmp_path, monkeypatch, driver, wait_export
+):
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    annotate(win, driver)
+    out = tmp_path / "dataset"
+    export_once(win, out, monkeypatch)
+    (out / "annotations.json").unlink()
+    from PySide6.QtWidgets import QFileDialog
+
+    def must_not_ask(*args, **kwargs):
+        raise AssertionError("Export Again must not ask for a folder")
+
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", must_not_ask)
+    win.export_again()
+    wait_export(win)
+    assert (out / "annotations.json").exists()
+
+
+def test_export_settings_survive_reopening(make_window, image_dir, tmp_path, monkeypatch, driver):
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    annotate(win, driver)
+    export_once(win, tmp_path / "yolo-out", monkeypatch, fmt="yolo")
+    win.export_on_close_action.setChecked(True)
+    win.close()
+    again = make_window(Settings())
+    again.open_path(image_dir)
+    assert again.last_export == ("yolo", (tmp_path / "yolo-out").resolve())
+    assert again.export_on_close_action.isChecked()
+
+
+def test_export_on_close(make_window, image_dir, tmp_path, monkeypatch, driver):
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    annotate(win, driver)
+    out = tmp_path / "masks-out"
+    export_once(win, out, monkeypatch, fmt="masks")
+    (out / "class_names.txt").unlink()
+    win.export_on_close_action.setChecked(True)
+    win.close()
+    assert (out / "class_names.txt").exists()
+
+
+def test_export_again_before_any_export_opens_the_export_window(make_window, image_dir):
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    shown = []
+    win.ask_export = lambda choice, count, current, parent: shown.append(choice)
+    win.export_again()
+    assert shown and shown[0].fmt == "objects" and win.export_worker is None
+
+
+def test_unknown_export_format_in_project_is_ignored(make_window, image_dir):
+    (image_dir / PROJECT_FILE).write_text(json.dumps({"export_format": "gone", "export_dir": "x"}))
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    assert win.last_export is None
+
+
+def test_labels_do_not_carry_over_to_another_folder(make_window, image_dir, tmp_path):
+    """Regression: a label used in one video showed up in the next one."""
+    import shutil
+
+    other = tmp_path / "other"
+    other.mkdir()
+    shutil.copy(image_dir / "img1.png", other / "frame.png")
+    win = make_window(Settings(labels=["given"]))
+    win.open_path(image_dir)
+    win.set_active_label("swan")
+    assert "swan" in win.known_labels
+    win.open_path(other)
+    assert win.known_labels == ["given"] and win.active_label is None
+    win.session.save_project()
+    assert "swan" not in json.loads((other / PROJECT_FILE).read_text()).get("labels", [])
+    win.open_path(image_dir)  # coming back restores that folder's labels
+    assert "swan" in win.known_labels

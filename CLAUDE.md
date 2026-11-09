@@ -16,9 +16,12 @@ cloud, no account, no telemetry. Annotations are stored as one JSON file per ima
 uv sync                       # create .venv and install deps (incl. dev group)
 uv run easy-mask [PATH]       # launch the app on an image or folder
 uv run pytest                 # run tests (GUI tests run headless via pytest-qt)
-uv run ruff check .           # lint
+uv run pytest -m unit         # one layer; see docs/testing.md
+uv run pytest --cov           # coverage; CI fails under 90%
+uv run ruff check --fix .     # lint
 uv run ruff format .          # format
-uv run pre-commit install     # one-time: run ruff on every commit
+uv run mypy                   # type check
+uv run pre-commit install     # one-time: ruff on every commit
 ```
 
 Always use `uv` (`uv add <pkg>`, `uv run ...`). Never `pip install` into the env and never
@@ -34,8 +37,8 @@ src/easy_mask/
             NO Qt imports here either.
   gui/      PySide6 widgets. Thin: translate user input into core calls and draw core state.
   cli.py    argument parsing and entry point.
-tests/      mirrors src/; core/io tests are plain pytest, gui tests use the `qtbot` fixture.
-docs/       architecture.md (how pieces fit), roadmap.md (what comes next).
+tests/      by type: unit/ property/ architecture/ integration/ gui/ smoke/ (docs/testing.md).
+docs/       architecture.md, roadmap.md, testing.md, benchmarks.md.
 ```
 
 Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to import from
@@ -54,11 +57,19 @@ Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to im
 - **Data classes for data.** `Shape` and `Annotation` are dataclasses; keep behaviour that
   needs Qt out of them.
 - **No speculative abstractions.** Add an interface when the second implementation lands,
-  not before (e.g. the segmenter backend interface arrives with the SAM2 branch).
+  not before (e.g. `ai.segmenter.Segmenter` arrived together with EfficientSAM).
 - **Errors:** fail loudly on programmer error; show a dialog for user error (bad file,
   missing image). Don't swallow exceptions silently.
-- **Tests:** every bug fix gets a test that fails before the fix. Every new core/io function
-  gets a unit test.
+- **Tests:** every bug fix gets a regression test that fails before the fix. Every new
+  core/io function gets a unit test; user-visible behaviour gets a GUI test; file-format
+  changes update the golden files (`UPDATE_GOLDEN=1`) and the diff is reviewed. Pick the
+  layer with docs/testing.md. Keep coverage >= 90%.
+
+## Formatting, linting and type checking
+
+- `ruff` formats and lints (config in `pyproject.toml`); `mypy` type-checks `src/`.
+- pre-commit runs ruff on every commit; CI runs ruff and mypy on every PR.
+- Don't hand-format or silence rules; a needed `# noqa`/`# type: ignore` names the code.
 
 ## Git workflow
 
@@ -67,6 +78,13 @@ Dependency direction is one-way: `gui -> io -> core`. If `core` ever needs to im
   Open a PR into `main`; squash-merge.
 - Conventional commit messages (`feat: add circle tool`, `fix: clamp points to image`).
 - Do not commit datasets, exported masks, or model weights (see `.gitignore`).
+
+## Housekeeping
+
+- Commit only what the change needs: no scratch scripts, debug output or local data.
+- Remove code, tests and docs your change made unused.
+- Periodically (e.g. per milestone) do a `chore:` cleanup PR: dead code, unused
+  dependencies, stale docs, merged branches. Ask before deleting anything shared.
 
 ## Problem-solving principles (after Andrej Karpathy's guidelines)
 
