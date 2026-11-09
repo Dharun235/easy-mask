@@ -135,7 +135,7 @@ def test_hidden_shape_cannot_be_selected(ui, qtbot, window):
     window.set_tool(ShapeType.RECTANGLE)
     ui.drag((10, 10), (30, 30))
     window.set_tool(None)
-    window.label_list.shape_rows()[0].setCheckState(0, Qt.CheckState.Unchecked)
+    window.set_label_visible(window.canvas.shapes[0].label, False)  # right-click > Hide
     window.canvas.select(None)
     ui.click(20, 20)
     assert window.canvas.selected is None

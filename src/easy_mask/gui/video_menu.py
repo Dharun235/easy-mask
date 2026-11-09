@@ -168,30 +168,29 @@ class VideoMenu:
 
     # ------------------------------------------------------------------ propagate
 
-    def _carry(self, shapes: list[Shape], labels: list[str] | None = None) -> Carry | None:
+    def _carry(self, shapes: list[Shape], keys: set[ObjectKey] | None = None) -> Carry | None:
         """What to send from this frame, and its cut; None if there is nothing.
 
-        The objects are those of ``labels`` if given, else of the labels and shapes
-        selected in the Labels panel / on the canvas, else every object on the frame.
+        The objects are ``keys`` if given, else those ticked in the Labels panel plus the
+        selected shapes, else every object on the frame.
         """
         w = self.window
         assert w.current_index is not None
-        if labels is None:
-            labels = w.label_list.selected_labels()
-        chosen = [shapes[i] for i in w.canvas.selection if i < len(shapes)]
-        chosen += [s for s in shapes if s.label in labels]
-        if not chosen and not labels:
-            chosen = shapes
-        objects = {object_key(s) for s in chosen if s.shape_type.is_area}
+        if keys is None:
+            keys = w.label_list.checked_keys()
+            keys |= {object_key(shapes[i]) for i in w.canvas.selection if i < len(shapes)}
+            if not keys:
+                keys = {object_key(s) for s in shapes}
+        objects = {object_key(s) for s in shapes if s.shape_type.is_area} & keys
         cut = self.last_cut if self.last_cut and self.last_cut.frame == w.current_index else None
         if not objects and cut is None:
             return None
         return Carry(w.current_index, shapes, objects, cut)
 
-    def propagate(self, direction: int = +1, labels: list[str] | None = None) -> None:
+    def propagate(self, direction: int = +1, keys: set[ObjectKey] | None = None) -> None:
         """Send objects and the last cut forward (+1) or back (-1).
 
-        Which objects: those of ``labels`` if given, else the selected labels and shapes,
+        Which objects: ``keys`` if given, else the ticked ones and the selected shapes,
         else all of them (see :meth:`_carry`).
         """
         w = self.window
@@ -199,7 +198,7 @@ class VideoMenu:
         if current is None or self.running:
             return
         shapes = confirm(w.canvas.shapes)  # propagating from a frame vouches for it
-        carry = self._carry(shapes, labels)
+        carry = self._carry(shapes, keys)
         if carry is None:
             w.statusBar().showMessage(NOTHING_HINT, 6000)
             return

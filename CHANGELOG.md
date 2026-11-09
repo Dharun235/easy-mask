@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Changed
+- The Labels panel is a checklist: ticking a label ticks its shapes, single shapes can be ticked, a label is half-ticked when only some are; ticks follow objects across frames. Propagate (back on the toolbar, with a Settings gear for its options) sends what is ticked; right-click a label still has Propagate Forward / Backward. Hiding shapes moved to right-click a label > Hide / Show.
 - Propagate moved from the toolbar into the label right-click menu (Propagate “label” Forward / Backward, for every selected label) with its options in a Propagation submenu; shapes keep Propagate Selected in their right-click menu.
 - The Shapes panel is folded into the Labels panel: each label lists its shapes on this frame underneath (click to select, checkbox to hide, right-click for delete / label / propagate / erase / mask, double-click to edit); folded labels stay folded.
 - Brush is now **Paint** and works by where a stroke starts: on a mask it extends that mask, on empty image it makes a new mask. No need to select first (a still-selected shape no longer swallows strokes painted elsewhere).

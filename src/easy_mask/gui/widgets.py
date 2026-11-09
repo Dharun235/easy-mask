@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 from easy_mask.core.keypoints import is_keypoint
 from easy_mask.core.labels import label_color
 from easy_mask.core.shapes import Shape
-from easy_mask.core.video import is_auto
+from easy_mask.core.video import ObjectKey, is_auto
 
 
 def color_icon(label: str, labels: list[str], size: int = 12) -> QIcon:
@@ -64,6 +64,7 @@ class FileList(QListWidget):
 
 LABEL_ROLE = Qt.ItemDataRole.UserRole  # label rows: the label; shape rows: None
 SHAPE_ROLE = Qt.ItemDataRole.UserRole + 1  # shape rows: the shape's index on the canvas
+KEY_ROLE = Qt.ItemDataRole.UserRole + 2  # shape rows: the shape's object (label, group id)
 
 
 def shape_text(shape: Shape) -> str:
@@ -79,15 +80,17 @@ def shape_text(shape: Shape) -> str:
 class LabelTree(QTreeWidget):
     """Labels, each with the shapes that carry it on this frame underneath.
 
-    A label row shows its colour and count; the active label (used for new shapes without
-    asking) is bold. A shape row selects that shape, its checkbox shows or hides it.
+    The tree is a checklist of what Propagate sends: ticking a label ticks all its shapes,
+    shapes can be ticked one by one, and a label is half-ticked when only some are. Ticks
+    belong to objects ``(label, group id)``, so they carry over to the next frames. The
+    active label (used for new shapes without asking) is bold; clicking a shape row
+    selects that shape.
 
     Signals:
         label_clicked(str): The user clicked a label row.
         label_menu_requested(str, QPoint): Right-click on a label row (global position).
         shape_menu_requested(QPoint): Right-click on a shape row (it is selected first).
         shapes_selected(list): Shape indices now selected in the tree.
-        visibility_changed(int, bool): A shape's checkbox: its index and new visibility.
         shape_double_clicked(int): A shape row was double-clicked.
     """
 
@@ -95,7 +98,6 @@ class LabelTree(QTreeWidget):
     label_menu_requested = Signal(str, QPoint)
     shape_menu_requested = Signal(QPoint)
     shapes_selected = Signal(list)
-    visibility_changed = Signal(int, bool)
     shape_double_clicked = Signal(int)
 
     def __init__(self, parent: QWidget | None = None):
@@ -104,10 +106,12 @@ class LabelTree(QTreeWidget):
         self.setIndentation(16)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setToolTip(
-            "Click a label to use it for new shapes and to choose what Propagate sends "
-            "(Cmd/Shift-click for several); click a shape to select it; right-click for more"
+            "Tick labels to choose what Propagate sends; click a label to use it for new "
+            "shapes; click a shape to select it; right-click either for more"
         )
         self.folded: set[str] = set()  # labels the user folded away
+        self.ticked: set[ObjectKey] = set()  # objects ticked for Propagate
+        self.ticked_labels: set[str] = set()  # ticked labels with no shape on this frame
         self.itemClicked.connect(self._on_clicked)
         self.itemChanged.connect(self._on_changed)
         self.itemSelectionChanged.connect(lambda: self.shapes_selected.emit(self.selected_shapes()))
@@ -127,7 +131,6 @@ class LabelTree(QTreeWidget):
         """Rebuild: every label in ``labels`` with its shapes; ``hidden`` holds shape ids."""
         hidden = hidden or set()
         self.blockSignals(True)
-        kept = set(self.selected_labels())  # label selection survives the rebuild
         self.clear()
         for label in labels:
             members = [(i, s) for i, s in enumerate(shapes) if s.label == label]
@@ -135,21 +138,22 @@ class LabelTree(QTreeWidget):
             row = QTreeWidgetItem([text])
             row.setIcon(0, color_icon(label, labels))
             row.setData(0, LABEL_ROLE, label)
+            row.setFlags(row.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             font = row.font(0)
             font.setBold(label == active)
             row.setFont(0, font)
             for index, shape in members:
-                child = QTreeWidgetItem([shape_text(shape)])
+                text = shape_text(shape) + ("  (hidden)" if id(shape) in hidden else "")
+                child = QTreeWidgetItem([text])
                 child.setData(0, SHAPE_ROLE, index)
+                child.setData(0, KEY_ROLE, (shape.label, shape.group_id))
                 child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                visible = id(shape) not in hidden
-                child.setCheckState(
-                    0, Qt.CheckState.Checked if visible else Qt.CheckState.Unchecked
-                )
+                ticked = (shape.label, shape.group_id) in self.ticked
+                child.setCheckState(0, Qt.CheckState.Checked if ticked else Qt.CheckState.Unchecked)
                 row.addChild(child)
+            self._update_row(row)
             self.addTopLevelItem(row)
             row.setExpanded(label not in self.folded)
-            row.setSelected(label in kept)
         self.blockSignals(False)
 
     def label_rows(self) -> list[QTreeWidgetItem]:
@@ -173,9 +177,36 @@ class LabelTree(QTreeWidget):
                 self.scrollToItem(item)
         self.blockSignals(False)
 
-    def selected_labels(self) -> list[str]:
-        """Labels whose rows are selected (for Propagate), in list order."""
-        return [row.data(0, LABEL_ROLE) for row in self.label_rows() if row.isSelected()]
+    def checked_keys(self) -> set[ObjectKey]:
+        """Objects ticked for Propagate (shown on this frame)."""
+        return {
+            item.data(0, KEY_ROLE)
+            for item in self.shape_rows()
+            if item.checkState(0) == Qt.CheckState.Checked
+        }
+
+    def checked_labels(self) -> list[str]:
+        """Labels that are fully or partly ticked, in list order."""
+        return [
+            row.data(0, LABEL_ROLE)
+            for row in self.label_rows()
+            if row.checkState(0) != Qt.CheckState.Unchecked
+        ]
+
+    def _update_row(self, row: QTreeWidgetItem) -> None:
+        """A label's tick from its shapes: all, some (half-ticked) or none."""
+        children = [row.child(i) for i in range(row.childCount())]
+        states = [c.checkState(0) == Qt.CheckState.Checked for c in children if c is not None]
+        if not states:
+            ticked = row.data(0, LABEL_ROLE) in self.ticked_labels
+            state = Qt.CheckState.Checked if ticked else Qt.CheckState.Unchecked
+        elif all(states):
+            state = Qt.CheckState.Checked
+        elif any(states):
+            state = Qt.CheckState.PartiallyChecked
+        else:
+            state = Qt.CheckState.Unchecked
+        row.setCheckState(0, state)
 
     def selected_shapes(self) -> list[int]:
         """Indices of the selected shapes, in canvas order."""
@@ -188,9 +219,35 @@ class LabelTree(QTreeWidget):
             self.label_clicked.emit(label)
 
     def _on_changed(self, item: QTreeWidgetItem) -> None:
-        index = item.data(0, SHAPE_ROLE)
-        if index is not None:
-            self.visibility_changed.emit(index, item.checkState(0) == Qt.CheckState.Checked)
+        self.blockSignals(True)
+        try:
+            label = item.data(0, LABEL_ROLE)
+            if label is not None:  # a label's tick: all its shapes follow
+                on = item.checkState(0) != Qt.CheckState.Unchecked
+                (self.ticked_labels.add if on else self.ticked_labels.discard)(label)
+                for i in range(item.childCount()):
+                    child = item.child(i)
+                    if child is not None:
+                        child.setCheckState(
+                            0, item.checkState(0) if on else Qt.CheckState.Unchecked
+                        )
+                        self._remember_tick(child)
+                if on and item.childCount():
+                    item.setCheckState(0, Qt.CheckState.Checked)
+                return
+            self._remember_tick(item)
+            parent = item.parent()
+            if parent is not None:
+                self._update_row(parent)
+        finally:
+            self.blockSignals(False)
+
+    def _remember_tick(self, item: QTreeWidgetItem) -> None:
+        key = item.data(0, KEY_ROLE)
+        if item.checkState(0) == Qt.CheckState.Checked:
+            self.ticked.add(key)
+        else:
+            self.ticked.discard(key)
 
     def _on_double_clicked(self, item: QTreeWidgetItem) -> None:
         index = item.data(0, SHAPE_ROLE)

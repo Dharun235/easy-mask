@@ -697,7 +697,7 @@ def test_ask_range_returns_an_ordered_range(qtbot, monkeypatch):
     assert ask_range(None, "t", "from", 1, 5, 200) is None
 
 
-def test_propagate_only_the_labels_selected_in_the_panel(qtbot, window, video, image_dir):
+def test_propagate_only_what_is_ticked_in_the_labels_checklist(qtbot, window, video, image_dir):
     window.canvas.set_shapes([rect(10), rect(50, label="tree")])
     window._remember_label("car")
     window._remember_label("tree")
@@ -705,11 +705,27 @@ def test_propagate_only_the_labels_selected_in_the_panel(qtbot, window, video, i
     tree_row = next(
         r for r in window.label_list.label_rows() if r.data(0, Qt.ItemDataRole.UserRole) == "tree"
     )
-    tree_row.setSelected(True)
-    window._refresh_panels()  # the label selection survives a rebuild
-    assert window.label_list.selected_labels() == ["tree"]
-    propagate(qtbot, video)
+    tree_row.setCheckState(0, Qt.CheckState.Checked)  # ticks its shapes too
+    assert tree_row.child(0).checkState(0) == Qt.CheckState.Checked
+    window._refresh_panels()  # ticks survive a rebuild
+    assert window.label_list.checked_keys() == {("tree", None)}
+    window.video.propagate(+1)
+    qtbot.waitUntil(lambda: not video.running, timeout=5000)
     assert [s.label for s in saved(image_dir, "img2")] == ["tree"]  # the car stayed behind
+
+
+def test_ticking_one_shape_half_ticks_its_label(window):
+    window.canvas.set_shapes(
+        [rect(10), Shape("car", ShapeType.RECTANGLE, [(40, 40), (50, 50)], group_id=1)]
+    )
+    window._remember_label("car")
+    window._commit()
+    (row,) = [r for r in window.label_list.label_rows() if r.childCount()]
+    row.child(1).setCheckState(0, Qt.CheckState.Checked)
+    assert row.checkState(0) == Qt.CheckState.PartiallyChecked
+    assert window.label_list.checked_keys() == {("car", 1)}
+    row.setCheckState(0, Qt.CheckState.Unchecked)
+    assert window.label_list.checked_keys() == set()
 
 
 def test_right_click_propagates_one_label(qtbot, window, video, image_dir):
@@ -726,7 +742,7 @@ def test_right_click_propagates_one_label(qtbot, window, video, image_dir):
     assert [s.label for s in saved(image_dir, "img2")] == ["car"]
 
 
-def test_label_menu_propagates_all_selected_labels(qtbot, window, video, image_dir):
+def test_label_menu_propagates_everything_ticked(qtbot, window, video, image_dir):
     from PySide6.QtCore import QPoint
 
     window.canvas.set_shapes([rect(10), rect(50, label="tree"), rect(70, label="sign")])
@@ -734,10 +750,22 @@ def test_label_menu_propagates_all_selected_labels(qtbot, window, video, image_d
         window._remember_label(label)
     window._commit()
     for row in window.label_list.label_rows():
-        row.setSelected(row.data(0, Qt.ItemDataRole.UserRole) in ("car", "tree"))
+        if row.data(0, Qt.ItemDataRole.UserRole) in ("car", "tree"):
+            row.setCheckState(0, Qt.CheckState.Checked)
     menus = []
     window.show_menu = lambda menu, pos: menus.append(menu)
     window.label_list.label_menu_requested.emit("tree", QPoint(0, 0))
-    next(a for a in menus[0].actions() if a.text() == "Propagate 2 Labels Forward").trigger()
+    next(a for a in menus[0].actions() if a.text() == "Propagate Ticked Forward").trigger()
     qtbot.waitUntil(lambda: not video.running, timeout=5000)
     assert sorted(s.label for s in saved(image_dir, "img2")) == ["car", "tree"]
+
+
+def test_hide_and_show_a_label_from_its_menu(window):
+    window.canvas.set_shapes([rect(10)])
+    window._remember_label("car")
+    window._commit()
+    window.set_label_visible("car", False)
+    assert id(window.canvas.shapes[0]) in window.canvas.hidden
+    assert window.label_list.shape_rows()[0].text(0).endswith("(hidden)")
+    window.set_label_visible("car", True)
+    assert not window.canvas.hidden

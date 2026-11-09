@@ -254,6 +254,7 @@ class MainWindow(QMainWindow):
         self._build_panels()
         self._build_actions()
         self.video = VideoMenu(self)
+        self._add_propagate_buttons()
         self._add_points_button()
         self._show_panels(False)  # the start page stands alone; panels appear with an image
         self._connect_canvas()
@@ -334,7 +335,6 @@ class MainWindow(QMainWindow):
 
         self.flag_list.flags_changed.connect(self._mark_dirty)
         self.label_list.shapes_selected.connect(self.canvas.set_selection)
-        self.label_list.visibility_changed.connect(self.canvas.set_shape_visible)
         self.label_list.shape_double_clicked.connect(self._edit_shape_label)
         self.file_list.currentRowChanged.connect(self._on_file_row_changed)
 
@@ -861,19 +861,26 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         menu.addAction(f"Use “{label}” for New Shapes", lambda: self.set_active_label(label))
         menu.addSeparator()
-        selected = self.label_list.selected_labels()
-        labels = selected if label in selected and len(selected) > 1 else [label]
-        name = f"“{label}”" if len(labels) == 1 else f"{len(labels)} Labels"
+        ticked = self.label_list.checked_keys()
+        own = {object_key(s) for s in self.canvas.shapes if s.label == label}
+        keys = ticked if own & ticked and ticked - own else own
+        name = f"“{label}”" if keys == own else "Ticked"
         menu.addAction(
             icon("propagate"),
             f"Propagate {name} Forward",
-            lambda: self.video.propagate(+1, labels=labels),
+            lambda: self.video.propagate(+1, keys=keys),
         ).setStatusTip("Track it through the next frames (with what you erased on this frame)")
         menu.addAction(
-            f"Propagate {name} Backward", lambda: self.video.propagate(-1, labels=labels)
+            f"Propagate {name} Backward", lambda: self.video.propagate(-1, keys=keys)
         ).setStatusTip("Track it through the earlier frames")
         menu.addMenu(self.video.menu)
         menu.addSeparator()
+        mine = [i for i, s in enumerate(self.canvas.shapes) if s.label == label]
+        hidden = any(id(self.canvas.shapes[i]) in self.canvas.hidden for i in mine)
+        menu.addAction(
+            f"Show “{label}”" if hidden else f"Hide “{label}”",
+            lambda: self.set_label_visible(label, hidden),
+        ).setEnabled(bool(mine))
         apply = menu.addAction(
             "Apply to Selected Shapes", lambda: self.apply_label_to_selected(label)
         )
@@ -895,6 +902,13 @@ class MainWindow(QMainWindow):
         name = self.ask_text(self, "New Label", "Label name:", "")
         if name and name != ERASE_LABEL:
             self.apply_label_to_selected(name)
+
+    def set_label_visible(self, label: str, visible: bool) -> None:
+        """Show or hide every shape of ``label`` on the canvas (nothing is deleted)."""
+        for index, shape in enumerate(self.canvas.shapes):
+            if shape.label == label:
+                self.canvas.set_shape_visible(index, visible)
+        self._refresh_panels()
 
     def apply_label_to_selected(self, label: str) -> None:
         """Give the selected shapes ``label`` (each stays its own object)."""
@@ -1344,6 +1358,31 @@ class MainWindow(QMainWindow):
         self.canvas.fill = checked
         self.canvas.update()
 
+    def _add_propagate_buttons(self) -> None:
+        """Propagate and its Settings (gear) right after the image arrows."""
+        actions = self.toolbar.actions()
+        before = actions[next(i for i, a in enumerate(actions) if a.text() == "Next Image") + 1]
+        propagate = QAction(icon("propagate"), "Propagate", self)
+        propagate.setToolTip(
+            "Propagate: track the ticked labels (or the selected shapes, or everything) and "
+            "what you erased through the next frames"
+        )
+        propagate.triggered.connect(lambda _=False: self.video.propagate(+1))
+        settings = QAction(icon("settings"), "Settings", self)
+        settings.setToolTip(
+            "Propagation settings: AI or copy, auto-propagate on Next, how many frames, "
+            "interpolate, clear labels from here"
+        )
+        settings.setMenu(self.video.menu)
+        for action in (propagate, settings):
+            action.setStatusTip(action.toolTip())
+            self.toolbar.insertAction(before, action)
+        button = self.toolbar.widgetForAction(settings)
+        if isinstance(button, QToolButton):  # the gear opens its menu on a plain click
+            button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.propagate_button_action = propagate
+        self.propagation_settings_action = settings
+
     def _add_points_button(self) -> None:
         """Points, right after Box: each mask's centroid and four corners as points."""
         menu = QMenu("Points", self)
@@ -1422,6 +1461,8 @@ class MainWindow(QMainWindow):
         for action in [
             *self.tool_actions.values(),
             *self.nav_actions,
+            self.propagate_button_action,
+            self.propagation_settings_action,
             self.points_action,
             self._export_action,
         ]:
