@@ -16,16 +16,21 @@ import numpy as np
 from PySide6.QtCore import QPoint, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QDockWidget,
     QFileDialog,
+    QHBoxLayout,
     QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -135,6 +140,36 @@ def ask_text(parent: QWidget, title: str, label: str, value: str) -> str | None:
     return text.strip() or None if ok else None
 
 
+def ask_range(
+    parent: QWidget, title: str, label: str, first: int, last: int, maximum: int
+) -> tuple[int, int] | None:
+    """Ask for a frame range (1-based, inclusive). Returns ``(first, last)`` or None."""
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(title)
+    start, end = QSpinBox(), QSpinBox()
+    for spin, value in ((start, first), (end, last)):
+        spin.setRange(1, maximum)
+        spin.setValue(value)
+    row = QHBoxLayout()
+    for widget in (QLabel(label), start, QLabel("to"), end):
+        row.addWidget(widget)
+    buttons = QDialogButtonBox(
+        QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+    )
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout = QVBoxLayout(dialog)
+    layout.addLayout(row)
+    layout.addWidget(buttons)
+    try:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        low, high = sorted((start.value(), end.value()))
+        return low, high
+    finally:
+        dialog.deleteLater()
+
+
 @dataclass
 class Settings:
     """Startup options, usually from the command line."""
@@ -187,6 +222,7 @@ class MainWindow(QMainWindow):
         )
         self.ask_number = ask_number
         self.ask_text = ask_text
+        self.ask_range = ask_range
         # Pops a menu up at a screen position; swappable so tests never block on it.
         self.show_menu: Callable[[QMenu, QPoint], object] = lambda menu, pos: menu.exec(pos)
         self.load_segmenter: Callable[[ProgressFn], Segmenter] = lambda progress: (
@@ -832,6 +868,9 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(f"Delete “{label}” From This Frame", lambda: self.delete_label_here(label))
         menu.addAction(
+            f"Delete “{label}” From Frames...", lambda: self.delete_label_from_frames(label)
+        )
+        menu.addAction(
             icon("eraser"),
             f"Delete “{label}” From All Frames",
             lambda: self.video.remove_label(label),
@@ -867,6 +906,18 @@ class MainWindow(QMainWindow):
             return
         self._replace_shapes(kept)
         self.statusBar().showMessage(f"Deleted “{label}” from this frame  ·  Undo brings it back")
+
+    def delete_label_from_frames(self, label: str) -> None:
+        """Ask for a frame range (e.g. 10 to 100) and delete ``label`` there."""
+        if self.current_index is None:
+            return
+        last = len(self.image_paths)
+        picked = self.ask_range(
+            self, f"Delete “{label}”", "Delete it from frame", self.current_index + 1, last, last
+        )
+        if picked is not None:
+            first, end = picked
+            self.video.remove_label(label, range(first - 1, end))
 
     def rename_label(self, label: str) -> None:
         """Rename ``label`` in the list and on every frame (one undo step)."""

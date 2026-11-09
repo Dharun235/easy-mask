@@ -116,7 +116,8 @@ Select, AI, Polygon, Box, Paint, Eraser, Export**.
 The bottom bar says how to use the tool you picked; hover any button to see what it does.
 Right-click a shape for its actions (edit label, delete, propagate, erase with it, mask
 operations). Right-click a label for: use for new shapes, apply to the selected shapes,
-rename (on every frame), delete from this frame, delete from all frames. Keys are optional: Help > Keyboard Shortcuts.
+rename (on every frame), delete from this frame, from a range of frames (e.g. 10 to 100),
+or from all frames. Keys are optional: Help > Keyboard Shortcuts.
 
 AI and smart-tool masks are tidied automatically (specks and pinholes removed). AI Segment needs no extra install: the model downloads on first use.
 

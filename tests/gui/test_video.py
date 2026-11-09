@@ -651,3 +651,47 @@ def test_all_frames_actions_show_progress_and_can_be_cancelled(window, image_dir
     assert "(stopped)" in window.statusBar().currentMessage()
     window.undo()
     assert not any(is_keypoint(s) for s in window.canvas.shapes)
+
+
+def test_delete_a_label_from_a_frame_range(window, image_dir):
+    save_frame(image_dir, "img2", [rect(10), rect(40, label="tree")])
+    save_frame(image_dir, "img10", [rect(20)])
+    window.canvas.set_shapes([rect(30)])
+    window._commit()
+    window._remember_label("car")
+    asked = []
+    window.ask_range = lambda *args: asked.append(args[3:]) or (2, 3)  # frames 2 to 3
+    window.delete_label_from_frames("car")
+    assert asked == [(1, 3, 3)]  # offered: this frame to the last
+    assert len(window.canvas.shapes) == 1  # frame 1 untouched
+    assert [s.label for s in saved(image_dir, "img2")] == ["tree"]
+    assert saved(image_dir, "img10") == []
+    assert "car" in window.known_labels  # still used elsewhere: kept in the list
+    window.undo()
+    assert saved(image_dir, "img10") == [rect(20)]
+
+
+def test_label_menu_offers_a_frame_range(window):
+    from PySide6.QtCore import QPoint
+
+    shown = []
+    window.show_menu = lambda menu, pos: shown.append([a.text() for a in menu.actions()])
+    window.label_list.label_menu_requested.emit("cat", QPoint(0, 0))
+    assert "Delete “cat” From Frames..." in shown[0]
+
+
+def test_ask_range_returns_an_ordered_range(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QDialog, QSpinBox
+
+    from easy_mask.gui.main_window import ask_range
+
+    def accept(dialog):
+        low, high = dialog.findChildren(QSpinBox)
+        low.setValue(100)
+        high.setValue(10)  # typed backwards
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", accept)
+    assert ask_range(None, "t", "from", 1, 5, 200) == (10, 100)
+    monkeypatch.setattr(QDialog, "exec", lambda dialog: QDialog.DialogCode.Rejected)
+    assert ask_range(None, "t", "from", 1, 5, 200) is None
