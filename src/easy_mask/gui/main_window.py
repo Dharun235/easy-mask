@@ -13,7 +13,7 @@ from functools import partial
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
@@ -218,6 +218,7 @@ class MainWindow(QMainWindow):
             efficient_sam.load(self.settings.ai_model, progress)
         )
 
+        self._icon_names: dict[QAction, str] = {}  # toolbar icons, re-tinted with the theme
         self.canvas = Canvas(self)
         self.ai_tool = self._make_ai_tool()
         self.pixel_tools: dict[str, CanvasTool] = {
@@ -345,6 +346,22 @@ class MainWindow(QMainWindow):
         self.addAction(action)  # keep shortcuts active even when the menu bar is hidden
         return action
 
+    def _set_icon(self, action: QAction, name: str) -> None:
+        """Give ``action`` the toolbar icon ``name``, re-tinted when the theme changes."""
+        self._icon_names[action] = name
+        action.setIcon(icon(name))
+
+    def changeEvent(self, event: QEvent) -> None:
+        """Light / dark switched while running: redraw the icons in the new text colour.
+
+        The theme then sets a new palette and stylesheet; with a stylesheet in place Qt
+        reports it as a style change rather than a palette change, so both count.
+        """
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            for action, name in self._icon_names.items():
+                action.setIcon(icon(name))
+        super().changeEvent(event)
+
     def _key(
         self,
         text: str,
@@ -415,7 +432,7 @@ class MainWindow(QMainWindow):
         for text, short, mode, key, icon_name, tool_group in TOOLS:
             action = self._key(text, lambda md=mode: self.set_tool(md), key)
             action.setCheckable(True)
-            action.setIcon(icon(icon_name))
+            self._set_icon(action, icon_name)
             action.setIconText(short)
             action.setToolTip(text)
             self.tool_group.addAction(action)
@@ -471,7 +488,7 @@ class MainWindow(QMainWindow):
             ),
         ):
             for action, icon_name, short, tip in section:
-                action.setIcon(icon(icon_name))
+                self._set_icon(action, icon_name)
                 action.setIconText(short)
                 action.setToolTip(tip)
                 toolbar.insertAction(first_tool, action)
@@ -479,7 +496,7 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
-        self._export_action.setIcon(icon("export"))
+        self._set_icon(self._export_action, "export")
         self._export_action.setIconText("Export")
         self._export_action.setToolTip(
             "Export: choose the format, what to save (masks, cutouts, coordinates, centroid, "
@@ -1366,7 +1383,8 @@ class MainWindow(QMainWindow):
             (remove_all, "Delete the key points on every frame"),
         ):
             action.setStatusTip(tip)
-        points = QAction(icon("point"), "Points", self)
+        points = QAction("Points", self)
+        self._set_icon(points, "point")
         points.setIconText("Points")
         points.setToolTip(
             "Points: add each mask's centroid and 4 corners as points you can drag, delete or "

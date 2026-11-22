@@ -95,12 +95,17 @@ def palette(colors: Colors) -> QPalette:
 
 
 ICONS = Path(__file__).parent / "icons"
-CHECK_ICON = (ICONS / "check.svg").as_posix()
-DONE_ICON = (ICONS / "done.svg").as_posix()  # the Files list's "annotated" mark
+
+
+def _mark(name: str, c: Colors) -> str:
+    """Path of a tick drawn for this palette (``name.svg`` light, ``name-dark.svg`` dark)."""
+    suffix = "-dark" if c is DARK else ""
+    return (ICONS / f"{name}{suffix}.svg").as_posix()
 
 
 def stylesheet(c: Colors) -> str:
     """Flat panels, rounded controls, quiet section titles."""
+    check, done = _mark("check", c), _mark("done", c)  # ticks drawn for this palette
     return f"""
 QCheckBox {{ spacing: 8px; }}
 QCheckBox::indicator, QTreeView::indicator, QListView::indicator {{
@@ -108,7 +113,7 @@ QCheckBox::indicator, QTreeView::indicator, QListView::indicator {{
     background: {c.surface};
 }}
 QCheckBox::indicator:checked, QTreeView::indicator:checked, QListView::indicator:checked {{
-    background: {c.accent}; border-color: {c.accent}; image: url({CHECK_ICON});
+    background: {c.accent}; border-color: {c.accent}; image: url({check});
 }}
 QTreeView::indicator:indeterminate {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {c.surface}, stop:0.4 {c.surface},
@@ -116,7 +121,7 @@ QTreeView::indicator:indeterminate {{
     border-color: {c.accent};
 }}
 QListWidget#files::indicator {{ border: none; background: transparent; image: none; }}
-QListWidget#files::indicator:checked {{ image: url({DONE_ICON}); }}
+QListWidget#files::indicator:checked {{ image: url({done}); }}
 QCheckBox::indicator:disabled {{ border-color: {c.line}; background: {c.raised}; }}
 QRadioButton {{ spacing: 8px; }}
 QRadioButton::indicator {{
@@ -168,7 +173,7 @@ QPushButton {{
     padding: 8px 16px; color: {c.text};
 }}
 QPushButton:hover {{ background: {c.raised}; }}
-QPushButton:default {{ background: {c.accent}; color: #FFFFFF; border-color: {c.accent}; }}
+QPushButton:default {{ background: {c.accent}; color: {c.window}; border-color: {c.accent}; }}
 QLineEdit, QSpinBox, QComboBox {{
     background: {c.surface}; border: 1px solid {c.line}; border-radius: 8px; padding: 5px 8px;
 }}
@@ -192,9 +197,22 @@ QScrollBar:horizontal {{ height: 0; }}
 
 
 def apply_theme(app: QApplication) -> Colors:
-    """Use the calm theme for the whole application; returns the colours in use."""
-    colors = current()
+    """Use the calm theme for the whole application; returns the colours in use.
+
+    It follows the system: switching light / dark while easy-mask runs restyles it.
+    Menus show no icons (like native Mac menus), so every entry lines up the same.
+    """
     app.setStyle("Fusion")
+    app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus)
+    colors = _restyle(app)
+    hints = QGuiApplication.styleHints()
+    if hasattr(hints, "colorSchemeChanged"):
+        hints.colorSchemeChanged.connect(lambda _scheme: _restyle(app))
+    return colors
+
+
+def _restyle(app: QApplication) -> Colors:
+    colors = current()
     app.setPalette(palette(colors))
     app.setStyleSheet(stylesheet(colors))
     return colors

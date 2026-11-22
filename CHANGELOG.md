@@ -11,13 +11,15 @@ All notable changes are listed here. Format:
   instead of sitting at 0%; the tool hint no longer overlaps it.
 
 ### Added
+- Arrow keys move between frames; Backspace deletes from anywhere; Mac Control+Z works.
 - Export: all objects of a frame in one image, MP4 video instead of PNG frames, and only
   the ticked labels.
 
 ### Changed
 - Export offers five outputs: binary masks, original pixels, overlays, box corners and
   centroid, points; training datasets moved to one dropdown.
-- Calm Nordic look: cool neutrals, one blue accent, soft checkboxes, quiet done-marks.
+- Calm Nordic look: cool neutrals, one blue accent, soft checkboxes, quiet done-marks;
+  follows macOS light / dark while running (icons included); no icons in menus.
 - Status bar says "New masks: <label>"; Back / Next say when at the first or last image.
 - Recent folders show the folder name first.
 

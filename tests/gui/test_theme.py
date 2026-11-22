@@ -37,3 +37,30 @@ def test_apply_theme_sets_fusion_palette_and_stylesheet(qapp, monkeypatch):
 
 def test_system_is_dark_returns_a_bool():
     assert isinstance(theme.system_is_dark(), bool)
+
+
+def test_ticks_are_drawn_for_each_palette():
+    assert "check-dark.svg" in theme.stylesheet(theme.DARK)
+    assert "check.svg" in theme.stylesheet(theme.LIGHT)
+    assert "check-dark.svg" not in theme.stylesheet(theme.LIGHT)
+
+
+def test_switching_light_dark_while_running_retints_toolbar_icons(qapp, window):
+    from PySide6.QtCore import QSize
+
+    def icon_colour():
+        image = window._export_action.icon().pixmap(QSize(48, 48)).toImage()
+        from collections import Counter
+
+        pixels = (image.pixelColor(x, y) for x in range(48) for y in range(48))
+        return Counter(p.name() for p in pixels if p.alpha() == 255).most_common(1)[0][0]
+
+    old_palette, old_sheet = qapp.palette(), qapp.styleSheet()
+    try:
+        for colors in (theme.LIGHT, theme.DARK):  # what the theme does on an OS switch
+            qapp.setPalette(theme.palette(colors))
+            qapp.setStyleSheet(theme.stylesheet(colors))
+            assert icon_colour().upper() == colors.text
+    finally:
+        qapp.setPalette(old_palette)
+        qapp.setStyleSheet(old_sheet)
