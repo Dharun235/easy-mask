@@ -55,11 +55,9 @@ from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
 from easy_mask.gui.progress import ProgressPanel
 from easy_mask.gui.session import Session
 from easy_mask.gui.shortcuts import ShortcutsDialog
-from easy_mask.gui.threshold_dialog import ThresholdDialog
 from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
-from easy_mask.gui.tools.region import MagicWandTool
 from easy_mask.gui.video_import import (
     ImportOptions,
     VideoImportDialog,
@@ -69,7 +67,6 @@ from easy_mask.gui.video_import import (
 from easy_mask.gui.video_menu import Cut, VideoMenu
 from easy_mask.gui.welcome import WelcomePage
 from easy_mask.gui.widgets import FileList, FlagList, LabelPanel, as_list, color_icon, quoted
-from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
 from easy_mask.io.images import image_size, is_image, list_images
 from easy_mask.io.video import frames_dir_for, is_video, planned_count, probe
@@ -96,11 +93,7 @@ TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
         "eraser",
         "paint",
     ),
-    ("Circle", "Circle", ShapeType.CIRCLE, "C", "circle", KEYS_ONLY),
-    ("Line", "Line", ShapeType.LINE, "L", "line", KEYS_ONLY),
-    ("Line strip", "Path", ShapeType.LINESTRIP, "T", "linestrip", KEYS_ONLY),
     ("Point", "Point", ShapeType.POINT, "O", "point", KEYS_ONLY),
-    ("Magic wand", "Wand", "wand", "W", "wand", KEYS_ONLY),
 ]
 
 
@@ -113,16 +106,11 @@ TOOL_HINTS: dict[ShapeType | str | None, str] = {
     ShapeType.POLYGON: "Polygon: click to place corners  ·  click the first corner (or "
     "double-click) to finish  ·  Backspace removes the last corner, Esc cancels",
     ShapeType.RECTANGLE: "Box: drag from one corner to the opposite corner",
-    ShapeType.CIRCLE: "Circle: drag from the centre outwards",
-    ShapeType.LINE: "Line: drag from one end to the other",
-    ShapeType.LINESTRIP: "Line strip: click to place points  ·  double-click (or Enter) to finish",
     ShapeType.POINT: "Point: click to place it",
     "brush": "Paint: start on a mask to extend it, on empty image for a new mask  ·  [ and ] "
     "change the size",
     "eraser": "Eraser: paint over what to remove from the masks underneath (select a mask "
     "first to erase only from it)  ·  [ and ] change the size  ·  propagating carries it",
-    "wand": "Magic wand: click a region of similar colour  ·  Shift adds it to the selected "
-    "mask, Alt removes it  ·  [ and ] change the tolerance",
 }
 
 
@@ -234,10 +222,8 @@ class MainWindow(QMainWindow):
         self.pixel_tools: dict[str, CanvasTool] = {
             "brush": BrushTool(self._apply_stroke),
             "eraser": BrushTool(lambda region, _index: self.cut(region), erase=True),
-            "wand": MagicWandTool(self._apply_smart),
             "ai": self.ai_tool,
         }
-        self.threshold_dialog: ThresholdDialog | None = None
         self.display_dialog: DisplayDialog | None = None
         self.canvas.labels = self.known_labels  # same list object: new labels recolour live
         self.session = Session(self)  # remembered layout, tool sizes, recent folders, projects
@@ -257,7 +243,6 @@ class MainWindow(QMainWindow):
         self._add_points_button()
         self._show_panels(False)  # the start page stands alone; panels appear with an image
         self._connect_canvas()
-        self.workflow = Workflow(self)  # review mode, copy previous, statistics
 
         self.progress = ProgressPanel()
         self.statusBar().addPermanentWidget(self.progress)
@@ -389,7 +374,6 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._action(m, "Save", self.save, std.Save)
         self._export_action = self._action(m, "Export...", self.export_dialog)
-        self._action(m, "Export Again", self.export_again)
         # Set in the Export window; kept as a checkable action for the session state.
         self.export_on_close_action = QAction("Export Again When Closing", self, checkable=True)
         m.addSeparator()
@@ -429,14 +413,6 @@ class MainWindow(QMainWindow):
             group = tool_group
             toolbar.addAction(action)
         self.tool_actions[None].setChecked(True)
-        # Labels: click one in the Labels panel, or press its number; 0 asks each time.
-        for number in range(1, 10):
-            self._key(
-                f"Use Label {number}",
-                lambda n=number: self.set_active_label_number(n),
-                str(number),
-            )
-        self._key("Ask for Label Every Time", lambda: self.set_active_label(None), "0")
 
         m = bar.addMenu("&View")
         self.view_menu = m
@@ -514,7 +490,6 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._action(m, "Fill Holes", lambda: self.map_selected(masks.fill_holes))
         self._action(m, "Remove Small Specks...", self.remove_specks)
-        self._action(m, "Threshold / Colour Range...", self.open_threshold)
         m.addSeparator()
         self._action(m, "Convert to Mask", self.convert_to_masks)
         self._action(m, "Convert to Polygons...", self.convert_to_polygons)
@@ -837,11 +812,6 @@ class MainWindow(QMainWindow):
         self._show_active_label()
         self._refresh_labels()
 
-    def set_active_label_number(self, number: int) -> None:
-        """Make the ``number``-th known label (1-based) active; ignored if there is none."""
-        if 1 <= number <= len(self.known_labels):
-            self.set_active_label(self.known_labels[number - 1])
-
     def _on_label_clicked(self, label: str) -> None:
         """Clicking a label activates it; clicking the active label switches back to asking."""
         self.set_active_label(None if label == self.active_label else label)
@@ -1145,21 +1115,6 @@ class MainWindow(QMainWindow):
             )
             self._replace_shapes(shapes)
 
-    def open_threshold(self) -> None:
-        """Show the threshold / colour-range panel; its preview replaces the active tool."""
-        if self.image_path is None:
-            return
-        if self.threshold_dialog is None:
-            self.threshold_dialog = ThresholdDialog(self.canvas, self._apply_smart, self)
-            self.threshold_dialog.finished.connect(self._threshold_closed)
-        self.canvas.set_tool(self.threshold_dialog.tool)
-        self.threshold_dialog.refresh()
-        self.threshold_dialog.show()
-
-    def _threshold_closed(self) -> None:
-        if self.threshold_dialog is not None and self.canvas.tool is self.threshold_dialog.tool:
-            self.set_tool(None)
-
     def edit_label(self) -> None:
         """Change label / group id / description of the selected shape."""
         index = self.canvas.selected
@@ -1302,14 +1257,6 @@ class MainWindow(QMainWindow):
         self.export_on_close_action.setChecked(choice.on_close)
         self.session.save_project()
         self._export(choice.fmt, choice.out, frames=(choice.first, choice.last))
-
-    def export_again(self) -> None:
-        """Repeat the last export (format, folder, all frames) without asking."""
-        if self.last_export is None:
-            self.export_dialog()
-            return
-        if self.image_path is not None and self.maybe_save():
-            self._export(*self.last_export)
 
     def _export(
         self, fmt: str, out: Path, wait: bool = False, frames: tuple[int, int] | None = None

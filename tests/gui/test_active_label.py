@@ -11,30 +11,23 @@ def no_dialog(*args):
     raise AssertionError("label dialog must not open with an active label")
 
 
-def test_number_key_activates_label_and_skips_dialog(window, ui):
-    ui.qtbot.keyClick(window, Qt.Key.Key_2)
-    assert window.active_label == "dog"
+def test_active_label_skips_dialog(window, ui):
+    window.set_active_label("dog")
     window.ask_label = no_dialog
     window.set_tool(ShapeType.RECTANGLE)
     ui.drag((10, 10), (30, 30))
     assert window.canvas.shapes[0].label == "dog"
-    assert "dog" in window.active_label_status.text()
+    assert window.active_label_status.text() == "New masks: dog"
 
 
-def test_zero_goes_back_to_asking(window, ui):
-    window.set_active_label("cat")
-    ui.qtbot.keyClick(window, Qt.Key.Key_0)
-    assert window.active_label is None
+def test_no_active_label_asks(window, ui):
+    window.set_active_label(None)
+    assert window.active_label_status.text() == "New masks: asks for a label"
     asked = []
     window.ask_label = lambda known, initial, parent: asked.append(initial) or None
     window.set_tool(ShapeType.POINT)
     ui.click(20, 20)
     assert asked and window.canvas.shapes == []
-
-
-def test_number_beyond_known_labels_is_ignored(window):
-    window.set_active_label_number(9)
-    assert window.active_label is None
 
 
 def test_clicking_label_toggles_it(window):

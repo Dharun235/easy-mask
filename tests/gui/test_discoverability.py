@@ -74,7 +74,7 @@ def test_shortcut_list_is_built_from_the_menus(make_window):
     win = make_window(Settings())
     rows = shortcut_rows(win)
     commands = {command for _menu, _keys, command in rows}
-    assert {"Polygon", "Magic wand", "Use Label 1", "Keyboard Shortcuts"} <= commands
+    assert {"Polygon", "Point", "Next Image", "Keyboard Shortcuts"} <= commands
     win.show_shortcuts()
     win.show_shortcuts()  # reuses the same window
     assert win.shortcuts_dialog.isVisible()
