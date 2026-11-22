@@ -71,6 +71,7 @@ from easy_mask.io import export
 from easy_mask.io.images import image_size, is_image, list_images
 from easy_mask.io.video import frames_dir_for, is_video, planned_count, probe
 
+VIDEO_FRAMES_SUFFIX = "_frames"  # see io.video.frames_dir_for
 PREFETCH_AHEAD = 3  # images encoded ahead for AI Segment: the current one and the next two
 DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
@@ -1486,10 +1487,15 @@ class MainWindow(QMainWindow):
         self.redo_action.setEnabled(self.history.can_redo)
 
     def _update_title(self) -> None:
-        title = "easy-mask"
-        if self.image_path is not None:
-            title += f" - {self.image_path.name}{' *' if self.dirty else ''}"
-        self.setWindowTitle(title)
+        """``video · frame 12 of 300 (frame_000011.jpg) — easy-mask``; ``*`` while unsaved."""
+        if self.image_path is None or self.current_index is None:
+            self.setWindowTitle("easy-mask")
+            return
+        folder = self.image_path.parent.name
+        name = folder.removesuffix(VIDEO_FRAMES_SUFFIX) or folder  # a video's frames folder
+        place = f"frame {self.current_index + 1} of {len(self.image_paths)}"
+        unsaved = " *" if self.dirty else ""
+        self.setWindowTitle(f"{name}  ·  {place} ({self.image_path.name}){unsaved}  —  easy-mask")
 
     def _error(self, message: str) -> None:
         QMessageBox.warning(self, "easy-mask", message)

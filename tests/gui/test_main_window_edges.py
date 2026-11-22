@@ -135,9 +135,29 @@ def test_save_failure_warns(window, ui, dialogs, monkeypatch):
 
 def test_about_and_title(window, ui):
     window._about()
-    assert window.windowTitle() == "easy-mask - img1.png"
+    folder = window.image_path.parent.name
+    assert window.windowTitle() == f"{folder}  ·  frame 1 of 3 (img1.png)  —  easy-mask"
     make_dirty(window, ui)
-    assert window.windowTitle().endswith("*")
+    assert "(img1.png) *" in window.windowTitle()
+    window.settings.autosave = True  # move on without the save question
+    window.next_image()
+    assert "frame 2 of 3" in window.windowTitle()
+
+
+def test_title_names_the_video_of_a_frames_folder(make_window, tmp_path):
+    import shutil
+
+    from PIL import Image
+
+    frames = tmp_path / "wingbeat_frames"
+    frames.mkdir()
+    for i in range(2):
+        Image.new("RGB", (8, 8)).save(frames / f"frame_{i:06d}.png")
+    win = make_window()
+    win.open_path(frames)
+    assert win.windowTitle().startswith("wingbeat  ·  frame 1 of 2")
+    win.close()
+    shutil.rmtree(frames)
 
 
 def test_arrow_keys_move_between_frames(window, qtbot):
