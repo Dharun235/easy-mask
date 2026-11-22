@@ -57,7 +57,7 @@ def test_welcome_recent_folders_open_on_click(make_window, image_dir):
     first.open_path(image_dir)
     second = make_window(Settings())
     item = second.welcome.recent_list.item(0)
-    assert item.text() == str(image_dir.resolve())
+    assert item.text().startswith(image_dir.name + "    ")  # folder name first, then where
     second.welcome.recent_list.itemClicked.emit(item)
     assert second.image_path is not None and second.image_path.parent == image_dir.resolve()
 

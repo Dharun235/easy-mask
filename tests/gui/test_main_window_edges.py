@@ -79,9 +79,11 @@ def test_file_list_click_navigates_and_cancel_restores(window, ui, dialogs):
 def test_step_stops_at_ends(window):
     window.prev_image()
     assert window.image_path.name == "img1.png"
+    assert window.statusBar().currentMessage() == "This is the first image"
     for _ in range(5):
         window.next_image()
     assert window.image_path.name == "img10.png"
+    assert window.statusBar().currentMessage() == "This is the last image"
 
 
 def test_open_dialogs(make_window, image_dir, monkeypatch):

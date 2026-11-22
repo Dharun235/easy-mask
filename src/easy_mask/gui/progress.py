@@ -8,7 +8,7 @@ and how to stop it. Several tasks can run at once; the most recently started is 
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QToolButton, QWidget
 
 
@@ -32,6 +32,7 @@ class ProgressPanel(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.label = QLabel()
+        self.label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.bar = QProgressBar()
         self.bar.setFixedWidth(160)
         self.bar.setTextVisible(False)
@@ -40,6 +41,7 @@ class ProgressPanel(QWidget):
         self.cancel_button.clicked.connect(self._cancel_current)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 8, 0)
+        layout.addStretch(1)  # text sits right next to its bar
         layout.addWidget(self.label)
         layout.addWidget(self.bar)
         layout.addWidget(self.cancel_button)

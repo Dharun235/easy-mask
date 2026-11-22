@@ -689,7 +689,11 @@ class MainWindow(QMainWindow):
         if self.current_index is None:
             return
         target = self.current_index + delta
-        if 0 <= target < len(self.image_paths) and self.maybe_save():
+        if not 0 <= target < len(self.image_paths):
+            edge = "first" if delta < 0 else "last"
+            self.statusBar().showMessage(f"This is the {edge} image", 3000)
+            return
+        if self.maybe_save():
             carry = self.video.capture_for_tracking() if delta == 1 else None
             self._load(target)
             if carry is not None and self.current_index == target:

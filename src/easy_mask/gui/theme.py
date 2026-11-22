@@ -1,4 +1,4 @@
-"""A calm, minimal look: warm neutrals, one soft accent, flat panels, quiet chrome.
+"""A calm, minimal look: cool Nordic neutrals, one blue accent, flat panels, quiet chrome.
 
 The aim is that the image and the work stand out and the tool fades into the background.
 :func:`apply_theme` sets Qt's Fusion style (so it looks the same on every OS) with a light
@@ -28,26 +28,26 @@ class Colors:
 
 
 LIGHT = Colors(
-    window="#F7F6F3",
-    surface="#FCFBF9",
-    raised="#EFEDE8",
-    line="#E5E2DB",
-    text="#1F1E1C",
-    muted="#8A867E",
-    canvas="#ECEAE5",
-    accent="#C9643F",
-    accent_soft="#F4E2DA",
+    window="#F5F6F8",
+    surface="#FFFFFF",
+    raised="#ECEEF2",
+    line="#E1E4EA",
+    text="#1D2129",
+    muted="#7A818E",
+    canvas="#E9ECF0",
+    accent="#3B6FB6",
+    accent_soft="#E3ECF8",
 )
 DARK = Colors(
-    window="#1B1B1A",
-    surface="#222221",
-    raised="#2C2B29",
-    line="#353431",
-    text="#ECEAE5",
-    muted="#8F8B83",
-    canvas="#141413",
-    accent="#E07B54",
-    accent_soft="#3A2A23",
+    window="#17191D",
+    surface="#1E2126",
+    raised="#282C33",
+    line="#30353D",
+    text="#E8EAEE",
+    muted="#8A919C",
+    canvas="#111316",
+    accent="#6E9BE0",
+    accent_soft="#24324A",
 )
 
 
@@ -115,13 +115,18 @@ QDockWidget {{ color: {c.muted}; font-size: 11px; }}
 QDockWidget::title {{
     padding: 10px 12px 4px 12px; background: {c.window}; text-transform: uppercase;
 }}
-QListWidget, QTableWidget {{
+QListWidget, QTableWidget, QTreeWidget {{
     background: {c.surface}; border: 1px solid {c.line}; border-radius: 10px;
     padding: 4px; outline: 0; color: {c.text}; font-size: 13px;
 }}
-QListWidget::item {{ padding: 5px 8px; border-radius: 6px; }}
-QListWidget::item:hover {{ background: {c.raised}; }}
-QListWidget::item:selected {{ background: {c.accent_soft}; color: {c.text}; }}
+QListWidget::item, QTreeWidget::item {{ padding: 4px 6px; border-radius: 6px; }}
+QListWidget::item:hover, QTreeWidget::item:hover {{ background: {c.raised}; }}
+QListWidget::item:selected, QTreeWidget::item:selected {{
+    background: {c.accent_soft}; color: {c.text};
+}}
+QHeaderView::section {{
+    background: {c.surface}; color: {c.muted}; border: none; padding: 4px 6px;
+}}
 QStatusBar {{ background: {c.window}; color: {c.muted}; border-top: 1px solid {c.line}; }}
 QStatusBar QLabel {{ color: {c.muted}; padding: 0 8px; }}
 QStatusBar::item {{ border: none; }}
@@ -130,7 +135,7 @@ QPushButton {{
     padding: 8px 16px; color: {c.text};
 }}
 QPushButton:hover {{ background: {c.raised}; }}
-QPushButton:default {{ background: {c.text}; color: {c.window}; border-color: {c.text}; }}
+QPushButton:default {{ background: {c.accent}; color: #FFFFFF; border-color: {c.accent}; }}
 QLineEdit, QSpinBox, QComboBox {{
     background: {c.surface}; border: 1px solid {c.line}; border-radius: 8px; padding: 5px 8px;
 }}
