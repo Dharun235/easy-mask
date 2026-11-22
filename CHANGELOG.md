@@ -5,9 +5,20 @@ All notable changes are listed here. Format:
 
 ## [Unreleased]
 
+### Fixed
+- Propagation no longer floods the terminal with progress bars and a model warning.
+- Progress shows "Starting AI tracking" while the model loads, then "AI tracking 13 of 30",
+  instead of sitting at 0%; the tool hint no longer overlaps it.
+
 ### Changed
-- Shorter README for non-programmers; command-line usage moved to `docs/command-line.md`.
-- Depends on `PySide6-Essentials` instead of the full PySide6 (~700 MB smaller install).
+- Calm Nordic look: cool neutrals and one blue accent.
+- Status bar says "New masks: <label>"; Back / Next say when at the first or last image.
+- Recent folders show the folder name first.
+
+### Removed
+- Export Again, Statistics and review mode from the app (`easy-mask stats` remains).
+- Hidden circle, line, line strip and magic wand tools, the threshold panel and the
+  label number keys.
 
 ## [0.1.0] - 2026-11-09
 

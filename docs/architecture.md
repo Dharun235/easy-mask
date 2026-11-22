@@ -29,8 +29,8 @@ src/easy_mask/
     masks.py             mask shapes <-> full masks, brush strokes, clean-up, mask -> polygons
     operations.py        pure list edits: combine (union/subtract/intersect), map, convert
     rle.py               COCO RLE encode/decode (pycocotools-compatible, pure numpy)
-    pixel_ops.py         classic segmentation: threshold, magic wand, colour range, GrabCut,
-                         (image -> full-size bool mask); GrabCut kept as a benchmark baseline
+    pixel_ops.py         image channels for the display; classic segmentation (threshold,
+                         magic wand, colour range, GrabCut) kept as benchmark baselines
     display.py           display-only adjustments (brightness, gamma, CLAHE, channel, opacity)
     video.py             object identity across frames, auto vs manual shapes, cutting regions
     interpolate.py       keyframe interpolation: outline correspondence, SDF mask blending
@@ -41,7 +41,7 @@ src/easy_mask/
   io/
     images.py            list images in a folder (natural sort), read size
     project.py           .easy-mask.json per image folder (labels, flags, active label)
-    stats.py             folder statistics and label validation (CLI `stats`, GUI dialog)
+    stats.py             folder statistics and label validation (CLI `stats`)
     video.py             extract a video's frames to <stem>_frames/ (step, max frames)
     export/
       common.py          collect (image, annotation) pairs, resolve class list, copy images
@@ -69,14 +69,11 @@ src/easy_mask/
     video_import.py      video import dialog (format, folder, every n-th frame) + worker
     tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
     tools/brush.py       brush and eraser
-    tools/region.py      magic wand (Shift add / Alt subtract)
-    threshold_dialog.py  threshold / colour-range panel with live canvas preview
     display_dialog.py    View > Adjust Display panel
     tools/ai_segment.py  AI Segment: prompts, mask preview, accept into a mask shape
     tools/ai_worker.py   QThreadPool job that loads the model and encodes images
     label_dialog.py      label / group id / description dialog with autocomplete
     widgets.py           file list, label checklist tree (labels with their shapes), flags
-    workflow.py          review mode (View) and statistics (File)
     video_menu.py        propagation (Propagation submenu, label right-click), erase-through, interpolate, clear
     propagate.py         PropagationWorker: QThread running the tracker, one signal per frame
 ```
@@ -106,7 +103,7 @@ widget positions with `to_image()`; `scale` and `offset` are its only view state
 ## Pixel tools
 
 Vector shapes are drawn by the canvas itself. Anything that works on pixels (brush,
-eraser, magic wand, AI Segment) subclasses
+eraser, AI Segment) subclasses
 `CanvasTool` and is activated with `Canvas.set_tool`; the canvas forwards mouse, key and
 paint events. A tool reports its result through a callback, and `MainWindow` stores it and records undo history.
 The algorithms live in `core/pixel_ops.py` and read the original pixels from
