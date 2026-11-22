@@ -49,7 +49,7 @@ src/easy_mask/
       coco.py            COCO instance segmentation JSON (polygons, or RLE for masks)
       yolo.py            YOLO-seg label files + data.yaml
       davis.py           DAVIS-style indexed PNG per frame, object ids stable across frames
-      objects.py         per-object masks, cutouts, coordinate / centroid / corner tables, overlays
+      objects.py         masks, cutouts, overlays (PNG or MP4, per object or combined), corner/point tables
   propagation/
     tracker.py           Propagator protocol, CopyPropagator (no model); track(): shapes -> prompts -> flagged masks
     backend.py           EfficientTAM / SAM 2.1 video predictor, weights download, device pick
@@ -65,7 +65,7 @@ src/easy_mask/
     theme.py             calm light / dark theme: palette, stylesheet, Fusion style
     progress.py          status-bar progress panel (several tasks, Cancel)
     export_worker.py     dataset export on a background thread
-    export_dialog.py     Export window: format, parts, frame range, folder, export on close
+    export_dialog.py     Export window: parts, ticked labels, combine, PNG/MP4, frames, folder, dataset
     video_import.py      video import dialog (format, folder, every n-th frame) + worker
     tools/base.py        CanvasTool: plug-in point for pixel tools (canvas forwards events)
     tools/brush.py       brush and eraser

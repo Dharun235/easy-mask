@@ -15,7 +15,8 @@ uv run easy-mask images/ --flags blurry,occluded --no-autosave   # ask before le
 uv run easy-mask export images/ --format coco  --out dataset/
 uv run easy-mask export images/ --format masks --out dataset/   # semantic + instance PNGs
 uv run easy-mask export images/ --format yolo  --out dataset/
-uv run easy-mask export images/ --format objects --parts masks,centroid,corners --out objects/
+uv run easy-mask export images/ --format objects --parts masks,corners --out objects/
+uv run easy-mask export images/ --format objects --parts masks,overlays --combine --video --out clip/
 uv run easy-mask export images/ --format coco --rle --out dataset/  # masks as exact COCO RLE
 
 # progress and label check: per-label objects/area, annotated/reviewed counts

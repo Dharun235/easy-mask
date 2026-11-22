@@ -6,6 +6,7 @@ or dark palette following the system setting, plus a small stylesheet.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
@@ -93,9 +94,41 @@ def palette(colors: Colors) -> QPalette:
     return p
 
 
+ICONS = Path(__file__).parent / "icons"
+CHECK_ICON = (ICONS / "check.svg").as_posix()
+DONE_ICON = (ICONS / "done.svg").as_posix()  # the Files list's "annotated" mark
+
+
 def stylesheet(c: Colors) -> str:
     """Flat panels, rounded controls, quiet section titles."""
     return f"""
+QCheckBox {{ spacing: 8px; }}
+QCheckBox::indicator, QTreeView::indicator, QListView::indicator {{
+    width: 15px; height: 15px; border: 1px solid {c.muted}; border-radius: 4px;
+    background: {c.surface};
+}}
+QCheckBox::indicator:checked, QTreeView::indicator:checked, QListView::indicator:checked {{
+    background: {c.accent}; border-color: {c.accent}; image: url({CHECK_ICON});
+}}
+QTreeView::indicator:indeterminate {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {c.surface}, stop:0.4 {c.surface},
+        stop:0.41 {c.accent}, stop:0.6 {c.accent}, stop:0.61 {c.surface}, stop:1 {c.surface});
+    border-color: {c.accent};
+}}
+QListWidget#files::indicator {{ border: none; background: transparent; image: none; }}
+QListWidget#files::indicator:checked {{ image: url({DONE_ICON}); }}
+QCheckBox::indicator:disabled {{ border-color: {c.line}; background: {c.raised}; }}
+QRadioButton {{ spacing: 8px; }}
+QRadioButton::indicator {{
+    width: 15px; height: 15px; border: 1px solid {c.muted}; border-radius: 8px;
+    background: {c.surface};
+}}
+QRadioButton::indicator:checked {{
+    border-color: {c.accent};
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+        stop:0 {c.accent}, stop:0.45 {c.accent}, stop:0.55 {c.surface}, stop:1 {c.surface});
+}}
+
 QMainWindow, QDialog {{ background: {c.window}; }}
 QToolBar {{
     background: {c.window}; border: none; border-bottom: 1px solid {c.line};

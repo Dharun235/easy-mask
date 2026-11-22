@@ -138,7 +138,7 @@ def _export_as(win: MainWindow, fmt: str, out, **changes) -> None:
     from dataclasses import replace
     from pathlib import Path
 
-    win.ask_export = lambda choice, count, current, parent: replace(
+    win.ask_export = lambda choice, count, current, parent, ticked=None: replace(
         choice, fmt=fmt, out=Path(out), **changes
     )
     win.export_dialog()

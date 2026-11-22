@@ -44,7 +44,8 @@ That's the only command. Everything else is buttons.
 4. **Propagate** (videos): right-click a label > **Propagate Forward**. AI tracks it through
    the next frames. Fix a bad frame and propagate again from there.
 5. **Points**: the centre and 4 corners of each mask, which you can drag.
-6. **Export**: pick what to save (masks, cutouts, points, COCO, YOLO, ...) and which frames.
+6. **Export**: masks, original pixels, overlays, corners and points, as PNG frames or MP4,
+   per object or all together; only the ticked labels if you like.
 
 Work saves automatically. **Undo** covers every frame. The bar at the bottom tells you how
 to use the tool you picked; right-click anything for more.

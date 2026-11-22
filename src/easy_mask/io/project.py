@@ -25,6 +25,9 @@ class Project:
         export_dir: Folder of the last export, relative to the image folder when possible.
         export_on_close: Repeat the last export when easy-mask closes.
         object_parts: What the Objects export writes (see ``export.PARTS``).
+        export_combine: Objects export: all objects of a frame in one image.
+        export_video: Objects export: MP4 videos instead of PNG frames.
+        export_only_ticked: Objects export: only the labels ticked in the Labels panel.
     """
 
     labels: list[str] = field(default_factory=list)
@@ -35,6 +38,9 @@ class Project:
     export_dir: str | None = None
     export_on_close: bool = False
     object_parts: list[str] | None = None
+    export_combine: bool = False
+    export_video: bool = False
+    export_only_ticked: bool = False
 
 
 def load(folder: Path) -> Project | None:

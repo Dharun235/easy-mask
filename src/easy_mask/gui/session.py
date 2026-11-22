@@ -140,6 +140,8 @@ class Session:
             w.object_parts = [
                 p for p in project.object_parts if p in export.PARTS
             ] or w.object_parts
+        w.export_combine, w.export_video = project.export_combine, project.export_video
+        w.export_only_ticked = project.export_only_ticked
 
     def save_project(self) -> None:
         """Write the current folder's project file (no-op until a folder is open)."""
@@ -156,6 +158,9 @@ class Session:
             export_dir=project_io.relative_dir(export_dir, self.folder),
             export_on_close=w.export_on_close_action.isChecked(),
             object_parts=list(w.object_parts),
+            export_combine=w.export_combine,
+            export_video=w.export_video,
+            export_only_ticked=w.export_only_ticked,
         )
         # A read-only folder just isn't remembered: a convenience, never an error.
         with contextlib.suppress(OSError):

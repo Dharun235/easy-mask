@@ -88,7 +88,9 @@ def test_read_only_folder_is_not_an_error(make_window, image_dir, monkeypatch):
 def export_once(win, out, monkeypatch, fmt="coco"):
     from dataclasses import replace
 
-    win.ask_export = lambda choice, count, current, parent: replace(choice, fmt=fmt, out=out)
+    win.ask_export = lambda choice, count, current, parent, ticked=None: replace(
+        choice, fmt=fmt, out=out
+    )
     win.export_dialog()
     win.export_worker.wait()  # exports run in the background
     win._on_export_finished()

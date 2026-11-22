@@ -47,6 +47,10 @@ def color_icon(label: str, labels: list[str], size: int = 12) -> QIcon:
 class FileList(QListWidget):
     """Images in the open folder; annotated ones are ticked."""
 
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("files")  # the theme draws its ticks as quiet "done" marks
+
     def show_files(self, paths: list[Path], annotated: set[Path]) -> None:
         """Replace the list with ``paths``, ticking those in ``annotated``."""
         self.blockSignals(True)

@@ -197,6 +197,7 @@ class MainWindow(QMainWindow):
         self.last_export: tuple[str, Path] | None = None  # (format, folder), per project
         self.export_worker: ExportWorker | None = None
         self.object_parts: list[str] = list(export.PARTS)  # what Objects exports, per project
+        self.export_combine = self.export_video = self.export_only_ticked = False  # per project
         self.ask_export = ask_export  # swappable in tests
         self.video_worker: VideoImportWorker | None = None
         self.ask_video_import = VideoImportDialog.ask  # swappable in tests
@@ -1210,6 +1211,7 @@ class MainWindow(QMainWindow):
         self.last_export = None
         self.export_on_close_action.setChecked(False)
         self.object_parts = list(export.PARTS)
+        self.export_combine = self.export_video = self.export_only_ticked = False
 
     def frame_state(self, index: int) -> FrameState:
         """Frame ``index``'s shapes as stored: on screen if shown, else from disk."""
@@ -1251,13 +1253,21 @@ class MainWindow(QMainWindow):
             0,
             len(self.image_paths) - 1,
             self.export_on_close_action.isChecked(),
+            self.export_combine,
+            self.export_video,
+            self.export_only_ticked,
         )
-        choice = self.ask_export(start, len(self.image_paths), self.current_index, self)
+        ticked = self.label_list.checked_labels()
+        choice = self.ask_export(
+            start, len(self.image_paths), self.current_index, self, ticked=ticked
+        )
         if choice is None or not self.maybe_save():
             return
         self.last_export = (choice.fmt, choice.out)
         if choice.parts:
             self.object_parts = choice.parts
+        self.export_combine, self.export_video = choice.combine, choice.video
+        self.export_only_ticked = choice.only_ticked
         self.export_on_close_action.setChecked(choice.on_close)
         self.session.save_project()
         self._export(choice.fmt, choice.out, frames=(choice.first, choice.last))
@@ -1286,7 +1296,17 @@ class MainWindow(QMainWindow):
         for item in items:
             for shape in item.annotation.shapes:
                 self._remember_label(shape.label)
-        worker = ExportWorker(items, fmt, out, list(self.known_labels), tuple(self.object_parts))
+        ticked = set(self.label_list.checked_labels())
+        worker = ExportWorker(
+            items,
+            fmt,
+            out,
+            list(self.known_labels),
+            tuple(self.object_parts),
+            only_labels=ticked if self.export_only_ticked and ticked else None,
+            combine=self.export_combine,
+            video=self.export_video,
+        )
         self.progress.begin("export", f"Exporting {fmt}", total=len(items), cancel=worker.cancel)
         worker.progress.connect(lambda done, total: self.progress.report("export", done, total))
         worker.failed.connect(self._error)
