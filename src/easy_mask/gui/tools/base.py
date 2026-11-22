@@ -7,7 +7,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QInputEvent, QKeyEvent, QPainter, QPixmap
 
 from easy_mask.core.geometry import Point
-from easy_mask.core.rasterize import shape_to_mask
 
 if TYPE_CHECKING:  # avoid a runtime import cycle: the canvas imports this module
     from easy_mask.gui.canvas import Canvas
@@ -46,29 +45,6 @@ class CanvasTool:
 
     def cancel(self, canvas: "Canvas") -> None:
         """The tool is being switched off; drop any half-finished work."""
-
-
-def combine_with_selection(
-    canvas: "Canvas", result: np.ndarray, modifiers: Qt.KeyboardModifier
-) -> tuple[np.ndarray, int | None] | None:
-    """Apply the Shift = add / Alt = subtract convention of region tools.
-
-    Plain clicks make a new mask. Shift adds ``result`` to the selected area shape and
-    Alt removes it; without a selected area shape, Shift makes a new mask and Alt does
-    nothing.
-
-    Returns:
-        ``(full_mask, index_or_None)`` for a ``StrokeCallback``, or None for no edit.
-    """
-    add = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
-    subtract = bool(modifiers & Qt.KeyboardModifier.AltModifier)
-    index = canvas.selected
-    has_target = index is not None and canvas.shapes[index].shape_type.is_area
-    if not (add or subtract) or not has_target:
-        return None if subtract or not result.any() else (result, None)
-    assert index is not None
-    current = shape_to_mask(canvas.shapes[index], *result.shape)
-    return (current & ~result if subtract else current | result), index
 
 
 def mask_image(mask: np.ndarray, rgb: tuple[int, int, int], alpha: int) -> QImage:

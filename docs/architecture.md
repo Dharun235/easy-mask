@@ -30,7 +30,7 @@ src/easy_mask/
     operations.py        pure list edits: combine (union/subtract/intersect), map, convert
     rle.py               COCO RLE encode/decode (pycocotools-compatible, pure numpy)
     pixel_ops.py         image channels for the display; classic segmentation (threshold,
-                         magic wand, colour range, GrabCut) kept as benchmark baselines
+                         magic wand, GrabCut) kept as benchmark baselines
     display.py           display-only adjustments (brightness, gamma, CLAHE, channel, opacity)
     video.py             object identity across frames, auto vs manual shapes, cutting regions
     interpolate.py       keyframe interpolation: outline correspondence, SDF mask blending

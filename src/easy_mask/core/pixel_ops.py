@@ -106,37 +106,6 @@ def magic_wand(rgb: np.ndarray, seed: Point, tolerance: int = 32) -> np.ndarray:
     return fill[1:-1, 1:-1].astype(bool)
 
 
-def color_at(rgb: np.ndarray, p: Point) -> tuple[int, int, int]:
-    """The RGB colour of the pixel at ``p``."""
-    x, y = _pixel(rgb, p)
-    r, g, b = rgb[y, x]
-    return int(r), int(g), int(b)
-
-
-def color_range(
-    rgb: np.ndarray,
-    color: tuple[int, int, int],
-    hue_tol: int = 10,
-    sat_tol: int = 60,
-    val_tol: int = 60,
-) -> np.ndarray:
-    """Every pixel whose HSV is within a band around ``color`` (anywhere in the image).
-
-    Hue wraps around (red at 0 and 179 are neighbours). Hue is OpenCV's 0-179 scale;
-    saturation and value are 0-255.
-    """
-    hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV).astype(np.int16)
-    target = cv2.cvtColor(np.array([[color]], np.uint8), cv2.COLOR_RGB2HSV)[0, 0].astype(np.int16)
-    hue_diff = np.abs(hsv[..., 0] - target[0])
-    hue_diff = np.minimum(hue_diff, 180 - hue_diff)
-    return np.asarray(
-        (hue_diff <= hue_tol)
-        & (np.abs(hsv[..., 1] - target[1]) <= sat_tol)
-        & (np.abs(hsv[..., 2] - target[2]) <= val_tol),
-        dtype=bool,
-    )
-
-
 # ---------------------------------------------------------------------- graph-based
 
 

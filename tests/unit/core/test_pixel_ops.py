@@ -112,26 +112,6 @@ def test_magic_wand_clamps_seed_to_image(scene):
     assert pixel_ops.magic_wand(scene, (500, -3), tolerance=0)[0, 79]
 
 
-def test_color_at(scene):
-    assert pixel_ops.color_at(scene, (25.7, 20.2)) == (220, 30, 30)
-
-
-def test_color_range_finds_every_matching_pixel(scene, block):
-    scene[50:55, 60:70] = (215, 35, 30)
-    result = pixel_ops.color_range(scene, (220, 30, 30))
-    assert result[block].all() and result[50:55, 60:70].all() and not result[0, 0]
-
-
-def test_color_range_hue_wraps_around():
-    rgb = np.zeros((1, 2, 3), np.uint8)
-    rgb[0, 0] = (255, 0, 10)  # red, hue just below 180
-    rgb[0, 1] = (255, 10, 0)  # red, hue just above 0
-    assert pixel_ops.color_range(rgb, (255, 0, 0), hue_tol=5).all()
-
-
-# ---------------------------------------------------------------------- graph-based
-
-
 def test_grabcut_from_box(scene, block):
     result = pixel_ops.grabcut(scene, (10, 5, 60, 45))
     assert masks.iou(result, block) > 0.95
