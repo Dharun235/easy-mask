@@ -346,11 +346,16 @@ class MainWindow(QMainWindow):
         return action
 
     def _key(
-        self, text: str, slot: Callable[..., object], shortcut: str, checkable: bool = False
+        self,
+        text: str,
+        slot: Callable[..., object],
+        shortcut: str | list[str],
+        checkable: bool = False,
     ) -> QAction:
-        """A keyboard-only command (tool letters, label numbers): no menu entry."""
+        """A keyboard-only command (tool letters, frame keys): no menu entry."""
         action = QAction(text, self)
-        action.setShortcut(QKeySequence(shortcut))
+        keys = shortcut if isinstance(shortcut, list) else [shortcut]
+        action.setShortcuts([QKeySequence(k) for k in keys])
         action.setCheckable(checkable)
         action.triggered.connect(slot if checkable else lambda _checked=False: slot())
         self.addAction(action)
@@ -381,13 +386,21 @@ class MainWindow(QMainWindow):
         self._action(m, "Quit", self.close, std.Quit)
 
         m = bar.addMenu("&Edit")
-        self.undo_action = self._action(m, "Undo", self.undo, std.Undo)
+        # Mac: Ctrl means Cmd; Meta (the Control key) is accepted too, so either works.
+        self.undo_action = self._action(
+            m, "Undo", self.undo, [QKeySequence("Ctrl+Z"), QKeySequence("Meta+Z")]
+        )
         self.redo_action = self._action(
-            m, "Redo", self.redo, [QKeySequence("Ctrl+Shift+Z"), QKeySequence("Ctrl+Y")]
+            m,
+            "Redo",
+            self.redo,
+            [QKeySequence("Ctrl+Shift+Z"), QKeySequence("Ctrl+Y"), QKeySequence("Meta+Shift+Z")],
         )
         m.addSeparator()
         self._action(m, "Edit Label", self.edit_label)
-        self._action(m, "Delete", self.delete_selected, std.Delete)
+        self._action(
+            m, "Delete", self.delete_selected, [QKeySequence("Del"), QKeySequence("Backspace")]
+        )
         self._action(m, "Duplicate", self.duplicate_selected, "Ctrl+D")
         self._action(m, "Copy", self.copy_selected, std.Copy)
         self._action(m, "Paste", self.paste, std.Paste)
@@ -438,8 +451,8 @@ class MainWindow(QMainWindow):
         self._action(m, "Adjust Display...", self.open_display)
         m.addSeparator()
 
-        next_image = self._key("Next Image", self.next_image, "D")
-        prev_image = self._key("Previous Image", self.prev_image, "A")
+        next_image = self._key("Next Image", self.next_image, ["Right", "Down"])
+        prev_image = self._key("Previous Image", self.prev_image, ["Left", "Up"])
         self.nav_actions = [prev_image, next_image]
         # File and history actions go in front of the tools; export sits alone on the right.
         first_tool = toolbar.actions()[0]

@@ -14,7 +14,7 @@ Responsibilities are split with the main window like this:
 """
 
 import numpy as np
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QKeyEvent,
@@ -192,6 +192,14 @@ class Canvas(QWidget):
     def is_drawing(self) -> bool:
         """True while a shape is half-drawn."""
         return bool(self._draft)
+
+    def remove_last_point(self) -> bool:
+        """Drop the last point of the shape being drawn; False if nothing is being drawn."""
+        if not self._draft:
+            return False
+        self._draft.pop()
+        self.update()
+        return True
 
     def cancel_draft(self) -> None:
         """Throw away the half-drawn shape."""
@@ -467,6 +475,20 @@ class Canvas(QWidget):
             self.update()
         event.accept()
 
+    def event(self, event: QEvent) -> bool:
+        """Keep Backspace for the canvas while it has focus (point / prompt removal first).
+
+        Elsewhere in the window Backspace is the Delete shortcut.
+        """
+        if (
+            event.type() == QEvent.Type.ShortcutOverride
+            and isinstance(event, QKeyEvent)
+            and event.key() == Qt.Key.Key_Backspace
+        ):
+            event.accept()
+            return True
+        return super().event(event)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Enter finishes, Backspace removes a point (or deletes), Esc cancels."""
         if self.tool is not None and self.tool.key(self, event):
@@ -476,10 +498,7 @@ class Canvas(QWidget):
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.finish_draft()
         elif key == Qt.Key.Key_Backspace:
-            if self._draft:
-                self._draft.pop()
-                self.update()
-            else:
+            if not self.remove_last_point():
                 self.delete_requested.emit()
         elif key == Qt.Key.Key_Escape:
             if self._draft:

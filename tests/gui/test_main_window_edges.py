@@ -138,3 +138,39 @@ def test_about_and_title(window, ui):
     assert window.windowTitle() == "easy-mask - img1.png"
     make_dirty(window, ui)
     assert window.windowTitle().endswith("*")
+
+
+def test_arrow_keys_move_between_frames(window, qtbot):
+    from PySide6.QtCore import Qt
+
+    window.activateWindow()
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Right)
+    assert window.current_index == 1
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Down)
+    assert window.current_index == 2
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Up)
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Left)
+    assert window.current_index == 0
+    window.label_panel.add_edit.setFocus()
+    qtbot.keyClick(window.label_panel.add_edit, Qt.Key.Key_Right)  # typing keeps its arrows
+    assert window.current_index == 0
+
+
+def test_backspace_removes_a_point_while_drawing_else_deletes(window, driver, qtbot):
+    from PySide6.QtCore import Qt
+
+    from easy_mask.core.shapes import ShapeType
+
+    ui = driver(window)
+    window.set_active_label("cat")
+    window.set_tool(ShapeType.POLYGON)
+    ui.click(10, 10)
+    ui.click(30, 10)
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Backspace)
+    assert len(window.canvas._draft) == 1 and window.canvas.shapes == []
+    window.canvas.cancel_draft()
+    window.set_tool(ShapeType.RECTANGLE)
+    ui.drag((10, 10), (30, 30))
+    window.canvas.select(0)
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Backspace)
+    assert window.canvas.shapes == []
