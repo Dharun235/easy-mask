@@ -48,16 +48,16 @@ def test_all_parts(scene, tmp_path):
     assert (cutout[..., 3] == 255).all()
 
     records = json.loads((tmp_path / "objects.json").read_text())
-    cat_rec, dog_rec, nose_rec = records
-    assert cat_rec["bbox"] == [10, 10, 29, 19] and cat_rec["area"] == 200
-    assert dog_rec["group_id"] == 1 and len(dog_rec["polygons"]) == 2  # one object, two parts
-    assert nose_rec["polygons"] == [[[40.0, 60.0]]] and nose_rec["shape_types"] == ["point"]
+    cat_rec, dog_rec, _nose_rec = records
+    assert cat_rec["box_corners"] == [[10, 10], [29, 10], [29, 19], [10, 19]]
+    assert dog_rec["group_id"] == 1  # one object, two parts
     assert cat_rec["mask_file"] == "masks/img1_01_cat.png"
+    assert (tmp_path / "overlays" / "img1.png").exists()
 
     rows = list(csv.DictReader((tmp_path / "objects.csv").open()))
     assert [r["label"] for r in rows] == ["cat", "dog", "nose / tip"]
     assert rows[1]["group_id"] == "1" and rows[0]["group_id"] == ""
-    assert rows[0]["x_min"] == "10" and rows[0]["polygon"].count(",") >= 4
+    assert rows[0]["centroid_x"] == "19.5"
 
 
 def test_cutout_is_transparent_outside_the_object(scene, tmp_path):
@@ -69,7 +69,7 @@ def test_cutout_is_transparent_outside_the_object(scene, tmp_path):
 
 def test_only_chosen_parts_are_written(scene, tmp_path):
     items, _, _ = scene
-    export.export_objects(items, tmp_path, parts=("coordinates",))
+    export.export_objects(items, tmp_path, parts=("corners",))
     assert (tmp_path / "objects.json").exists() and not (tmp_path / "masks").exists()
     records = json.loads((tmp_path / "objects.json").read_text())
     assert records[0]["mask_file"] == "" and records[0]["cutout_file"] == ""
@@ -98,12 +98,12 @@ def test_group_objects_and_safe_name():
 
 def test_centroid_and_corners(scene, tmp_path):
     items, _rgb, _cat = scene
-    export.export_objects(items, tmp_path, parts=("centroid", "corners"))
+    export.export_objects(items, tmp_path, parts=("corners",))
     assert not (tmp_path / "masks").exists()
     cat, dog, _nose = json.loads((tmp_path / "objects.json").read_text())
     assert cat["centroid"] == [19.5, 14.5]  # cat pixels x 10..29, y 10..19
     assert cat["box_corners"] == [[10, 10], [29, 10], [29, 19], [10, 19]]
-    assert "bbox" not in cat and "polygons" not in cat  # coordinates were not chosen
+    assert "points" not in cat  # points were not chosen
     xs = [x for x, _ in cat["rotated_corners"]]
     assert min(xs) == 10 and max(xs) == 29  # an upright box: same as the straight one
     assert dog["centroid"][1] == pytest.approx(15, abs=0.5)  # both parts, one centre
@@ -118,7 +118,7 @@ def test_centroid_and_corners(scene, tmp_path):
 def test_rotated_corners_follow_a_tilted_object():
     import cv2
 
-    from easy_mask.io.export.objects import rotated_corners
+    from easy_mask.core.keypoints import rotated_corners
 
     full = np.zeros((100, 100), np.uint8)
     box = cv2.boxPoints(((50, 50), (60, 20), 30)).astype(np.int32)
@@ -141,7 +141,7 @@ def test_export_uses_hand_adjusted_points_and_draws_overlays(image_dir, tmp_path
     ann_io.save(Annotation("img1.png", 100, 80, shapes), image_dir / "img1.json")
     items = export.collect(image_dir)
     out = tmp_path / "out"
-    export.export_objects(items, out, ["cat"], parts=("centroid", "points", "overlays", "masks"))
+    export.export_objects(items, out, ["cat"], parts=("corners", "points", "overlays", "masks"))
     (record,) = json.loads((out / "objects.json").read_text())  # points join their object
     assert record["centroid"] == [12.0, 13.0]
     assert set(record["points"]) == {"centroid", "corner 1", "corner 2", "corner 3", "corner 4"}
@@ -160,3 +160,45 @@ def test_semantic_masks_ignore_keypoints(image_dir, tmp_path):
     export.export_masks(export.collect(image_dir), out, ["cat"])
     semantic = np.array(Image.open(out / "semantic" / "img1.png"))
     assert semantic[40, 50] == 0 and (semantic > 0).sum() <= 16
+
+
+@pytest.fixture
+def two_frames(image_dir):
+    """img1 with a cat and a dog, img2 with only the dog."""
+    for name in ("img1.png", "img2.png"):
+        Image.fromarray(np.full((80, 100, 3), 90, np.uint8)).save(image_dir / name)
+    cat = Shape("cat", ShapeType.RECTANGLE, [(10, 10), (29, 19)])
+    dog = Shape("dog", ShapeType.RECTANGLE, [(50, 40), (69, 59)])
+    ann_io.save(Annotation("img1.png", 100, 80, [cat, dog]), image_dir / "img1.json")
+    ann_io.save(Annotation("img2.png", 100, 80, [dog.copy()]), image_dir / "img2.json")
+    return [i for i in export.collect(image_dir) if i.image_path.name in ("img1.png", "img2.png")]
+
+
+def test_combine_puts_every_object_of_a_frame_in_one_image(two_frames, tmp_path):
+    export.export_objects(two_frames, tmp_path, parts=("masks", "cutouts"), combine=True)
+    assert sorted(p.name for p in (tmp_path / "masks").iterdir()) == ["img1.png", "img2.png"]
+    mask = np.array(Image.open(tmp_path / "masks" / "img1.png")) > 0
+    assert mask[15, 20] and mask[50, 60] and not mask[5, 5]  # cat and dog together
+    cutout = np.array(Image.open(tmp_path / "cutouts" / "img1.png"))
+    assert cutout.shape == (80, 100, 4)  # whole frame, transparent around the objects
+    assert cutout[15, 20, 3] == 255 and cutout[5, 5, 3] == 0
+
+
+def test_only_labels_keeps_just_those(two_frames, tmp_path):
+    export.export_objects(two_frames, tmp_path, parts=("masks",), only_labels={"dog"})
+    assert sorted(p.name for p in (tmp_path / "masks").iterdir()) == [
+        "img1_02_dog.png",  # numbers stay as in the full export
+        "img2_01_dog.png",
+    ]
+
+
+def test_video_has_one_frame_per_image(two_frames, tmp_path):
+    import cv2
+
+    export.export_objects(two_frames, tmp_path, parts=("masks", "overlays"), video=True)
+    names = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.mp4"))
+    assert names == ["masks/cat_01.mp4", "masks/dog_01.mp4", "overlays.mp4"]
+    for name in names:  # the cat's video has a black frame where the cat is absent
+        assert int(cv2.VideoCapture(str(tmp_path / name)).get(cv2.CAP_PROP_FRAME_COUNT)) == 2
+    export.export_objects(two_frames, tmp_path / "c", parts=("cutouts",), combine=True, video=True)
+    assert [p.name for p in (tmp_path / "c").glob("*.mp4")] == ["cutouts.mp4"]

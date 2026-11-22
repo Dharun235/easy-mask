@@ -79,9 +79,11 @@ def test_file_list_click_navigates_and_cancel_restores(window, ui, dialogs):
 def test_step_stops_at_ends(window):
     window.prev_image()
     assert window.image_path.name == "img1.png"
+    assert window.statusBar().currentMessage() == "This is the first image"
     for _ in range(5):
         window.next_image()
     assert window.image_path.name == "img10.png"
+    assert window.statusBar().currentMessage() == "This is the last image"
 
 
 def test_open_dialogs(make_window, image_dir, monkeypatch):
@@ -133,6 +135,62 @@ def test_save_failure_warns(window, ui, dialogs, monkeypatch):
 
 def test_about_and_title(window, ui):
     window._about()
-    assert window.windowTitle() == "easy-mask - img1.png"
+    folder = window.image_path.parent.name
+    assert window.windowTitle() == f"{folder}  ·  frame 1 of 3 (img1.png)  —  easy-mask"
     make_dirty(window, ui)
-    assert window.windowTitle().endswith("*")
+    assert "(img1.png) *" in window.windowTitle()
+    window.settings.autosave = True  # move on without the save question
+    window.next_image()
+    assert "frame 2 of 3" in window.windowTitle()
+
+
+def test_title_names_the_video_of_a_frames_folder(make_window, tmp_path):
+    import shutil
+
+    from PIL import Image
+
+    frames = tmp_path / "wingbeat_frames"
+    frames.mkdir()
+    for i in range(2):
+        Image.new("RGB", (8, 8)).save(frames / f"frame_{i:06d}.png")
+    win = make_window()
+    win.open_path(frames)
+    assert win.windowTitle().startswith("wingbeat  ·  frame 1 of 2")
+    win.close()
+    shutil.rmtree(frames)
+
+
+def test_arrow_keys_move_between_frames(window, qtbot):
+    from PySide6.QtCore import Qt
+
+    window.activateWindow()
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Right)
+    assert window.current_index == 1
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Down)
+    assert window.current_index == 2
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Up)
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Left)
+    assert window.current_index == 0
+    window.label_panel.add_edit.setFocus()
+    qtbot.keyClick(window.label_panel.add_edit, Qt.Key.Key_Right)  # typing keeps its arrows
+    assert window.current_index == 0
+
+
+def test_backspace_removes_a_point_while_drawing_else_deletes(window, driver, qtbot):
+    from PySide6.QtCore import Qt
+
+    from easy_mask.core.shapes import ShapeType
+
+    ui = driver(window)
+    window.set_active_label("cat")
+    window.set_tool(ShapeType.POLYGON)
+    ui.click(10, 10)
+    ui.click(30, 10)
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Backspace)
+    assert len(window.canvas._draft) == 1 and window.canvas.shapes == []
+    window.canvas.cancel_draft()
+    window.set_tool(ShapeType.RECTANGLE)
+    ui.drag((10, 10), (30, 30))
+    window.canvas.select(0)
+    qtbot.keyClick(window.canvas, Qt.Key.Key_Backspace)
+    assert window.canvas.shapes == []

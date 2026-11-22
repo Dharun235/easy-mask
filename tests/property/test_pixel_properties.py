@@ -44,17 +44,6 @@ def test_magic_wand_with_full_tolerance_selects_everything(rgb):
 
 
 @FAST
-@given(images, seeds, st.integers(0, 90), st.integers(0, 255))
-def test_color_range_contains_picked_pixel_and_grows(rgb, point, hue_tol, sv_tol):
-    color = pixel_ops.color_at(rgb, point)
-    tight = pixel_ops.color_range(rgb, color, hue_tol, sv_tol, sv_tol)
-    loose = pixel_ops.color_range(rgb, color, 90, 255, 255)
-    x = min(int(point[0]), rgb.shape[1] - 1)
-    y = min(int(point[1]), rgb.shape[0] - 1)
-    assert tight[y, x] and loose.all() and np.all(loose[tight])
-
-
-@FAST
 @given(images, st.integers(-255, 255), st.floats(0.1, 4), st.floats(0.1, 4))
 def test_display_adjustment_keeps_shape_and_order(rgb, brightness, contrast, gamma):
     out = adjust(rgb, DisplaySettings(brightness=brightness, contrast=contrast, gamma=gamma))

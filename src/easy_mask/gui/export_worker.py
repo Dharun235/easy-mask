@@ -32,9 +32,13 @@ class ExportWorker(QThread):
         out: Path,
         labels: list[str],
         parts: tuple[str, ...] = PARTS,
+        only_labels: set[str] | None = None,
+        combine: bool = False,
+        video: bool = False,
     ):
         super().__init__()
-        self.parts = parts  # what the Objects export writes; ignored by other formats
+        # How the Objects export writes; ignored by the dataset formats.
+        self.parts, self.only_labels, self.combine, self.video = parts, only_labels, combine, video
         self.items = items
         self.fmt = fmt
         self.out = out
@@ -50,7 +54,14 @@ class ExportWorker(QThread):
         try:
             if self.fmt == "objects":
                 export.export_objects(
-                    self.items, self.out, self.labels, progress=self._report, parts=self.parts
+                    self.items,
+                    self.out,
+                    self.labels,
+                    progress=self._report,
+                    parts=self.parts,
+                    only_labels=self.only_labels,
+                    combine=self.combine,
+                    video=self.video,
                 )
             else:
                 export.EXPORTERS[self.fmt](self.items, self.out, self.labels, progress=self._report)

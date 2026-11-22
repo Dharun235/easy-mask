@@ -1,4 +1,4 @@
-"""A calm, minimal look: warm neutrals, one soft accent, flat panels, quiet chrome.
+"""A calm, minimal look: cool Nordic neutrals, one blue accent, flat panels, quiet chrome.
 
 The aim is that the image and the work stand out and the tool fades into the background.
 :func:`apply_theme` sets Qt's Fusion style (so it looks the same on every OS) with a light
@@ -6,6 +6,7 @@ or dark palette following the system setting, plus a small stylesheet.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
@@ -28,26 +29,26 @@ class Colors:
 
 
 LIGHT = Colors(
-    window="#F7F6F3",
-    surface="#FCFBF9",
-    raised="#EFEDE8",
-    line="#E5E2DB",
-    text="#1F1E1C",
-    muted="#8A867E",
-    canvas="#ECEAE5",
-    accent="#C9643F",
-    accent_soft="#F4E2DA",
+    window="#F5F6F8",
+    surface="#FFFFFF",
+    raised="#ECEEF2",
+    line="#E1E4EA",
+    text="#1D2129",
+    muted="#7A818E",
+    canvas="#E9ECF0",
+    accent="#3B6FB6",
+    accent_soft="#E3ECF8",
 )
 DARK = Colors(
-    window="#1B1B1A",
-    surface="#222221",
-    raised="#2C2B29",
-    line="#353431",
-    text="#ECEAE5",
-    muted="#8F8B83",
-    canvas="#141413",
-    accent="#E07B54",
-    accent_soft="#3A2A23",
+    window="#17191D",
+    surface="#1E2126",
+    raised="#282C33",
+    line="#30353D",
+    text="#E8EAEE",
+    muted="#8A919C",
+    canvas="#111316",
+    accent="#6E9BE0",
+    accent_soft="#24324A",
 )
 
 
@@ -93,9 +94,46 @@ def palette(colors: Colors) -> QPalette:
     return p
 
 
+ICONS = Path(__file__).parent / "icons"
+
+
+def _mark(name: str, c: Colors) -> str:
+    """Path of a tick drawn for this palette (``name.svg`` light, ``name-dark.svg`` dark)."""
+    suffix = "-dark" if c is DARK else ""
+    return (ICONS / f"{name}{suffix}.svg").as_posix()
+
+
 def stylesheet(c: Colors) -> str:
     """Flat panels, rounded controls, quiet section titles."""
+    check, done = _mark("check", c), _mark("done", c)  # ticks drawn for this palette
     return f"""
+QCheckBox {{ spacing: 8px; }}
+QCheckBox::indicator, QTreeView::indicator, QListView::indicator {{
+    width: 15px; height: 15px; border: 1px solid {c.muted}; border-radius: 4px;
+    background: {c.surface};
+}}
+QCheckBox::indicator:checked, QTreeView::indicator:checked, QListView::indicator:checked {{
+    background: {c.accent}; border-color: {c.accent}; image: url({check});
+}}
+QTreeView::indicator:indeterminate {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {c.surface}, stop:0.4 {c.surface},
+        stop:0.41 {c.accent}, stop:0.6 {c.accent}, stop:0.61 {c.surface}, stop:1 {c.surface});
+    border-color: {c.accent};
+}}
+QListWidget#files::indicator {{ border: none; background: transparent; image: none; }}
+QListWidget#files::indicator:checked {{ image: url({done}); }}
+QCheckBox::indicator:disabled {{ border-color: {c.line}; background: {c.raised}; }}
+QRadioButton {{ spacing: 8px; }}
+QRadioButton::indicator {{
+    width: 15px; height: 15px; border: 1px solid {c.muted}; border-radius: 8px;
+    background: {c.surface};
+}}
+QRadioButton::indicator:checked {{
+    border-color: {c.accent};
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+        stop:0 {c.accent}, stop:0.45 {c.accent}, stop:0.55 {c.surface}, stop:1 {c.surface});
+}}
+
 QMainWindow, QDialog {{ background: {c.window}; }}
 QToolBar {{
     background: {c.window}; border: none; border-bottom: 1px solid {c.line};
@@ -115,13 +153,18 @@ QDockWidget {{ color: {c.muted}; font-size: 11px; }}
 QDockWidget::title {{
     padding: 10px 12px 4px 12px; background: {c.window}; text-transform: uppercase;
 }}
-QListWidget, QTableWidget {{
+QListWidget, QTableWidget, QTreeWidget {{
     background: {c.surface}; border: 1px solid {c.line}; border-radius: 10px;
     padding: 4px; outline: 0; color: {c.text}; font-size: 13px;
 }}
-QListWidget::item {{ padding: 5px 8px; border-radius: 6px; }}
-QListWidget::item:hover {{ background: {c.raised}; }}
-QListWidget::item:selected {{ background: {c.accent_soft}; color: {c.text}; }}
+QListWidget::item, QTreeWidget::item {{ padding: 4px 6px; border-radius: 6px; }}
+QListWidget::item:hover, QTreeWidget::item:hover {{ background: {c.raised}; }}
+QListWidget::item:selected, QTreeWidget::item:selected {{
+    background: {c.accent_soft}; color: {c.text};
+}}
+QHeaderView::section {{
+    background: {c.surface}; color: {c.muted}; border: none; padding: 4px 6px;
+}}
 QStatusBar {{ background: {c.window}; color: {c.muted}; border-top: 1px solid {c.line}; }}
 QStatusBar QLabel {{ color: {c.muted}; padding: 0 8px; }}
 QStatusBar::item {{ border: none; }}
@@ -130,7 +173,7 @@ QPushButton {{
     padding: 8px 16px; color: {c.text};
 }}
 QPushButton:hover {{ background: {c.raised}; }}
-QPushButton:default {{ background: {c.text}; color: {c.window}; border-color: {c.text}; }}
+QPushButton:default {{ background: {c.accent}; color: {c.window}; border-color: {c.accent}; }}
 QLineEdit, QSpinBox, QComboBox {{
     background: {c.surface}; border: 1px solid {c.line}; border-radius: 8px; padding: 5px 8px;
 }}
@@ -154,9 +197,22 @@ QScrollBar:horizontal {{ height: 0; }}
 
 
 def apply_theme(app: QApplication) -> Colors:
-    """Use the calm theme for the whole application; returns the colours in use."""
-    colors = current()
+    """Use the calm theme for the whole application; returns the colours in use.
+
+    It follows the system: switching light / dark while easy-mask runs restyles it.
+    Menus show no icons (like native Mac menus), so every entry lines up the same.
+    """
     app.setStyle("Fusion")
+    app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus)
+    colors = _restyle(app)
+    hints = QGuiApplication.styleHints()
+    if hasattr(hints, "colorSchemeChanged"):
+        hints.colorSchemeChanged.connect(lambda _scheme: _restyle(app))
+    return colors
+
+
+def _restyle(app: QApplication) -> Colors:
+    colors = current()
     app.setPalette(palette(colors))
     app.setStyleSheet(stylesheet(colors))
     return colors

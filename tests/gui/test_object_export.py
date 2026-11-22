@@ -9,7 +9,7 @@ from easy_mask.io.project import PROJECT_FILE
 
 
 def dialog_for(qtbot, tmp_path, **changes):
-    choice = ExportChoice("objects", tmp_path / "out", ["masks", "coordinates"], 0, 9)
+    choice = ExportChoice("objects", tmp_path / "out", ["masks", "corners"], 0, 9)
     for key, value in changes.items():
         setattr(choice, key, value)
     dialog = ExportDialog(choice, frame_count=10, current=3)
@@ -17,27 +17,37 @@ def dialog_for(qtbot, tmp_path, **changes):
     return dialog
 
 
-def test_parts_include_centroid_and_corners_as_separate_choices(qtbot, tmp_path):
+def test_the_five_parts_and_dataset_dropdown(qtbot, tmp_path):
     from PySide6.QtWidgets import QDialogButtonBox
 
     dialog = dialog_for(qtbot, tmp_path)
-    assert list(dialog.part_checks) == [
-        "masks",
-        "cutouts",
-        "coordinates",
-        "centroid",
-        "corners",
-        "points",
-        "overlays",
-    ]
-    dialog.part_checks["centroid"].setChecked(True)
-    assert dialog.choice().parts == ["masks", "coordinates", "centroid"]
+    assert list(dialog.part_checks) == ["masks", "cutouts", "overlays", "corners", "points"]
+    dialog.part_checks["points"].setChecked(True)
+    assert dialog.choice().parts == ["masks", "corners", "points"]
     ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
     for check in dialog.part_checks.values():
         check.setChecked(False)
-    assert not ok.isEnabled()  # Objects needs at least one part
-    dialog.format_box.setCurrentIndex(dialog.format_box.findData("coco"))
-    assert ok.isEnabled()  # other formats have no parts
+    assert not ok.isEnabled()  # our export needs at least one part
+    assert dialog.choice().fmt == "objects"  # no training dataset by default
+    dialog.dataset_box.setCurrentIndex(dialog.dataset_box.findData("coco"))
+    assert ok.isEnabled() and dialog.choice().fmt == "coco"  # datasets have no parts
+
+
+def test_combine_video_and_ticked_labels(qtbot, tmp_path):
+    dialog = dialog_for(qtbot, tmp_path)
+    assert not dialog.only_ticked.isEnabled()  # nothing ticked in the Labels panel
+    dialog = ExportDialog(
+        ExportChoice("objects", tmp_path, ["masks"], 0, 9, only_ticked=True),
+        10,
+        0,
+        ticked=["dog", "wing"],
+    )
+    qtbot.addWidget(dialog)
+    assert dialog.only_ticked.isChecked() and "“dog” + “wing”" in dialog.only_ticked.text()
+    dialog.combine.setChecked(True)
+    dialog.mp4.setChecked(True)
+    choice = dialog.choice()
+    assert choice.combine and choice.video and choice.only_ticked
 
 
 def test_frames_all_this_or_a_range(qtbot, tmp_path):
@@ -81,25 +91,25 @@ def test_export_window_exports_chosen_parts_and_frames_and_remembers(
     ui.drag((40, 40), (60, 60))
     win.save()
     out = tmp_path / "objects"
-    export_as(win, "objects", out, parts=["centroid", "corners"], first=1, last=1)
+    export_as(win, "objects", out, parts=["corners"], first=1, last=1, combine=True)
     wait_export(win)
     records = json.loads((out / "objects.json").read_text())
     assert [r["image"] for r in records] == ["img2.png"]  # only the chosen frame
     assert "centroid" in records[0] and "rotated_corners" in records[0]
     assert not (out / "masks").exists()
     project = json.loads((image_dir / PROJECT_FILE).read_text())
-    assert project["object_parts"] == ["centroid", "corners"]
+    assert project["object_parts"] == ["corners"] and project["export_combine"]
     seen = []
-    win.ask_export = lambda choice, count, current, parent: seen.append(choice)
+    win.ask_export = lambda choice, count, current, parent, ticked=None: seen.append(choice)
     win.export_dialog()  # opens again with the last choices
     assert seen[0].fmt == "objects" and seen[0].out == out
-    assert seen[0].parts == ["centroid", "corners"]
+    assert seen[0].parts == ["corners"] and seen[0].combine
 
 
 def test_cancelling_the_export_window_exports_nothing(make_window, image_dir):
     win = make_window(Settings())
     win.open_path(image_dir)
-    win.ask_export = lambda choice, count, current, parent: None
+    win.ask_export = lambda choice, count, current, parent, ticked=None: None
     win.export_dialog()
     assert win.export_worker is None
 
@@ -108,6 +118,33 @@ def test_toolbar_export_opens_the_window(make_window, image_dir):
     win = make_window(Settings())
     win.open_path(image_dir)
     seen = []
-    win.ask_export = lambda choice, count, current, parent: seen.append((count, current))
+    win.ask_export = lambda choice, count, current, parent, ticked=None: seen.append(
+        (count, current)
+    )
     win._export_action.trigger()
     assert seen == [(3, 0)]
+
+
+def test_export_only_ticked_labels(make_window, image_dir, tmp_path, wait_export, export_as):
+    from PySide6.QtCore import Qt
+
+    from easy_mask.core.shapes import Shape
+    from easy_mask.gui.widgets import LABEL_ROLE
+
+    win = make_window(Settings())
+    win.open_path(image_dir)
+    win.canvas.set_shapes(
+        [
+            Shape("cat", ShapeType.RECTANGLE, [(10, 10), (30, 30)]),
+            Shape("dog", ShapeType.RECTANGLE, [(40, 40), (60, 60)]),
+        ]
+    )
+    for label in ("cat", "dog"):
+        win._remember_label(label)
+    win._commit()
+    dog = next(r for r in win.label_list.label_rows() if r.data(0, LABEL_ROLE) == "dog")
+    dog.setCheckState(0, Qt.CheckState.Checked)
+    out = tmp_path / "out"
+    export_as(win, "objects", out, parts=["masks"], only_ticked=True, first=0, last=0)
+    wait_export(win)
+    assert [p.name for p in (out / "masks").iterdir()] == ["img1_02_dog.png"]

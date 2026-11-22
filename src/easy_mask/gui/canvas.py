@@ -14,7 +14,7 @@ Responsibilities are split with the main window like this:
 """
 
 import numpy as np
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QKeyEvent,
@@ -43,7 +43,6 @@ KEYPOINT_RADIUS_PX = 6  # on-screen radius of a key point
 DRAG_THRESHOLD_PX = 4  # press-drag-release shorter than this counts as a click
 ZOOM_STEP = 1.15
 MIN_SCALE, MAX_SCALE = 0.02, 64.0
-MIN_FOCUS_PX = 32.0  # smallest image area zoom_to_box shows, so points aren't zoomed to 64x
 DRAFT_RGB = (0, 200, 255)
 
 
@@ -193,6 +192,14 @@ class Canvas(QWidget):
         """True while a shape is half-drawn."""
         return bool(self._draft)
 
+    def remove_last_point(self) -> bool:
+        """Drop the last point of the shape being drawn; False if nothing is being drawn."""
+        if not self._draft:
+            return False
+        self._draft.pop()
+        self.update()
+        return True
+
     def cancel_draft(self) -> None:
         """Throw away the half-drawn shape."""
         self._draft = []
@@ -233,29 +240,6 @@ class Canvas(QWidget):
         self._auto_fit = False
         self._emit_status()
         self.update()
-
-    def zoom_to_box(self, box: tuple[float, float, float, float], margin: float = 0.3) -> None:
-        """Centre and zoom on an image-space box ``(x0, y0, x1, y1)``.
-
-        ``margin`` adds that fraction of the box size on every side so the object's
-        surroundings stay visible; tiny boxes (points) get at least ``MIN_FOCUS_PX``.
-        """
-        if self.pixmap.isNull():
-            return
-        x0, y0, x1, y1 = box
-        box_w = max(x1 - x0, MIN_FOCUS_PX) * (1 + 2 * margin)
-        box_h = max(y1 - y0, MIN_FOCUS_PX) * (1 + 2 * margin)
-        scale = min(self.width() / box_w, self.height() / box_h)
-        self.scale = min(max(scale, MIN_SCALE), MAX_SCALE)
-        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-        self.offset = QPointF(
-            self.width() / 2 - cx * self.scale, self.height() / 2 - cy * self.scale
-        )
-        self._auto_fit = False
-        self._emit_status()
-        self.update()
-
-    # ------------------------------------------------------------------ coordinates
 
     def to_image(self, pos: QPointF) -> Point:
         """Convert a widget position to image pixel coordinates."""
@@ -467,6 +451,20 @@ class Canvas(QWidget):
             self.update()
         event.accept()
 
+    def event(self, event: QEvent) -> bool:
+        """Keep Backspace for the canvas while it has focus (point / prompt removal first).
+
+        Elsewhere in the window Backspace is the Delete shortcut.
+        """
+        if (
+            event.type() == QEvent.Type.ShortcutOverride
+            and isinstance(event, QKeyEvent)
+            and event.key() == Qt.Key.Key_Backspace
+        ):
+            event.accept()
+            return True
+        return super().event(event)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Enter finishes, Backspace removes a point (or deletes), Esc cancels."""
         if self.tool is not None and self.tool.key(self, event):
@@ -476,10 +474,7 @@ class Canvas(QWidget):
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.finish_draft()
         elif key == Qt.Key.Key_Backspace:
-            if self._draft:
-                self._draft.pop()
-                self.update()
-            else:
+            if not self.remove_last_point():
                 self.delete_requested.emit()
         elif key == Qt.Key.Key_Escape:
             if self._draft:

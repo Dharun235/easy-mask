@@ -57,7 +57,7 @@ def test_welcome_recent_folders_open_on_click(make_window, image_dir):
     first.open_path(image_dir)
     second = make_window(Settings())
     item = second.welcome.recent_list.item(0)
-    assert item.text() == str(image_dir.resolve())
+    assert item.text().startswith(image_dir.name + "    ")  # folder name first, then where
     second.welcome.recent_list.itemClicked.emit(item)
     assert second.image_path is not None and second.image_path.parent == image_dir.resolve()
 
@@ -74,7 +74,7 @@ def test_shortcut_list_is_built_from_the_menus(make_window):
     win = make_window(Settings())
     rows = shortcut_rows(win)
     commands = {command for _menu, _keys, command in rows}
-    assert {"Polygon", "Magic wand", "Use Label 1", "Keyboard Shortcuts"} <= commands
+    assert {"Polygon", "Point", "Next Image", "Keyboard Shortcuts"} <= commands
     win.show_shortcuts()
     win.show_shortcuts()  # reuses the same window
     assert win.shortcuts_dialog.isVisible()

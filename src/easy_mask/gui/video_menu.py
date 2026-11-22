@@ -47,12 +47,13 @@ if TYPE_CHECKING:  # the main window imports this module
 DEFAULT_RUN = 50  # frames per propagation run: a few minutes on a laptop CPU
 COPY_MODEL = "copy"  # --video-model value for model-free propagation
 MISSING_EXTRA = (
-    "AI tracking uses EfficientTAM (or SAM 2.1), which needs the optional video add-on "
-    "(PyTorch, about 1 GB):\n\n    SAM2_BUILD_CUDA=0 uv sync --extra video"
+    "AI tracking is not installed, so masks can only be copied to the next frames as they "
+    "are.\n\nTo install it, close easy-mask and run this once in the easy-mask folder:\n"
+    "    SAM2_BUILD_CUDA=0 uv sync --extra video"
 )
 REGION_LABEL = "__region__"  # the cut part, tracked like an object during a run
 NOTHING_HINT = "Draw an object (or erase a part) on this frame first, then propagate it"
-FALLBACK_NOTE = "AI tracking needs the video add-on (uv sync --extra video): copying instead"
+FALLBACK_NOTE = "AI tracking is not installed: masks were copied unchanged"
 
 
 @dataclass
@@ -99,6 +100,7 @@ class VideoMenu:
         self.last_cut: Cut | None = None  # carried along by the next run from its frame
         self.changed: set[int] = set()  # frames the current / last run changed
         self._run_frames = 0
+        self._task = ""  # what the progress bar says during a run
 
         menu = QMenu("Propagation", window)  # in the label and shape right-click menus
         self.menu = menu
@@ -247,7 +249,7 @@ class VideoMenu:
                     w.statusBar().showMessage(FALLBACK_NOTE, 6000)
                     return self.copier
                 answer = QMessageBox.question(
-                    w, "Propagate", f"{MISSING_EXTRA}\n\nCopy the masks unchanged instead?"
+                    w, "Propagate", f"{MISSING_EXTRA}\n\nCopy the masks unchanged for now?"
                 )
                 if answer != QMessageBox.StandardButton.Yes:
                     return None
@@ -323,9 +325,14 @@ class VideoMenu:
         worker.finished.connect(self._on_finished)
         self.worker = worker
         self._run_frames = len(indices) - 1
-        task = "Copying masks" if isinstance(propagator, CopyPropagator) else "AI tracking"
-        w.statusBar().showMessage(f"{task}...")
-        w.progress.begin("propagate", task, total=len(indices) - 1, cancel=self.stop)
+        copying = isinstance(propagator, CopyPropagator)
+        self._task = "Copying masks" if copying else "AI tracking"
+        # The AI model loads and reads the frames before the first one is done, which
+        # takes several seconds: say so with a busy bar instead of a stuck 0%.
+        start = self._task if copying else "Starting AI tracking"
+        w.progress.begin(
+            "propagate", start, total=len(indices) - 1 if copying else 0, cancel=self.stop
+        )
         worker.start()
 
     def _on_frame_done(
@@ -336,7 +343,7 @@ class VideoMenu:
         on_frame: Callable[[int, list[Shape]], None],
     ) -> None:
         on_frame(indices[position], new)
-        self.window.progress.report("propagate", position)
+        self.window.progress.report("propagate", position, self._run_frames, self._task)
 
     def stop(self, wait: bool = False) -> None:
         """Cancel the running propagation after the current frame.

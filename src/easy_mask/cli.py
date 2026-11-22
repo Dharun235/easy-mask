@@ -78,12 +78,15 @@ def build_export_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", required=True, choices=EXPORT_FORMATS, help="dataset format")
     parser.add_argument(
         "--parts",
-        default="masks,cutouts,coordinates,centroid,corners,points,overlays",
-        help="with --format objects: any of masks (binary PNG per object), cutouts (the "
-        "object's original pixels, transparent elsewhere), coordinates (box, area, outline), "
-        "centroid (mask centre), corners (straight and rotated box corners), points (key "
-        "points), overlays (frames with masks and points drawn on)",
+        default="masks,cutouts,overlays,corners,points",
+        help="with --format objects: any of masks (binary), cutouts (the object's original "
+        "pixels), overlays (frames with masks and points drawn on), corners (box and rotated "
+        "corners and centroid, in objects.csv), points (key points, in objects.csv)",
     )
+    parser.add_argument(
+        "--combine", action="store_true", help="objects: all objects in one image per frame"
+    )
+    parser.add_argument("--video", action="store_true", help="objects: MP4 videos, not PNGs")
     parser.add_argument("--out", required=True, type=Path, help="destination folder")
     parser.add_argument(
         "--annotations", type=Path, help="folder of JSON files (default: image_dir)"
@@ -152,7 +155,9 @@ def run_export(args: argparse.Namespace) -> int:
     fmt = "coco-rle" if args.rle else args.format
     labels = parse_name_list(args.labels) or None
     if fmt == "objects":
-        export.export_objects(items, args.out, labels, parts=parts)
+        export.export_objects(
+            items, args.out, labels, parts=parts, combine=args.combine, video=args.video
+        )
     else:
         export.EXPORTERS[fmt](items, args.out, labels)
     print(f"Exported {len(items)} images as {fmt} to {args.out}")

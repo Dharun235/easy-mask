@@ -17,6 +17,14 @@ from PySide6.QtWidgets import (
 HINT = "Open  →  click objects with AI or draw them  →  Propagate  →  Export"
 
 
+def _short(folder: Path) -> str:
+    """``folder`` with the home directory written as ``~``, to keep recent entries short."""
+    try:
+        return f"~/{folder.relative_to(Path.home())}"
+    except ValueError:
+        return str(folder)
+
+
 class WelcomePage(QWidget):
     """Open Folder / Image / Video buttons and a clickable list of recent folders."""
 
@@ -88,7 +96,7 @@ class WelcomePage(QWidget):
         """List ``paths`` (newest first); a placeholder line if there are none."""
         self.recent_list.clear()
         for path in paths:
-            item = QListWidgetItem(str(path))
+            item = QListWidgetItem(f"{path.name}    {_short(path.parent)}")
             item.setData(Qt.ItemDataRole.UserRole, str(path))
             item.setToolTip(str(path))
             self.recent_list.addItem(item)

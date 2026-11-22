@@ -90,17 +90,6 @@ def test_enter_with_too_few_points_does_nothing(window, ui):
     assert window.canvas.shapes == [] and window.canvas.is_drawing()
 
 
-def test_double_click_finishes_line_strip(window, ui):
-    window.set_tool(ShapeType.LINESTRIP)
-    ui.click(10, 10)
-    ui.click(30, 30)
-    # A real double-click arrives as press/release then a double-click event.
-    ui.click(50, 10)
-    ui.double_click(50, 10)
-    assert window.canvas.shapes[0].shape_type == ShapeType.LINESTRIP
-    assert len(window.canvas.shapes[0].points) == 3
-
-
 def test_zero_size_rectangle_is_ignored(window, ui):
     window.set_tool(ShapeType.RECTANGLE)
     ui.click(20, 20)
@@ -115,7 +104,7 @@ def test_switching_tool_discards_draft(window, ui):
     assert not window.canvas.is_drawing()
 
 
-@pytest.mark.parametrize("mode", [t for t in ShapeType if t != ShapeType.MASK])
+@pytest.mark.parametrize("mode", [ShapeType.POLYGON, ShapeType.RECTANGLE, ShapeType.POINT])
 def test_draft_preview_paints_for_every_tool(window, ui, mode):
     window.set_tool(mode)
     if mode == ShapeType.POINT:

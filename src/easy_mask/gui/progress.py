@@ -8,6 +8,7 @@ and how to stop it. Several tasks can run at once; the most recently started is 
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QToolButton, QWidget
 
 
@@ -20,11 +21,18 @@ class _Task:
 
 
 class ProgressPanel(QWidget):
-    """Shows the newest running task; hidden when nothing is running."""
+    """Shows the newest running task; hidden when nothing is running.
+
+    Signals:
+        shown(bool): True while a task is shown, so the window can make room for it.
+    """
+
+    shown = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.label = QLabel()
+        self.label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.bar = QProgressBar()
         self.bar.setFixedWidth(160)
         self.bar.setTextVisible(False)
@@ -33,6 +41,7 @@ class ProgressPanel(QWidget):
         self.cancel_button.clicked.connect(self._cancel_current)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 8, 0)
+        layout.addStretch(1)  # text sits right next to its bar
         layout.addWidget(self.label)
         layout.addWidget(self.bar)
         layout.addWidget(self.cancel_button)
@@ -80,14 +89,14 @@ class ProgressPanel(QWidget):
     def _show(self) -> None:
         current = self._current()
         self.setVisible(current is not None)
+        self.shown.emit(current is not None)
         if current is None:
             return
         _key, task = current
         if task.total > 0:
             self.bar.setRange(0, task.total)
             self.bar.setValue(min(task.done, task.total))
-            percent = 100 * min(task.done, task.total) // task.total
-            self.label.setText(f"{task.text}  {percent}%")
+            self.label.setText(f"{task.text}  {min(task.done, task.total)} of {task.total}")
         else:
             self.bar.setRange(0, 0)  # busy indicator
             self.label.setText(f"{task.text}...")

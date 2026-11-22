@@ -81,8 +81,8 @@ def test_move_shape_and_vertex_in_edit_mode(ui, qtbot, window):
 
 
 def test_delete_duplicate_copy_paste(ui, qtbot, window, image_dir):
-    window.set_tool(ShapeType.CIRCLE)
-    ui.drag((50, 40), (60, 40))
+    window.set_tool(ShapeType.RECTANGLE)
+    ui.drag((45, 35), (60, 45))
     window.set_tool(None)
     ui.click(50, 40)
     assert window.canvas.selected == 0
@@ -98,18 +98,18 @@ def test_delete_duplicate_copy_paste(ui, qtbot, window, image_dir):
     window.next_image()
     assert window.image_path.name == "img2.png"
     window.paste()
-    assert window.canvas.shapes[0].shape_type == ShapeType.CIRCLE
+    assert window.canvas.shapes[0].shape_type == ShapeType.RECTANGLE
 
 
 def test_save_and_reload(ui, qtbot, window, image_dir):
-    window.set_tool(ShapeType.LINE)
+    window.set_tool(ShapeType.RECTANGLE)
     ui.drag((5, 5), (50, 50))
     window.flag_list.item(0).setCheckState(Qt.CheckState.Checked)
     assert window.save()
 
     saved = ann_io.load(image_dir / "img1.json")
     assert saved.image_path == "img1.png" and saved.flags == {"blurry": True}
-    assert saved.shapes[0].shape_type == ShapeType.LINE
+    assert saved.shapes[0].shape_type == ShapeType.RECTANGLE
     assert window.file_list.item(0).checkState() == Qt.CheckState.Checked
     assert not window.dirty
 

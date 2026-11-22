@@ -13,7 +13,7 @@ from functools import partial
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
@@ -55,11 +55,9 @@ from easy_mask.gui.label_dialog import LabelDialog, LabelInfo
 from easy_mask.gui.progress import ProgressPanel
 from easy_mask.gui.session import Session
 from easy_mask.gui.shortcuts import ShortcutsDialog
-from easy_mask.gui.threshold_dialog import ThresholdDialog
 from easy_mask.gui.tools.ai_segment import AiSegmentTool
 from easy_mask.gui.tools.base import CanvasTool
 from easy_mask.gui.tools.brush import BrushTool
-from easy_mask.gui.tools.region import MagicWandTool
 from easy_mask.gui.video_import import (
     ImportOptions,
     VideoImportDialog,
@@ -69,11 +67,11 @@ from easy_mask.gui.video_import import (
 from easy_mask.gui.video_menu import Cut, VideoMenu
 from easy_mask.gui.welcome import WelcomePage
 from easy_mask.gui.widgets import FileList, FlagList, LabelPanel, as_list, color_icon, quoted
-from easy_mask.gui.workflow import Workflow
 from easy_mask.io import export
 from easy_mask.io.images import image_size, is_image, list_images
 from easy_mask.io.video import frames_dir_for, is_video, planned_count, probe
 
+VIDEO_FRAMES_SUFFIX = "_frames"  # see io.video.frames_dir_for
 PREFETCH_AHEAD = 3  # images encoded ahead for AI Segment: the current one and the next two
 DUPLICATE_OFFSET = 10.0  # pixels a duplicated shape is shifted so it is visible
 
@@ -96,11 +94,7 @@ TOOLS: list[tuple[str, str, ShapeType | str | None, str, str, str]] = [
         "eraser",
         "paint",
     ),
-    ("Circle", "Circle", ShapeType.CIRCLE, "C", "circle", KEYS_ONLY),
-    ("Line", "Line", ShapeType.LINE, "L", "line", KEYS_ONLY),
-    ("Line strip", "Path", ShapeType.LINESTRIP, "T", "linestrip", KEYS_ONLY),
     ("Point", "Point", ShapeType.POINT, "O", "point", KEYS_ONLY),
-    ("Magic wand", "Wand", "wand", "W", "wand", KEYS_ONLY),
 ]
 
 
@@ -113,16 +107,11 @@ TOOL_HINTS: dict[ShapeType | str | None, str] = {
     ShapeType.POLYGON: "Polygon: click to place corners  ·  click the first corner (or "
     "double-click) to finish  ·  Backspace removes the last corner, Esc cancels",
     ShapeType.RECTANGLE: "Box: drag from one corner to the opposite corner",
-    ShapeType.CIRCLE: "Circle: drag from the centre outwards",
-    ShapeType.LINE: "Line: drag from one end to the other",
-    ShapeType.LINESTRIP: "Line strip: click to place points  ·  double-click (or Enter) to finish",
     ShapeType.POINT: "Point: click to place it",
     "brush": "Paint: start on a mask to extend it, on empty image for a new mask  ·  [ and ] "
     "change the size",
     "eraser": "Eraser: paint over what to remove from the masks underneath (select a mask "
     "first to erase only from it)  ·  [ and ] change the size  ·  propagating carries it",
-    "wand": "Magic wand: click a region of similar colour  ·  Shift adds it to the selected "
-    "mask, Alt removes it  ·  [ and ] change the tolerance",
 }
 
 
@@ -209,6 +198,7 @@ class MainWindow(QMainWindow):
         self.last_export: tuple[str, Path] | None = None  # (format, folder), per project
         self.export_worker: ExportWorker | None = None
         self.object_parts: list[str] = list(export.PARTS)  # what Objects exports, per project
+        self.export_combine = self.export_video = self.export_only_ticked = False  # per project
         self.ask_export = ask_export  # swappable in tests
         self.video_worker: VideoImportWorker | None = None
         self.ask_video_import = VideoImportDialog.ask  # swappable in tests
@@ -229,15 +219,14 @@ class MainWindow(QMainWindow):
             efficient_sam.load(self.settings.ai_model, progress)
         )
 
+        self._icon_names: dict[QAction, str] = {}  # toolbar icons, re-tinted with the theme
         self.canvas = Canvas(self)
         self.ai_tool = self._make_ai_tool()
         self.pixel_tools: dict[str, CanvasTool] = {
             "brush": BrushTool(self._apply_stroke),
             "eraser": BrushTool(lambda region, _index: self.cut(region), erase=True),
-            "wand": MagicWandTool(self._apply_smart),
             "ai": self.ai_tool,
         }
-        self.threshold_dialog: ThresholdDialog | None = None
         self.display_dialog: DisplayDialog | None = None
         self.canvas.labels = self.known_labels  # same list object: new labels recolour live
         self.session = Session(self)  # remembered layout, tool sizes, recent folders, projects
@@ -257,13 +246,13 @@ class MainWindow(QMainWindow):
         self._add_points_button()
         self._show_panels(False)  # the start page stands alone; panels appear with an image
         self._connect_canvas()
-        self.workflow = Workflow(self)  # review mode, copy previous, statistics
 
         self.progress = ProgressPanel()
         self.statusBar().addPermanentWidget(self.progress)
         self.tool_hint = QLabel()  # how to use the active tool; messages cover it briefly
         self.tool_hint.setMinimumWidth(1)  # long hints are clipped, never widen the window
         self.statusBar().addWidget(self.tool_hint, 1)
+        self.progress.shown.connect(lambda busy: self.tool_hint.setVisible(not busy))
         self.active_label_status = QLabel()
         self.statusBar().addPermanentWidget(self.active_label_status)
         self.status_label = QLabel()
@@ -358,12 +347,33 @@ class MainWindow(QMainWindow):
         self.addAction(action)  # keep shortcuts active even when the menu bar is hidden
         return action
 
+    def _set_icon(self, action: QAction, name: str) -> None:
+        """Give ``action`` the toolbar icon ``name``, re-tinted when the theme changes."""
+        self._icon_names[action] = name
+        action.setIcon(icon(name))
+
+    def changeEvent(self, event: QEvent) -> None:
+        """Light / dark switched while running: redraw the icons in the new text colour.
+
+        The theme then sets a new palette and stylesheet; with a stylesheet in place Qt
+        reports it as a style change rather than a palette change, so both count.
+        """
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            for action, name in self._icon_names.items():
+                action.setIcon(icon(name))
+        super().changeEvent(event)
+
     def _key(
-        self, text: str, slot: Callable[..., object], shortcut: str, checkable: bool = False
+        self,
+        text: str,
+        slot: Callable[..., object],
+        shortcut: str | list[str],
+        checkable: bool = False,
     ) -> QAction:
-        """A keyboard-only command (tool letters, label numbers): no menu entry."""
+        """A keyboard-only command (tool letters, frame keys): no menu entry."""
         action = QAction(text, self)
-        action.setShortcut(QKeySequence(shortcut))
+        keys = shortcut if isinstance(shortcut, list) else [shortcut]
+        action.setShortcuts([QKeySequence(k) for k in keys])
         action.setCheckable(checkable)
         action.triggered.connect(slot if checkable else lambda _checked=False: slot())
         self.addAction(action)
@@ -388,20 +398,27 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._action(m, "Save", self.save, std.Save)
         self._export_action = self._action(m, "Export...", self.export_dialog)
-        self._action(m, "Export Again", self.export_again)
         # Set in the Export window; kept as a checkable action for the session state.
         self.export_on_close_action = QAction("Export Again When Closing", self, checkable=True)
         m.addSeparator()
         self._action(m, "Quit", self.close, std.Quit)
 
         m = bar.addMenu("&Edit")
-        self.undo_action = self._action(m, "Undo", self.undo, std.Undo)
+        # Mac: Ctrl means Cmd; Meta (the Control key) is accepted too, so either works.
+        self.undo_action = self._action(
+            m, "Undo", self.undo, [QKeySequence("Ctrl+Z"), QKeySequence("Meta+Z")]
+        )
         self.redo_action = self._action(
-            m, "Redo", self.redo, [QKeySequence("Ctrl+Shift+Z"), QKeySequence("Ctrl+Y")]
+            m,
+            "Redo",
+            self.redo,
+            [QKeySequence("Ctrl+Shift+Z"), QKeySequence("Ctrl+Y"), QKeySequence("Meta+Shift+Z")],
         )
         m.addSeparator()
         self._action(m, "Edit Label", self.edit_label)
-        self._action(m, "Delete", self.delete_selected, std.Delete)
+        self._action(
+            m, "Delete", self.delete_selected, [QKeySequence("Del"), QKeySequence("Backspace")]
+        )
         self._action(m, "Duplicate", self.duplicate_selected, "Ctrl+D")
         self._action(m, "Copy", self.copy_selected, std.Copy)
         self._action(m, "Paste", self.paste, std.Paste)
@@ -416,7 +433,7 @@ class MainWindow(QMainWindow):
         for text, short, mode, key, icon_name, tool_group in TOOLS:
             action = self._key(text, lambda md=mode: self.set_tool(md), key)
             action.setCheckable(True)
-            action.setIcon(icon(icon_name))
+            self._set_icon(action, icon_name)
             action.setIconText(short)
             action.setToolTip(text)
             self.tool_group.addAction(action)
@@ -428,14 +445,6 @@ class MainWindow(QMainWindow):
             group = tool_group
             toolbar.addAction(action)
         self.tool_actions[None].setChecked(True)
-        # Labels: click one in the Labels panel, or press its number; 0 asks each time.
-        for number in range(1, 10):
-            self._key(
-                f"Use Label {number}",
-                lambda n=number: self.set_active_label_number(n),
-                str(number),
-            )
-        self._key("Ask for Label Every Time", lambda: self.set_active_label(None), "0")
 
         m = bar.addMenu("&View")
         self.view_menu = m
@@ -460,8 +469,8 @@ class MainWindow(QMainWindow):
         self._action(m, "Adjust Display...", self.open_display)
         m.addSeparator()
 
-        next_image = self._key("Next Image", self.next_image, "D")
-        prev_image = self._key("Previous Image", self.prev_image, "A")
+        next_image = self._key("Next Image", self.next_image, ["Right", "Down"])
+        prev_image = self._key("Previous Image", self.prev_image, ["Left", "Up"])
         self.nav_actions = [prev_image, next_image]
         # File and history actions go in front of the tools; export sits alone on the right.
         first_tool = toolbar.actions()[0]
@@ -480,7 +489,7 @@ class MainWindow(QMainWindow):
             ),
         ):
             for action, icon_name, short, tip in section:
-                action.setIcon(icon(icon_name))
+                self._set_icon(action, icon_name)
                 action.setIconText(short)
                 action.setToolTip(tip)
                 toolbar.insertAction(first_tool, action)
@@ -488,7 +497,7 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
-        self._export_action.setIcon(icon("export"))
+        self._set_icon(self._export_action, "export")
         self._export_action.setIconText("Export")
         self._export_action.setToolTip(
             "Export: choose the format, what to save (masks, cutouts, coordinates, centroid, "
@@ -513,7 +522,6 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._action(m, "Fill Holes", lambda: self.map_selected(masks.fill_holes))
         self._action(m, "Remove Small Specks...", self.remove_specks)
-        self._action(m, "Threshold / Colour Range...", self.open_threshold)
         m.addSeparator()
         self._action(m, "Convert to Mask", self.convert_to_masks)
         self._action(m, "Convert to Polygons...", self.convert_to_polygons)
@@ -713,7 +721,11 @@ class MainWindow(QMainWindow):
         if self.current_index is None:
             return
         target = self.current_index + delta
-        if 0 <= target < len(self.image_paths) and self.maybe_save():
+        if not 0 <= target < len(self.image_paths):
+            edge = "first" if delta < 0 else "last"
+            self.statusBar().showMessage(f"This is the {edge} image", 3000)
+            return
+        if self.maybe_save():
             carry = self.video.capture_for_tracking() if delta == 1 else None
             self._load(target)
             if carry is not None and self.current_index == target:
@@ -835,11 +847,6 @@ class MainWindow(QMainWindow):
         self.session.save_project()
         self._show_active_label()
         self._refresh_labels()
-
-    def set_active_label_number(self, number: int) -> None:
-        """Make the ``number``-th known label (1-based) active; ignored if there is none."""
-        if 1 <= number <= len(self.known_labels):
-            self.set_active_label(self.known_labels[number - 1])
 
     def _on_label_clicked(self, label: str) -> None:
         """Clicking a label activates it; clicking the active label switches back to asking."""
@@ -974,9 +981,9 @@ class MainWindow(QMainWindow):
 
     def _show_active_label(self) -> None:
         if self.active_label is None:
-            text = "Label: ask each time (click a label to use it)"
+            text = "New masks: asks for a label"
         else:
-            text = f"Label: {self.active_label}  (click it again to ask)"
+            text = f"New masks: {self.active_label}"
         self.active_label_status.setText(text)
 
     def _label_for_new_shape(self) -> LabelInfo | None:
@@ -1144,21 +1151,6 @@ class MainWindow(QMainWindow):
             )
             self._replace_shapes(shapes)
 
-    def open_threshold(self) -> None:
-        """Show the threshold / colour-range panel; its preview replaces the active tool."""
-        if self.image_path is None:
-            return
-        if self.threshold_dialog is None:
-            self.threshold_dialog = ThresholdDialog(self.canvas, self._apply_smart, self)
-            self.threshold_dialog.finished.connect(self._threshold_closed)
-        self.canvas.set_tool(self.threshold_dialog.tool)
-        self.threshold_dialog.refresh()
-        self.threshold_dialog.show()
-
-    def _threshold_closed(self) -> None:
-        if self.threshold_dialog is not None and self.canvas.tool is self.threshold_dialog.tool:
-            self.set_tool(None)
-
     def edit_label(self) -> None:
         """Change label / group id / description of the selected shape."""
         index = self.canvas.selected
@@ -1250,6 +1242,7 @@ class MainWindow(QMainWindow):
         self.last_export = None
         self.export_on_close_action.setChecked(False)
         self.object_parts = list(export.PARTS)
+        self.export_combine = self.export_video = self.export_only_ticked = False
 
     def frame_state(self, index: int) -> FrameState:
         """Frame ``index``'s shapes as stored: on screen if shown, else from disk."""
@@ -1291,24 +1284,24 @@ class MainWindow(QMainWindow):
             0,
             len(self.image_paths) - 1,
             self.export_on_close_action.isChecked(),
+            self.export_combine,
+            self.export_video,
+            self.export_only_ticked,
         )
-        choice = self.ask_export(start, len(self.image_paths), self.current_index, self)
+        ticked = self.label_list.checked_labels()
+        choice = self.ask_export(
+            start, len(self.image_paths), self.current_index, self, ticked=ticked
+        )
         if choice is None or not self.maybe_save():
             return
         self.last_export = (choice.fmt, choice.out)
         if choice.parts:
             self.object_parts = choice.parts
+        self.export_combine, self.export_video = choice.combine, choice.video
+        self.export_only_ticked = choice.only_ticked
         self.export_on_close_action.setChecked(choice.on_close)
         self.session.save_project()
         self._export(choice.fmt, choice.out, frames=(choice.first, choice.last))
-
-    def export_again(self) -> None:
-        """Repeat the last export (format, folder, all frames) without asking."""
-        if self.last_export is None:
-            self.export_dialog()
-            return
-        if self.image_path is not None and self.maybe_save():
-            self._export(*self.last_export)
 
     def _export(
         self, fmt: str, out: Path, wait: bool = False, frames: tuple[int, int] | None = None
@@ -1334,7 +1327,17 @@ class MainWindow(QMainWindow):
         for item in items:
             for shape in item.annotation.shapes:
                 self._remember_label(shape.label)
-        worker = ExportWorker(items, fmt, out, list(self.known_labels), tuple(self.object_parts))
+        ticked = set(self.label_list.checked_labels())
+        worker = ExportWorker(
+            items,
+            fmt,
+            out,
+            list(self.known_labels),
+            tuple(self.object_parts),
+            only_labels=ticked if self.export_only_ticked and ticked else None,
+            combine=self.export_combine,
+            video=self.export_video,
+        )
         self.progress.begin("export", f"Exporting {fmt}", total=len(items), cancel=worker.cancel)
         worker.progress.connect(lambda done, total: self.progress.report("export", done, total))
         worker.failed.connect(self._error)
@@ -1381,7 +1384,8 @@ class MainWindow(QMainWindow):
             (remove_all, "Delete the key points on every frame"),
         ):
             action.setStatusTip(tip)
-        points = QAction(icon("point"), "Points", self)
+        points = QAction("Points", self)
+        self._set_icon(points, "point")
         points.setIconText("Points")
         points.setToolTip(
             "Points: add each mask's centroid and 4 corners as points you can drag, delete or "
@@ -1483,10 +1487,15 @@ class MainWindow(QMainWindow):
         self.redo_action.setEnabled(self.history.can_redo)
 
     def _update_title(self) -> None:
-        title = "easy-mask"
-        if self.image_path is not None:
-            title += f" - {self.image_path.name}{' *' if self.dirty else ''}"
-        self.setWindowTitle(title)
+        """``video · frame 12 of 300 (frame_000011.jpg) — easy-mask``; ``*`` while unsaved."""
+        if self.image_path is None or self.current_index is None:
+            self.setWindowTitle("easy-mask")
+            return
+        folder = self.image_path.parent.name
+        name = folder.removesuffix(VIDEO_FRAMES_SUFFIX) or folder  # a video's frames folder
+        place = f"frame {self.current_index + 1} of {len(self.image_paths)}"
+        unsaved = " *" if self.dirty else ""
+        self.setWindowTitle(f"{name}  ·  {place} ({self.image_path.name}){unsaved}  —  easy-mask")
 
     def _error(self, message: str) -> None:
         QMessageBox.warning(self, "easy-mask", message)

@@ -11,9 +11,11 @@ bundled here) and both packages claim Hydra's global config search path.
 """
 
 import importlib.util
+import os
 import shutil
 import tempfile
 import urllib.request
+import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +25,12 @@ import numpy as np
 from PIL import Image
 
 from easy_mask.propagation.tracker import FrameMasks
+
+# The model packages print progress bars (tqdm) and a harmless warning about an optional
+# compiled extension to the terminal; the app shows its own progress, so keep them quiet.
+# tqdm reads TQDM_DISABLE when it is first imported, which happens lazily after this.
+os.environ.setdefault("TQDM_DISABLE", "1")
+warnings.filterwarnings("ignore", message=r"cannot import name '_C'")
 
 CHECKPOINT_DIR = Path.home() / ".cache" / "easy-mask" / "checkpoints"
 CONFIG_DIR = Path(__file__).parent / "configs"
