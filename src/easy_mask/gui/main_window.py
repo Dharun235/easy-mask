@@ -264,6 +264,7 @@ class MainWindow(QMainWindow):
         self.tool_hint = QLabel()  # how to use the active tool; messages cover it briefly
         self.tool_hint.setMinimumWidth(1)  # long hints are clipped, never widen the window
         self.statusBar().addWidget(self.tool_hint, 1)
+        self.progress.shown.connect(lambda busy: self.tool_hint.setVisible(not busy))
         self.active_label_status = QLabel()
         self.statusBar().addPermanentWidget(self.active_label_status)
         self.status_label = QLabel()
@@ -974,9 +975,9 @@ class MainWindow(QMainWindow):
 
     def _show_active_label(self) -> None:
         if self.active_label is None:
-            text = "Label: ask each time (click a label to use it)"
+            text = "New masks: asks for a label"
         else:
-            text = f"Label: {self.active_label}  (click it again to ask)"
+            text = f"New masks: {self.active_label}"
         self.active_label_status.setText(text)
 
     def _label_for_new_shape(self) -> LabelInfo | None:

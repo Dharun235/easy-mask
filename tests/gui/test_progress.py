@@ -18,16 +18,16 @@ def test_panel_hidden_until_a_task_runs(qtbot):
     assert panel.isHidden()
 
 
-def test_panel_shows_percentage_and_newest_task(qtbot):
+def test_panel_shows_count_and_newest_task(qtbot):
     panel = ProgressPanel()
     qtbot.addWidget(panel)
     panel.begin("a", "Exporting", total=4)
     panel.report("a", 1)
-    assert panel.label.text() == "Exporting  25%" and panel.bar.value() == 1
+    assert panel.label.text() == "Exporting  1 of 4" and panel.bar.value() == 1
     panel.begin("b", "Loading AI model")
     assert panel.label.text() == "Loading AI model...  (+1 more)"
     panel.end("b")
-    assert panel.label.text() == "Exporting  25%"
+    assert panel.label.text() == "Exporting  1 of 4"
     panel.report("missing", 3)  # unknown tasks are ignored
     assert panel.is_running("a") and not panel.is_running("missing")
 
@@ -118,8 +118,24 @@ def test_propagation_shows_frames_done(qtbot, window, fake_propagator):
     window.video.make_propagator = lambda: fake_propagator
     window.ask_number = lambda *args: 2
     window.canvas.set_shapes([Shape("car", ShapeType.RECTANGLE, [(10, 10), (19, 19)])])
+    frames = []
+    original = window.progress.report
+    window.progress.report = lambda *args: (frames.append(args), original(*args))
     window.video.propagate(+1)
     assert window.progress.is_running("propagate")
-    assert window.progress.bar.maximum() == 2
+    assert window.progress.label.text() == "Starting AI tracking..."  # model loading: busy bar
     qtbot.waitUntil(lambda: not window.video.running, timeout=5000)
+    assert frames[-1] == ("propagate", 2, 2, "AI tracking")
     assert not window.progress.is_running("propagate")
+
+
+def test_panel_says_when_it_is_shown(qtbot):
+    """The window hides the tool hint while a task runs, so the two never overlap."""
+    panel = ProgressPanel()
+    qtbot.addWidget(panel)
+    with qtbot.waitSignal(panel.shown) as shown:
+        panel.begin("a", "Exporting", total=2)
+    assert shown.args == [True]
+    with qtbot.waitSignal(panel.shown) as shown:
+        panel.end("a")
+    assert shown.args == [False]
